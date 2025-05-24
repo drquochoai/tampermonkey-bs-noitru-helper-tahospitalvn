@@ -8,8 +8,11 @@
 // @match        https://dd-noitru.tahospital.vn/*
 // @grant        GM_xmlhttpRequest
 // @license      MIT
-// @connect      self
 // @connect      google.com
+// @connect      tahospital.vn
+// @connect      script.google.com
+// @connect      googleusercontent.com
+// @connect      *
 // ==/UserScript==
 
 (function() {
@@ -87,6 +90,7 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
+                redirects: 'follow', // Theo dõi chuyển hướng nếu có
                 data: JSON.stringify(requestBody),
                 onload: function(response) {
                     try {

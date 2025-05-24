@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội Trú Helper by BS.CKI Trần Quốc Hoài, tahospital.vn
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.1.3
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*

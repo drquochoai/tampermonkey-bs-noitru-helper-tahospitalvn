@@ -8,6 +8,7 @@
 // @match        https://dd-noitru.tahospital.vn/*
 // @grant        GM_xmlhttpRequest
 // @license      MIT
+// @connect      *
 // ==/UserScript==
 
 (function() {

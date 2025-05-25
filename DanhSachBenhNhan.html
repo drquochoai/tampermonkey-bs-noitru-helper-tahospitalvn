@@ -1,0 +1,954 @@
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>NỘI TRÚ - Danh s&#xE1;ch b&#x1EC7;nh nh&#xE2;n hi&#x1EC7;n di&#x1EC7;n- TAHDanh s&#xE1;ch b&#x1EC7;nh nh&#xE2;n - N&#x1ED9;i tr&#xFA;</title>
+
+    <link rel="icon" href="https://tamanhhospital.vn/wp-content/uploads/2021/02/favicon-tam-anh1.png" sizes="32x32">
+    <link rel="icon" href="https://tamanhhospital.vn/wp-content/uploads/2021/02/favicon-tam-anh1.png" sizes="192x192">
+    <link rel="apple-touch-icon" href="https://tamanhhospital.vn/wp-content/uploads/2021/02/favicon-tam-anh1.png">
+    <meta name="msapplication-TileImage" content="https://tamanhhospital.vn/wp-content/uploads/2021/02/favicon-tam-anh1.png">
+
+    <!-- Google Font: Source Sans Pro -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback" />
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/fontawesome-free/css/all.min.css" />
+
+    <link rel="stylesheet" href="/css/font-awesome-4.7.0/css/font-awesome.css" />
+
+
+    <!-- Ionicons -->
+    <link rel="stylesheet" href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css" />
+    <!-- Tempusdominus Bootstrap 4 -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/tempusdominus-bootstrap-4/css/tempusdominus-bootstrap-4.min.css" />
+    <!-- iCheck -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/icheck-bootstrap/icheck-bootstrap.min.css" />
+    <!-- JQVMap -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/jqvmap/jqvmap.min.css" />
+    <!-- Theme style -->
+    <link rel="stylesheet" href="/themes/TamAnh/dist/css/adminlte.min.css" />
+    <!-- overlayScrollbars -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/overlayScrollbars/css/OverlayScrollbars.min.css" />
+    <!-- Daterange picker -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/daterangepicker/daterangepicker.css" />
+    <!-- summernote -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/summernote/summernote-bs4.min.css" />
+    <!--Uploader-->
+    <link rel="stylesheet" href="/themes/TamAnh/lib/fineuploader/fine-uploader.min.css">
+    <!-- Toastr -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/toastr/toastr.min.css">
+
+    <!-- SweetAlert2 -->
+    <link rel="stylesheet" href="/themes/TamAnh/plugins/sweetalert2-theme-bootstrap-4/bootstrap-4.min.css">
+
+    <link href="/themes/TamAnh/plugins/jquery-ui/jquery-ui.css" rel="stylesheet" />
+    <!-- Custom site -->
+    <link rel="stylesheet" href="/themes/TamAnh/css/site.css">
+
+
+    <link rel="stylesheet" href="/css/notification.css" />
+
+    <link rel="stylesheet" href="/lib/EasyPlug/Css/jqpagination.css" />
+    <link rel="stylesheet" href="/icon/icofont/css/icofont.css" />
+    <link href="/themes/TamAnh/plugins/jquery-toast-plugin-master/src/jquery.toast.css" rel="stylesheet" />
+    <link href="/themes/TamAnh/plugins/select2/select2.css" rel="stylesheet" />
+    <link href="/themes/TamAnh/plugins/select2/select2-bootstrap.min.css" rel="stylesheet" />
+    <link href="/plugins/datatables-bs4/css/dataTables.bootstrap4.min.css" rel="stylesheet" />
+    <link href="/plugins/datatables-responsive/css/responsive.bootstrap4.min.css" rel="stylesheet" />
+    <link href="/plugins/datatables-rowgroup/css/rowGroup.bootstrap4.min.css" rel="stylesheet" />
+    <link href="/plugins/datatables-scroller/css/scroller.bootstrap4.min.css" rel="stylesheet" />
+    <link href="/lib/jquery-freeze-table_plugins/css/ScrollTabla.css" rel="stylesheet" />
+    <!-- Control Sidebar -->
+    <aside class="control-sidebar control-sidebar-dark">
+        <!-- Control sidebar content goes here -->
+    </aside>
+
+
+
+    <!-- /.control-sidebar -->
+    <!-- jQuery -->
+    <script src="/themes/TamAnh/plugins/jquery/jquery.min.js"></script>
+    <!-- jQuery UI 1.11.4 -->
+    <script src="/themes/TamAnh/plugins/jquery-ui/jquery-ui.min.js"></script>
+
+    <script src="/themes/TamAnh/plugins/jquery/jquery.ui.autocomplete.scroll.min.js"></script>
+    <!-- Resolve conflict in jQuery UI tooltip with Bootstrap tooltip -->
+    <!-- Bootstrap 4 -->
+    <script src="/plugins/bootstrap/js/bootstrap.bundle.min.js"></script>
+    <!-- daterangepicker -->
+    <script src="/themes/TamAnh/plugins/moment/moment.min.js"></script>
+    <script src="/themes/TamAnh/plugins/inputmask/jquery.inputmask.min.js"></script>
+    <script src="/themes/TamAnh/plugins/daterangepicker/daterangepicker.js"></script>
+
+
+    <!-- overlayScrollbars -->
+    <script src="/themes/TamAnh/plugins/overlayScrollbars/js/jquery.overlayScrollbars.min.js"></script>
+    <!-- AdminLTE App -->
+    <script src="/themes/TamAnh/dist/js/adminlte.js"></script>
+    <!--Uploader-->
+    <script src="/themes/TamAnh/lib/fineuploader/jquery.fine-uploader.min.js" asp-append-version="true"></script>
+
+    <!-- Toastr -->
+    <script src="/themes/TamAnh/plugins/toastr/toastr.min.js"></script>
+
+    <script src="/themes/TamAnh/plugins/sweetalert2/sweetalert2.min.js"></script>
+
+    <script src="/themes/TamAnh/plugins/jquery-toast-plugin-master/src/jquery.toast.js"></script>
+
+    <!-- Select2 -->
+    <script src="/plugins/select2/js/select2.min.js"></script>
+
+    <!-- DataTables  & Plugins -->
+
+    <script src="/plugins/datatables/jquery.dataTables.min.js"></script>
+    <script src="/plugins/datatables-bs4/js/dataTables.bootstrap4.min.js"></script>
+    <script src="/plugins/datatables-responsive/js/dataTables.responsive.min.js"></script>
+    <script src="/plugins/datatables-scroller/js/dataTables.scroller.min.js"></script>
+
+    <!-- cấu hình site -->
+
+
+    <script src="/plugins/jquery-validation/jquery.validate.js"></script>
+    <script src="/plugins/jquery-validation/additional-methods.min.js"></script>
+
+
+    <script src="/lib/jquery.validate.unobtrusive.js"></script>
+    <script src="/plugins/jquery-validation/localization/messages_vi.js"></script>
+    <script src="/lib/jquery-ajax-unobtrusive/jquery.unobtrusive-ajax.js"></script>
+    <script src="/lib/Inputmask/dist/jquery.inputmask.js"></script>
+    <script src="/lib/Inputmask/dist/bindings/inputmask.binding.js"></script>
+    <script src="/lib/daterangepicker/moment.min.js"></script>
+    <script src="/lib/daterangepicker/daterangepicker.js"></script>
+    <script src="/lib/script/bootstrap-growl.min.js"></script>
+    <script src="/lib/jquery-freeze-table/src/js/freeze-table.js"></script>
+    <script src="/lib/jquery-freeze-table_plugins/js/jquery.CongelarFilaColumna.js"></script>
+    <script src="/themes/TamAnhLogin/bootstrap4-editable/js/bootstrap-editable.js"></script>
+    <script src="/lib/script/_script_include.js"></script>
+    <script src="/lib/script/_script_include_form.js"></script>
+    <!-- Theme style -->
+
+
+</head>
+<body class="layout-fixed layout-navbar-fixed layout-footer-fixed">
+
+    <div class="wrapper">
+        <!-- Navbar -->
+
+        <nav class="main-header navbar navbar-expand navbar-white navbar-light p-0">
+            <!-- Left navbar links -->
+            <ul class="navbar-nav">
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="pushmenu" href="#" role="button"><i class="fas fa-bars"></i></a>
+                </li>
+
+            </ul>
+            <div class="ml-auto"><h4 style="margin: 0px"><b>TAH NỘI TRÚ - B&#xCA;&#x323;NH VI&#xCA;&#x323;N &#x110;A KHOA T&#xC2;M ANH TP. H&#x1ED2; CH&#xCD; MINH</b></h4></div>
+            <!-- Right navbar links -->
+            <ul class="navbar-nav ml-auto">
+                <!-- Navbar Search -->
+                <!-- Messages Dropdown Menu -->
+                <!-- Notifications Dropdown Menu -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link" data-toggle="dropdown" href="#">
+                        <i class="far fa-user"></i>
+                        <span>Tr&#x1EA7;n Qu&#x1ED1;c Ho&#xE0;i</span>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-lg dropdown-menu-right">
+                        <div id="change-pin-chung-thu-so">
+                            <a href="#" class="dropdown-item" data-style="ccs" data-key="change-pin-chung-thu-so" data-title="Đổi mật khẩu ký số" data-id="4108" data-action="Update" data-style="lg">
+                                <i class="fas fa-key mr-2"></i> Đổi mật khẩu ký số
+                            </a>
+                            <script>
+                                window["cc_change-pin-chung-thu-so"] = FEFrom("change-pin-chung-thu-so", "/sp-admin/change-pin-chung-thu-so");
+                            
+
+                            </script>
+                            <style>
+                                #form-change-pin-chung-thu-so .form-group {
+                                    margin-bottom: 0.25rem;
+                                }
+
+                                #form-change-pin-chung-thu-so .card-sm {
+                                    margin-bottom: 0.5rem;
+                                }
+                                #form-change-pin-chung-thu-so .card-sm .card-body {
+                                    padding: 0.55rem;
+                                }
+
+
+                                    #form-change-pin-chung-thu-so .card-sm .card-footer {
+                                    padding: 0.5rem 0.25rem;
+                                }
+
+                                #form-change-pin-chung-thu-so .control-label-sm {
+                                    padding-top: calc(0.15rem + 1px);
+                                    padding-bottom: calc(0.15rem + 1px);
+                                }
+
+                                #form-change-pin-chung-thu-so .card-sm .card-header {
+                                    padding: 0.5rem 0.75rem;
+                                }
+
+                                #form-change-pin-chung-thu-so .ajax-form-body-sm {
+                                    padding: 0.15rem 0.75rem !important;
+                                }
+
+                                #form-change-pin-chung-thu-so .customModal_content {
+                                    padding: 0.5rem;
+                                }
+
+                                #form-change-pin-chung-thu-so .container-fluid-sm {
+                                    padding-left: 0px;
+                                    padding-right: 0px;
+                                }
+
+                                #form-change-pin-chung-thu-so .customModal .modal-header {
+                                    padding: 0.25rem 0.75rem
+                                }
+                            </style>
+                            <style>
+                                #form-change-pin-chung-thu-so {
+                                    z-index: 9999999998;
+                                }
+
+                                #form-change-pin-chung-thu-so_Close {
+                                    z-index: 9999999999;
+                                }
+
+                           
+                                .modal-ccs {
+                                    max-width: 500px;
+                                }
+
+                                .modal-ccs .item-field > div {
+                                    position:relative
+                                }
+
+                                .modal-ccs .item-field .toggle-password {
+                                    position: absolute;
+                                    top: 15px;
+                                }
+
+                                .modal-ccs .item-field  .error + .field-icon {
+                                    position: absolute;
+                                    top: 18px;
+                                }
+
+                                #form-change-pin-chung-thu-so_Close .modal-dialog {
+                                    max-width: 400px;
+                                }
+                            </style>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <a href="/Home/Login" class="dropdown-item dropdown-footer"><i class="fa fa-sign-out-alt"></i> Đăng xuất</a>
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-widget="fullscreen" href="#" role="button">
+                        <i class="fas fa-expand-arrows-alt"></i>
+                    </a>
+                </li>
+
+            </ul>
+        </nav>
+        <!-- /.navbar -->
+        <!-- Main Sidebar Container -->
+        <aside class="main-sidebar sidebar-dark-primary elevation-4" style="overflow-x: hidden">
+            <!-- Brand Logo -->
+            <div class="row text-center">
+                <div class="col-12 mt-3">
+                    <a href="https://tamanhhospital.vn"><img class="lazyload" alt="Bệnh viện đa khoa Tâm Anh" data-src="~/img/logo_desk.png" src="/img/logo_desk.png" width="60%"></a>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="sidebar">
+
+
+                <!-- SidebarSearch Form -->
+                <div class="form-inline">
+                    <div class="input-group" data-widget="sidebar-search">
+                        <input class="form-control form-control-sidebar" type="search" placeholder="Tìm kiếm" aria-label="Search">
+                        <div class="input-group-append">
+                            <button class="btn btn-sidebar">
+                                <i class="fas fa-search fa-fw"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar Menu -->
+
+
+                <nav class="mt-2">
+
+
+                    <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+                                    <li class="nav-item">
+                                        <a href="/hoso" class="nav-link ">
+                                            <i class="fa far fa-address-book nav-icon"></i>
+                                            <p>Xem b&#x1EC7;nh &#xE1;n</p>
+                                        </a>
+                                    </li>
+                                    <li class="nav-item">
+                                        <a href="https://hsba.tahospital.vn/hosobenhan/chitiet" class="nav-link ">
+                                            <i class="fa far fa-book nav-icon"></i>
+                                            <p>H&#x1ED3; s&#x1A1; b&#x1EC7;nh &#xE1;n V2</p>
+                                        </a>
+                                    </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-adjust"></i>
+                                        <p>
+                                            &#x110;&#xE1;nh gi&#xE1; ban &#x111;&#x1EA7;u
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/VitualSigns/Index" class="nav-link ">
+                                                            <i class="fa far fa-assistive-listening-systems nav-icon"></i>
+                                                            <p>&#x110;&#xE1;nh gi&#xE1; l&#x1EA1;i </p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="/to-dieu-tri" class="nav-link ">
+                                        <i class="nav-icon fas fa-file-zip-o"></i>
+                                        <p>
+                                            T&#x1EDD; &#x111;i&#x1EC1;u tr&#x1ECB;
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/to-dieu-tri" class="nav-link ">
+                                                            <i class="fa far fa-flask nav-icon"></i>
+                                                            <p>T&#x1EDD; &#x111;i&#x1EC1;u tr&#x1ECB; - N&#x1ED9;i tr&#xFA;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/to-dieu-tri?type=2" class="nav-link ">
+                                                            <i class="fa far fa-flask nav-icon"></i>
+                                                            <p>T&#x1EDD; &#x111;i&#x1EC1;u tr&#x1ECB; - Ngo&#x1EA1;i tr&#xFA;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/to-dieu-tri?type=4" class="nav-link ">
+                                                            <i class="fa far fa-flash nav-icon"></i>
+                                                            <p>T&#x1EDD; &#x111;i&#x1EC1;u tr&#x1ECB; - C&#x1EA5;p c&#x1EE9;u</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/can-thiep-truong-khoa" class="nav-link ">
+                                                            <i class="fa far fa-database nav-icon"></i>
+                                                            <p>L&#xE3;nh &#x110;&#x1EA1;o Khoa</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-cube"></i>
+                                        <p>
+                                            Qu&#x1EA3;n l&#xFD; kh&#xE1;m ti&#x1EC1;n m&#xEA;
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/TienMe/TongQuan" class="nav-link ">
+                                                            <i class="fa far fa-cogs nav-icon"></i>
+                                                            <p>T&#x1ED5;ng quan</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/TienMe/dang-ky" class="nav-link ">
+                                                            <i class="fa far fa-edit nav-icon"></i>
+                                                            <p>&#x110;&#x103;ng k&#xFD;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/TienMe/DanhSach" class="nav-link ">
+                                                            <i class="fa far fa-asterisk nav-icon"></i>
+                                                            <p>Kh&#xE1;m t&#x1EA1;i gi&#x1B0;&#x1EDD;ng</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/TienMe/Index" class="nav-link ">
+                                                            <i class="fa far fa-assistive-listening-systems nav-icon"></i>
+                                                            <p>Kh&#xE1;m t&#x1EA1;i ph&#xF2;ng</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-hotel"></i>
+                                        <p>
+                                            Kh&#xE1;m chuy&#xEA;n khoa
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/KhamChuyenKhoa/dang-ky" class="nav-link ">
+                                                            <i class="fa far fa-at nav-icon"></i>
+                                                            <p>&#x110;&#x103;ng k&#xFD; kh&#xE1;m</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/KhamChuyenKhoa/DanhSach" class="nav-link ">
+                                                            <i class="fa far fa-american-sign-language-interpreting nav-icon"></i>
+                                                            <p>Danh s&#xE1;ch kh&#xE1;m</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-universal-access"></i>
+                                        <p>
+                                            Kh&#xE1;m h&#x1ED9;i ch&#x1EA9;n
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/KhamHoiChanDuyetMo" class="nav-link ">
+                                                            <i class="fa far fa-registered nav-icon"></i>
+                                                            <p>&#x110;&#x103;ng k&#xFD;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/KhamHoiChanDuyetMoDanhSach" class="nav-link ">
+                                                            <i class="fa far fa-group nav-icon"></i>
+                                                            <p>Danh s&#xE1;ch kh&#xE1;m</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-book"></i>
+                                        <p>
+                                            EMR - Danh S&#xE1;ch Phi&#x1EBF;u
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/DanhSachBenhNhan/Index" class="nav-link ">
+                                                            <i class="fa far fa-address-book nav-icon"></i>
+                                                            <p>Hi&#x1EC7;n di&#x1EC7;n - N&#x1ED9;i tr&#xFA;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/DanhSachBenhNhan/NgoaiTru" class="nav-link ">
+                                                            <i class="fa far fa-address-book nav-icon"></i>
+                                                            <p>Hi&#x1EC7;n di&#x1EC7;n - Ngo&#x1EA1;i tr&#xFA;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/DanhSachBenhNhan/CapCuu" class="nav-link ">
+                                                            <i class="fa far fa-address-book nav-icon"></i>
+                                                            <p>Hi&#x1EC7;n di&#x1EC7;n - C&#x1EA5;p c&#x1EE9;u</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/DanhSachBenhNhanKhamBenh/Index" class="nav-link ">
+                                                            <i class="fa far fa-heart nav-icon"></i>
+                                                            <p>Kh&#xE1;m b&#x1EC7;nh ngo&#x1EA1;i tr&#xFA;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/PhieuBanGiao/DanhSach" class="nav-link ">
+                                                            <i class="fa far fa-history nav-icon"></i>
+                                                            <p>L&#x1ECB;ch s&#x1EED; phi&#x1EBF;u</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/todieutri/quanlykhangsinh" class="nav-link ">
+                                                            <i class="fa far fa-book nav-icon"></i>
+                                                            <p>Qu&#x1EA3;n l&#xFD; phi&#x1EBF;u kh&#xE1;ng sinh</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-blind"></i>
+                                        <p>
+                                            X&#xE9;t nghi&#x1EC7;m vi khu&#x1EA9;n
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/sp-admin/xnnk-dmbenhpham" class="nav-link ">
+                                                            <i class="fa far fa-bomb nav-icon"></i>
+                                                            <p>Danh m&#x1EE5;c b&#x1EC7;nh ph&#x1EA9;m</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/sp-admin/xnnk-dmdichvu" class="nav-link ">
+                                                            <i class="fa far fa-bookmark nav-icon"></i>
+                                                            <p>Danh m&#x1EE5;c d&#x1ECB;ch v&#x1EE5;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/sp-admin/xnnk-dmkhoaphong-pid" class="nav-link ">
+                                                            <i class="fa far fa-cubes nav-icon"></i>
+                                                            <p>Danh m&#x1EE5;c khoa ph&#xF2;ng</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                                <li class="nav-item ">
+                                    <a href="#" class="nav-link ">
+                                        <i class="nav-icon fas fa-blind"></i>
+                                        <p>
+                                            &#x110;i&#x1EC1;u Tra NK B&#x1EC7;nh Vi&#x1EC7;n
+                                                <i class="fas fa-angle-left right"></i>
+                                        </p>
+                                    </a>
+                                        <ul class="nav nav-treeview" style="">
+                                                    <li class="nav-item">
+                                                        <a href="/nhiemkhuanbenhvien" class="nav-link ">
+                                                            <i class="fa far fa-edit nav-icon"></i>
+                                                            <p>&#x110;&#x103;ng k&#xFD;</p>
+                                                        </a>
+                                                    </li>
+                                                    <li class="nav-item">
+                                                        <a href="/nhiemkhuanbenhvien/danhsach" class="nav-link ">
+                                                            <i class="fa far fa-address-book nav-icon"></i>
+                                                            <p>Danh s&#xE1;ch</p>
+                                                        </a>
+                                                    </li>
+                                        </ul>
+
+                                </li>
+                    </ul>
+
+
+                </nav>
+                <!-- /.sidebar-menu -->
+            </div>
+            <!-- /.sidebar -->
+        </aside>
+
+
+
+        <div class="content-wrapper">
+
+
+
+
+            <main role="main" class="content">
+                <div class="container-fluid">
+                    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.3.0/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0-rc"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3/dist/chart.min.js"></script>
+<script src="/plugins/chart.js-3.3.0/chartjs-plugin-annotation.min.js"></script>
+<link href="/css/ttthongbao.css" rel="stylesheet" />
+<canvas id="canvas" style="display:none !important"></canvas>
+<canvas id="hoisuc_canvas" width="850" height="200" style="display:none !important"></canvas>
+<canvas id="hoisuchn_canvas" width="800" height="600" style="display:none !important" options={{ maintainAspectRatio: false }></canvas>
+<canvas id="hoisucnew_canvas" width="850" height="200" style="display:none !important"></canvas>
+
+<div class="row">
+    <div class="col-lg-12" id="DanhSachBenhNhan">
+        <div class="card card-outline card-info">
+            <div class="card-header ui-sortable-handle">
+                <h3 class="card-title">
+                    <i class="fas fa-book mr-1"></i>
+                    DANH SÁCH BỆNH NHÂN
+                </h3>
+
+            </div>
+            <div class="card-body">
+                <form id="form">
+                    <div class="form-group row mb-1">
+                        <div class="col-md-2">
+                            <div class="form-group form-group-sm">
+                                <label>Khoa</label>
+
+                                <select class="form-control form-control-sm select2" style="width:100%;" name="khoa" id="ddlKhoa" required>
+                                    <option selected disabled value="-1">Chọn khoa</option>
+                                <option value="048">KHOA G&#xC2;Y M&#xCA; - H&#x1ED2;I S&#x1EE8;C</option>
+<option value="153">KHOA H&#x1ED2;I S&#x1EE8;C</option>
+<option value="175">KHOA TIM M&#x1EA0;CH</option>
+<option value="253">&#x110;&#x1A0;N V&#x1ECA; CAN THI&#x1EC6;P M&#x1EA0;CH</option>
+<option value="551">KHOA NGO&#x1EA0;I L&#x1ED2;NG NG&#x1EF0;C - M&#x1EA0;CH M&#xC1;U</option>
+</select>
+                                <script>
+                                    var makp = '048';
+                                    if (makp) {
+                                        $('#ddlKhoa').val(makp);
+                                    }
+                                </script>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label>Tên, Mã bệnh nhân</label>
+                            <div class="input-group input-group-sm">
+                                <input type="hidden" value="1" name="loaiba" id="loaiba" />
+                                <input type="text" class="form-control" name="mabn" placeholder="Tên, Mã bệnh nhân" />
+                                <div class="input-group-append">
+                                    <button id="btnsearch" name="btnsearch-searchTen" type="button" class="btn btn-info">
+                                        <i class="fa fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </form>
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="row">
+
+                            <div class="col-6 col-lg-2">
+                                <div class="info-box mb-1" data-id="0">
+                                    <span>
+                                        <img src="/img/tivi/hiendien.png">
+                                    </span>
+                                    <div class="info-box-content">
+                                        <span class="info-box-text">Hiện Diện</span>
+                                        <span class="info-box-number" id="countHienDien">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <div class="info-box mb-1" data-id="2">
+                                    <span>
+                                        <img src="/img/tivi/nhapvien.png">
+                                    </span>
+                                    <div class="info-box-content">
+                                        <span class="info-box-text">Nhập Khoa</span>
+                                        <span class="info-box-number" id="countNhapKhoa">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <div class="info-box mb-1">
+                                    <span>
+                                        <img src="/img/tivi/xuatvien.png">
+                                    </span>
+                                    <div class="info-box-content">
+                                        <span class="info-box-text">Xuất Viện</span>
+                                        <span class="info-box-number" id="countXuatVien">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-lg-2">
+                                <div class="info-box mb-1" data-id="3">
+                                    <span><img src="/img/tivi/ChuyenKhoaTDT.png"></span>
+                                    <div class="info-box-content">
+                                        <span class="info-box-text">Chuyển khoa</span>
+                                        <span class="info-box-number" id="countChuyenKhoa">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <div class="info-box mb-1" data-id="4">
+                                    <span><img src="/img/tivi/DaKham.png"></span>
+                                    <div class="info-box-content">
+                                        <span class="info-box-text">Đã khám</span>
+                                        <span class="info-box-number" id="countDaKham">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-lg-2">
+                                <div class="info-box mb-1" data-id="6">
+                                    <span><img src="/img/tivi/ChuaKham.png"></span>
+                                    <div class="info-box-content">
+                                        <span class="info-box-text">Chưa khám</span>
+                                        <span class="info-box-number" id="countChuaKham">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <script>
+                            $('.info-box').click(function () {
+
+                                var id = $(this).attr('data-id');
+                                $('#hdtk').val(id);
+                                LoadData($("#form"));
+                            });
+                        </script>
+                    </div>
+                    <style>
+                        .info-box {
+                            min-height: 40px;
+                            padding: .3rem;
+                        }
+
+                        #DanhSachBenhNhan .info-box.active {
+                            background-color: rgba(53, 158, 220, 0.5) !important;
+                        }
+
+                        #DanhSachBenhNhan .info-box {
+                            cursor: pointer;
+                        }
+
+                            #DanhSachBenhNhan .info-box span img {
+                                width: 30px;
+                                cursor: pointer;
+                            }
+
+                            #DanhSachBenhNhan .info-box .info-box-content {
+                                width: 30px;
+                                line-height: 1;
+                            }
+
+                    </style>
+                    <div class="col-md-12">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover table-striped nowrap dataTable" style="width:100%" id="tblListData">
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-12" id="LoadDetail">
+        <div style="min-height:calc(100vh - 200px);">
+            
+        </div>
+    </div>
+
+</div>
+
+<style>
+    .main-header .navbar-white {
+        display: none;
+    }
+    #ThongTinHanhChinh {
+        min-height: calc(100vh - 60px);
+    }
+
+    #dien-bien-list {
+        height: calc(100vh - 330px);
+        overflow-y: scroll;
+    }
+
+
+    .layout-footer-fixed .wrapper .content-wrapper {
+        padding-bottom: calc(3.5rem + -62px);
+    }
+    /*    .page-link {
+
+                padding: 0px 10px;
+            }*/
+    .-container--default .-selection--single {
+        padding: 0.3rem .75rem;
+        height: 38px;
+    }
+
+
+    /* width */
+    ::-webkit-scrollbar {
+        width: 5px;
+        height: 5px
+    }
+
+    /* Track */
+    ::-webkit-scrollbar-track {
+        box-shadow: inset 0 0 5px white;
+        border-radius: 10px;
+    }
+
+    /* Handle */
+    ::-webkit-scrollbar-thumb {
+        background: grey;
+        border-radius: 10px;
+    }
+
+    .ui-autocomplete {
+        z-index: 9999 !important;
+    }
+
+    .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+        box-shadow: unset !important;
+    }
+
+    .table td, .table th {
+        padding: 3px;
+    }
+
+    table.dataTable {
+        margin-top: -1px !important;
+    }
+
+    .input-secondary {
+        width: 30px !important;
+        border-left: none !important;
+    }
+    .select2-container {
+        /*z-index: 9999999;*/
+    }
+
+    .modal-dialog.modal-xxl {
+        width: 90%;
+        max-width: unset;
+        height: 95vh;
+    }
+
+    .select2-container--default .select2-results__option {
+        font-size: 14px;
+        line-height: 18px;
+    }
+
+    select.form-control-sm ~ .select2-container--default {
+        font-size: 100%;
+    }
+
+        .text-sm .select2-container--default .select2-selection--single, select.form-control-sm ~ .select2-container--default .select2-selection--single {
+            height: calc(1.8125rem + 2px) !important;
+        }
+
+    .select2-container--default .select2-selection--single .select2-selection__arrow{
+        top:1px !important;
+    }
+    .select2-container--default .select2-selection--single {
+        background-color: #fff;
+        border: 1px solid #ced4da;
+        /* border-radius: 0px; */
+    }
+
+    .field-validation-valid {
+        color: red;
+    }
+
+    .duplicate-row {
+        background-color: rgba(220,53,69,0.5) !important;
+    }
+
+    .co-tdt {
+        font-weight: bold !important;
+    }
+
+    .co-tienme {
+        font-style: italic !important;
+        background-color: rgba(53,158,220,0.5) !important;
+    }
+
+    .card.card-sm.card-primary.card-header {
+        padding: 5px;
+    }
+
+    table tbody > tr > td {
+        vertical-align: middle !important;
+    }
+
+    .freezeTable-Scroll {
+        max-height: 445px !important;
+    }
+</style>
+<script src="/js/danhsachbenhnhan/formattemplate.js"></script>
+<script src="/js/danhsachbenhnhan/danhsachmenu.js"></script>
+<script src="/js/danhsachbenhnhan/index.js"></script>
+<script src="/js/phieubangiao/indexcontroller.js"></script>
+<script src="/js/bieudochuyenda/script.js"></script>
+<script src="/js/tiensangiat/script.js"></script>
+<script type="text/javascript" src="/js/ttthongbao.js"></script>
+
+
+                </div>
+
+            </main>
+        </div>
+    </div>
+    <div class="main-footer">
+        <div class="float-right d-none d-sm-block">
+            <b>Tam Anh Hospital</b>
+        </div>
+        <strong>&nbsp;</strong>
+    </div>
+    <!-- /.content-wrapper -->
+
+
+
+    
+
+
+    <style>
+        .content-wrapper {
+            min-height: auto !important;
+        }
+    </style>
+
+    <div class="modal" tabindex="-1" role="dialog" id="loading-modal" >
+        <div class="modal-dialog" role="document">
+            <div class="md-col-12 row">
+                <i class="fa fa-sync fa-spin" style="color: #000; font-size: 30px; top: 50%; position: fixed; right: 50%;"></i>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="iframe-modal" class="modal text-center" style="z-index: 3050;">
+        <iframe id="pdf-iframe" height="100%" width="70%" src=""></iframe>
+    </div>
+
+    <script>
+        function Toast(header, mess, icon) {
+
+            $.toast({
+                heading: header,
+                text: mess,
+                showHideTransition: 'slide',
+                icon: icon,
+                position: 'top-right'
+            });
+        }
+    </script>
+
+    <style>
+
+        .card .card-header {
+            padding: 5px 10px;
+        }
+
+        .card.card-sm .card-body {
+            padding: 0.75rem;
+        }
+
+        .col-form-label.control-label-sm {
+            padding-top: calc(0.25rem + 1px);
+            padding-bottom: calc(0.25rem + 1px);
+        }
+
+        .form-group.form-group-sm {
+            margin-bottom: 0.25rem;
+        }
+
+        .table.table-sm {
+            margin-bottom: 0.25rem;
+        }
+    </style>
+</body>
+</html>

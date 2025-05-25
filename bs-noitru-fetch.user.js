@@ -13,9 +13,10 @@
 // @connect      script.google.com
 // @connect      googleusercontent.com
 // @connect      *
+// @sandbox      MAIN_WORLD
 // ==/UserScript==
 
-(function() {
+(function () {
     'use strict';
 
     // Địa chỉ Google Apps Script API của Bác sĩ
@@ -92,7 +93,7 @@
                 },
                 redirects: 'follow', // Theo dõi chuyển hướng nếu có
                 data: JSON.stringify(requestBody),
-                onload: function(response) {
+                onload: function (response) {
                     try {
                         console.log('Phản hồi từ Google Apps Script:', response);
                         const result = JSON.parse(response.responseText);
@@ -111,12 +112,12 @@
                         reject(new Error('Failed to parse response from Google Apps Script.'));
                     }
                 },
-                onerror: function(error) {
+                onerror: function (error) {
                     alert('Lỗi mạng khi gửi lên Google Apps Script: ' + error.statusText);
                     console.error('Lỗi mạng (GM_xmlhttpRequest):', error);
                     reject(new Error('Network error or failed to connect to Google Apps Script.'));
                 },
-                ontimeout: function(error) {
+                ontimeout: function (error) {
                     alert('Yêu cầu tới Google Apps Script bị hết thời gian: ' + error.statusText);
                     console.error('Yêu cầu hết thời gian (GM_xmlhttpRequest):', error);
                     reject(new Error('Request to Google Apps Script timed out.'));
@@ -147,29 +148,190 @@
         document.body.appendChild(btn);
     }
 
-    // Helper: Calculate age from date string
-    function calculateAge(dateString) {
-        if (!dateString) return '';
-        const birth = new Date(dateString);
-        if (isNaN(birth)) return '';
-        const today = new Date();
-        let age = today.getFullYear() - birth.getFullYear();
-        const m = today.getMonth() - birth.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-            age--;
-        }
-        return age;
-    }
-
     // Show dr_data as cards if ?show=true or ?nln in URL
-    function showDrDataIfNeeded() {
+    function showDashboardBenhNhanIfNeeded() {
         if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
+        // Helper: Calculate age from date string
+        function calculateAge(dateString) {
+            if (!dateString) return '';
+            const birth = new Date(dateString);
+            if (isNaN(birth)) return '';
+            const today = new Date();
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                age--;
+            }
+            return age;
+        }
+        // Checklist items
+        const checklistItems = [
+            'Phiếu khai thác tiền sử dị ứng (hsoft)',
+            'Phiếu kiểm tra HIV test (hsoft)',
+            'Phiếu cung cấp thông tin, chẩn đoán và điều trị. (hsoft)',
+            'Phiếu Khám vào viện (hsoft)',
+            '20. Biên bản hội chẩn mổ (hsoft)',
+            '57. Cam kết phẫu thuật thủ thuật (hsoft)',
+            'Bệnh án giấy Ngoại khoa',
+            'Tờ điều trị (web)',
+            'Tạo phiếu Hội chẩn duyệt mổ (web)'
+        ];
+        // Render sidebar for a patient
+        function showSidebar(patient) {
+            let sidebar = document.getElementById('dr-sidebar');
+            if (!sidebar) {
+                sidebar = document.createElement('div');
+                sidebar.id = 'dr-sidebar';
+                document.body.appendChild(sidebar);
+            }
+            sidebar.innerHTML = '';
+            sidebar.style = `position:fixed;top:0;right:0;width:400px;max-width:100vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
+            // Patient info form
+            const info = document.createElement('div');
+            info.innerHTML = `
+                <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
+                <div><b>Tuổi:</b> <input id="dr-age" type="number" value="${calculateAge(patient.ngaysinh)}" style="width:60px"></div>
+                <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
+                <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
+                <div><b>Kế hoạch điều trị:</b> <input id="dr-treatment" type="text" value="${patient.kehoach || ''}" style="width:90%"></div>
+            `;
+            sidebar.appendChild(info);
+            // After rendering the treatment plan textbox
+            const drTreatment = info.querySelector('#dr-treatment');
+            if (drTreatment) {
+                drTreatment.addEventListener('blur', function() {
+                    // Update checklistObj.kehoach and checklistState (if needed)
+                    if (checklistObj) {
+                        checklistObj.kehoach = drTreatment.value;
+                        // Save checklist state and treatment plan
+                        updateChecklistPhieu(checklistObj, checklistState, function(updateRes) {
+                            if (!(updateRes && updateRes.Status == 1)) {
+                                alert('Lưu kế hoạch điều trị thất bại!');
+                            }
+                        });
+                    }
+                });
+            }
+            // Checklist section
+            const checklistDiv = document.createElement('div');
+            checklistDiv.innerHTML = `<h3 style="margin-top:0">Checklist bộ mổ</h3>`;
+            const checklistUl = document.createElement('ul');
+            checklistUl.style = 'overflow-y:auto;padding-left:0;list-style:none;margin:0 0 16px 0;';
+            // Load checklist from server
+            function loadChecklist() {
+                checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
+                // AJAX POST to get checklist
+                const formData = new FormData();
+                formData.append('mabn', patient.mabn);
+                // Ngày nhập viện: lấy từ patient.ngayvv hoặc ngaysinh nếu không có
+                // patient.ngayvv have the format "19/05/2025 09:18", keep it as is, format is "dd/MM/yyyy HH:mm"
+                // Ngày nhập viện: lấy từ patient.ngayvv nếu có, giữ nguyên định dạng "dd/MM/yyyy HH:mm"
+                let admitDate = patient.ngayvv;
+                let admit;
+                if (admitDate && /^\d{2}\/\d{2}\/\d{4}/.test(admitDate)) {
+                    // admitDate dạng "dd/MM/yyyy HH:mm", chuyển sang "MM/dd/yyyy HH:mm"
+                    const [day, month, yearAndTime] = admitDate.split('/');
+                    const [year, time] = yearAndTime.split(' ');
+                    admit = `${month}/${day}/${year} ${time || '00:00'}`;
+                } else {
+                    // Nếu không có, lấy ngày hiện tại theo định dạng "MM/dd/yyyy 00:00"
+                    const now = new Date();
+                    const dd = String(now.getDate()).padStart(2, '0');
+                    const mm = String(now.getMonth() + 1).padStart(2, '0');
+                    const yyyy = now.getFullYear();
+                    admit = `${mm}/${dd}/${yyyy} 00:00`;
+                }
+                let tungay = admit;
+                // Tính denngay: 30 ngày sau tungay, định dạng "MM/dd/yyyy HH:mm"
+                let [admitMonth, admitDay, admitYearAndTime] = tungay.split('/');
+                let [admitYear, admitTime] = admitYearAndTime.split(' ');
+                let tungayDate = new Date(`${admitYear}-${admitMonth}-${admitDay}T${admitTime || '00:00'}`);
+                let denngayDate = new Date(tungayDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+                let dd = String(denngayDate.getDate()).padStart(2, '0');
+                let mm = String(denngayDate.getMonth() + 1).padStart(2, '0');
+                let yyyy = denngayDate.getFullYear();
+                let hh = '23';
+                let min = '59';
+                let denngay = `${mm}/${dd}/${yyyy} ${hh}:${min}`;
+                formData.append('tungay', tungay);
+                formData.append('denngay', denngay);
+                fetch('https://bs-noitru.tahospital.vn/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+                    method: 'POST',
+                    credentials: 'include',
+                    body: formData
+                }).then(r => r.json()).then(res => {
+                    checklistUl.innerHTML = '';
+                    if (!res.data || !Array.isArray(res.data) || res.data.length === 0) {
+                        checklistUl.innerHTML = '<li>Không có dữ liệu</li>';
+                        // Tạo mới checklist phiếu nếu chưa có
+                        createChecklistPhieu(patient, function(newRes) {
+                            if (newRes && newRes.isValid) {
+                                // Sau khi tạo mới, reload lại checklist
+                                loadChecklist();
+                            } else {
+                                checklistUl.innerHTML = '<li>Lỗi tạo mới checklist phiếu!</li>';
+                            }
+                        });
+                        return;
+                    }
+                    // Find object with TEXT
+                    let checklistObj = res.data[res.data.length - 1];
+                    let checklistState = {};
+                    if (checklistObj && checklistObj.chuky) {
+                        try { checklistState = JSON.parse(checklistObj.chuky); } catch(e) { checklistState = {}; }
+                    }
+                    // Hiển thị lại kế hoạch điều trị nếu có trong checklistObj
+                    if (checklistObj && checklistObj.kehoach && checklistUl.parentElement) {
+                        const drTreatment = checklistUl.parentElement.querySelector('#dr-treatment');
+                        if (drTreatment) drTreatment.value = checklistObj.kehoach;
+                    }
+                    checklistItems.forEach((item, idx) => {
+                        const li = document.createElement('li');
+                        li.style = 'margin-bottom:8px;';
+                        const id = 'dr-checklist-' + idx;
+                        li.innerHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${checklistState[item] ? 'checked' : ''}>${item}</label>`;
+                        checklistUl.appendChild(li);
+                    });
+                    // Save checklist on change (attach after rendering)
+                    // console.log('Checklist loaded:', checklistUl.querySelectorAll('input[type=checkbox]'));
+                    setTimeout(() => {
+                        checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                            cb.addEventListener('change', function() {
+                                // Update state
+                                checklistState[this.parentNode.textContent.trim()] = this.checked;
+                                console.log('Checklist state updated:', checklistState, checklistObj);
+                                // Cập nhật checklist phiếu khi thay đổi
+                                updateChecklistPhieu(checklistObj, checklistState, function(updateRes) {
+                                    if (!(updateRes && updateRes.Status == 1)) {
+                                        alert('Lưu checklist thất bại!');
+                                    }
+                                });
+                            });
+                        });
+                    }, 10);
+                }).catch(() => {
+                    checklistUl.innerHTML = '<li>Lỗi tải checklist</li>';
+                });
+            }
+            checklistDiv.appendChild(checklistUl);
+            sidebar.appendChild(checklistDiv);
+            loadChecklist();
+            // Close button
+            let closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Đóng';
+            closeBtn.style = 'position:absolute;top:12px;right:12px;background:#eee;border:none;border-radius:50%;width:32px;height:32px;font-size:18px;cursor:pointer;';
+            closeBtn.onclick = () => { sidebar.style.display = 'none'; };
+            sidebar.appendChild(closeBtn);
+            sidebar.style.display = 'block';
+        }
+        // Render patient cards
         function renderCards(data) {
+            console.log('Rendering patient cards with data:', data);
             document.body.innerHTML = '';
             const style = document.createElement('style');
             style.textContent = `
                 .dr-card-list { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; padding: 30px; }
-                .dr-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.10); padding: 24px 20px 50px 20px; min-width: 260px; max-width: 320px; flex: 1 1 260px; display: flex; flex-direction: column; align-items: flex-start; position: relative; border: 2px solid #e3e3e3; }
+                .dr-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.10); padding: 24px 20px 50px 20px; min-width: 260px; max-width: 320px; flex: 1 1 260px; display: flex; flex-direction: column; align-items: flex-start; position: relative; border: 2px solid #e3e3e3; cursor:pointer; }
                 .dr-card.dr-blue { background: #e3f2fd; border: 2px solid #90caf9; }
                 .dr-card h2 { margin: 0 0 8px 0; font-size: 1.2em; color: #1976d2; }
                 .dr-card .dr-label { font-weight: bold; color: #333; }
@@ -228,30 +390,25 @@
                 const btn = document.createElement('button');
                 btn.className = 'dr-detail-btn';
                 btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12c-4.97 0-8.19-4.16-8.94-5C3.81 10.16 7.03 6 12 6s8.19 4.16 8.94 5c-.75.84-3.97 5-8.94 5zm0-8a3 3 0 100 6 3 3 0 000-6zm0 4a1 1 0 110-2 1 1 0 010 2z"/></svg>Tờ điều trị`;
-                btn.onclick = () => {
+                btn.onclick = e => {
+                    e.stopPropagation();
                     if (item.mabn) {
                         window.open(`https://bs-noitru.tahospital.vn/to-dieu-tri?mabn=${encodeURIComponent(item.mabn)}`, '_blank');
                     }
                 };
                 card.appendChild(btn);
+                // Card click: show sidebar
+                card.onclick = () => showSidebar(item);
                 container.appendChild(card);
             });
             document.body.appendChild(container);
-            // Remove old total display
-            // Show bottom bar with total and upload button
+            // Show bottom bar with total
             let bottomBar = document.createElement('div');
             bottomBar.className = 'dr-bottom-bar';
             bottomBar.innerHTML = `
                 <div class="dr-bottom-bar-left">Tổng số bệnh nhân: ${data.length}</div>
-                <button class="dr-bottom-bar-upload" id="dr-upload-gsheet-btn">Đăng lên Google Sheet</button>
             `;
             document.body.appendChild(bottomBar);
-            // Add event for upload button
-            document.getElementById('dr-upload-gsheet-btn').onclick = function() {
-                if (typeof uploadPatientListToGoogleAppsScript === 'function') {
-                    uploadPatientListToGoogleAppsScript();
-                }
-            };
             // Add bottom bar CSS
             const barStyle = document.createElement('style');
             barStyle.textContent = `
@@ -274,24 +431,8 @@
                     color: #1976d2;
                     font-weight: bold;
                 }
-                .dr-bottom-bar-upload {
-                    background: #4285F4;
-                    color: #fff;
-                    border: none;
-                    border-radius: 6px;
-                    padding: 10px 22px;
-                    font-size: 1em;
-                    font-weight: bold;
-                    cursor: pointer;
-                    box-shadow: 0 2px 8px rgba(66,133,244,0.10);
-                    transition: background 0.2s;
-                }
-                .dr-bottom-bar-upload:hover {
-                    background: #1967d2;
-                }
                 @media (max-width: 600px) {
                     .dr-bottom-bar { flex-direction: column; height: auto; padding: 8px 8px; }
-                    .dr-bottom-bar-upload { width: 100%; margin-top: 8px; }
                 }
             `;
             document.head.appendChild(barStyle);
@@ -301,6 +442,7 @@
             renderCards(window.dr_data);
         } else if (typeof fetchToDieuTriData === 'function') {
             fetchToDieuTriData().then(data => {
+                console.log('Dữ liệu ToDieuTri đã được lấy:', data);
                 let arr = Array.isArray(data) ? data : (data && data.data ? data.data : []);
                 if (!arr || arr.length === 0) {
                     renderCards([]);
@@ -316,7 +458,9 @@
                     ngaysinh: item.ngaysinh,
                     phai: item.phai,
                     mavaovien: item.mavaovien,
-                    chandoanvk: item.chandoanvk
+                    chandoanvk: item.chandoanvk,
+                    kehoach: item.kehoach,
+                    ngayvv: item.ngayvv
                 }));
                 renderCards(window.dr_data);
             }).catch(() => {
@@ -343,7 +487,32 @@
         }
     }
 
-    // --- Khởi tạo và thực thi ---
+
+
+    // Nếu URL kết thúc bằng /to-dieu-tri thì tự động click #cbTaCa nếu tồn tại
+    function autoClickCbTaCaIfNeeded() {
+        // --- Tự động click #cbTaCa nếu ở trang /to-dieu-tri ---
+        if (/\/to-dieu-tri(\?.*)?$/.test(window.location.pathname) || window.location.href.includes('DanhSachBenhNhan')) {
+            $('#ddlKhoa').on('change', function () {
+                localStorage.setItem('bsnt_selected_khoa', $(this).val());
+            });
+
+            setTimeout(() => {
+
+                const savedKhoa = localStorage.getItem('bsnt_selected_khoa') || "551";
+                if (savedKhoa) {
+                    $('#ddlKhoa').val(savedKhoa).change();
+                }
+                console.log('Đã tự động chọn khoa ' + savedKhoa + ' trong dropdown #ddlKhoa');
+            }, 500);
+
+            const cb = document.getElementById('cbTaCa');
+            if (cb) {
+                cb.click();
+            }
+        }
+    }
+    autoClickCbTaCaIfNeeded();
 
     // Lấy dữ liệu ToDieuTri khi script được tải
     fetchToDieuTriData().then(data => {
@@ -364,7 +533,60 @@
 
     // Thêm các nút upload khi trang tải xong
     // Sử dụng DOMContentLoaded để đảm bảo DOM đã sẵn sàng
-    addUploadButtonToGoogleAppsScript();
-    showDrDataIfNeeded();
+    showDashboardBenhNhanIfNeeded();
+
+
+    // --- Checklist AJAX helpers ---
+    // 1. Create new checklist phiếu
+    function createChecklistPhieu(patient, callback) {
+        const formData = new FormData();
+        formData.append('status', '1');
+        formData.append('thebaohiemyte', patient.thebaohiemyte || 'Không');
+        formData.append('chuky', '{}');
+        formData.append('khu', patient.khu || '1');
+        formData.append('mabn', patient.mabn);
+        formData.append('bieumauid', '027');
+        formData.append('makp', patient.makp || '551');
+        formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
+        formData.append('actiontype', '');
+        formData.append('hoten', patient.hoten || '');
+        formData.append('ngaysinh', '10/10/1999');
+        formData.append('gioitinh', patient.phai === 1 ? 'Nữ' : 'Nam');
+        formData.append('diachi', patient.diachi || '');
+        formData.append('sdt', patient.sdt || '');
+        fetch('https://bs-noitru.tahospital.vn/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/CreateAjax', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        }).then(r => r.json()).then(res => {
+            if (typeof callback === 'function') callback(res);
+        }).catch(err => {
+            alert('Lỗi tạo mới checklist phiếu!');
+            if (typeof callback === 'function') callback(null);
+        });
+    }
+    // 2. Update checklist phiếu
+    function updateChecklistPhieu(oldData, checklistState, callback) {
+        const formData = new FormData();
+        // Copy all old fields with lowercase keys
+        for (const key in oldData) {
+            if (Object.prototype.hasOwnProperty.call(oldData, key)) {
+                formData.append(key.toLowerCase(), oldData[key] == null ? '' : oldData[key]);
+            }
+        }
+        // Update the 'chuky' field (lowercase) with new checklist state
+        formData.set('chuky', JSON.stringify(checklistState));
+        fetch('https://bs-noitru.tahospital.vn/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/EditAjax', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        }).then(r => r.json()).then(res => {
+            if (typeof callback === 'function') callback(res);
+        }).catch(err => {
+            alert('Lỗi cập nhật checklist phiếu!');
+            if (typeof callback === 'function') callback(null);
+        });
+    }
+
 
 })();

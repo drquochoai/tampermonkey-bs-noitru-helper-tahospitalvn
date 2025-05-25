@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội Trú Helper by BS.CKI Trần Quốc Hoài, tahospital.vn
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.2.1
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -194,18 +194,18 @@
                 <div><b>Tuổi:</b> <input id="dr-age" type="number" value="${calculateAge(patient.ngaysinh)}" style="width:60px"></div>
                 <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
                 <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
-                <div><b>Kế hoạch điều trị:</b> <input id="dr-treatment" type="text" value="${patient.kehoach || ''}" style="width:90%"></div>
+                <div><b>Kế hoạch điều trị:</b><br><textarea id="dr-treatment" style="width:95%;min-height:60px;resize:vertical;">${patient.kehoach || ''}</textarea></div>
             `;
             sidebar.appendChild(info);
             // After rendering the treatment plan textbox
             const drTreatment = info.querySelector('#dr-treatment');
             if (drTreatment) {
                 drTreatment.addEventListener('blur', function() {
-                    // Update checklistObj.kehoach and checklistState (if needed)
-                    if (checklistObj) {
-                        checklistObj.kehoach = drTreatment.value;
+                    // Update window.checklistObj.kehoach and window.checklistState (if needed)
+                    if (window.checklistObj) {
+                        window.checklistState.kehoach = drTreatment.value;
                         // Save checklist state and treatment plan
-                        updateChecklistPhieu(checklistObj, checklistState, function(updateRes) {
+                        updateChecklistPhieu(window.checklistObj, window.checklistState, function(updateRes) {
                             if (!(updateRes && updateRes.Status == 1)) {
                                 alert('Lưu kế hoạch điều trị thất bại!');
                             }
@@ -276,33 +276,31 @@
                         return;
                     }
                     // Find object with TEXT
-                    let checklistObj = res.data[res.data.length - 1];
-                    let checklistState = {};
-                    if (checklistObj && checklistObj.chuky) {
-                        try { checklistState = JSON.parse(checklistObj.chuky); } catch(e) { checklistState = {}; }
+                    window.checklistObj = res.data[res.data.length - 1];
+                    window.checklistState = {};
+                    if (window.checklistObj && window.checklistObj.chuky) {
+                        try { window.checklistState = JSON.parse(window.checklistObj.chuky); } catch(e) { window.checklistState = {}; }
                     }
                     // Hiển thị lại kế hoạch điều trị nếu có trong checklistObj
-                    if (checklistObj && checklistObj.kehoach && checklistUl.parentElement) {
-                        const drTreatment = checklistUl.parentElement.querySelector('#dr-treatment');
-                        if (drTreatment) drTreatment.value = checklistObj.kehoach;
+                    if (window.checklistState && window.checklistState.kehoach) {
+                        $('#dr-treatment').val(window.checklistState.kehoach);
                     }
                     checklistItems.forEach((item, idx) => {
                         const li = document.createElement('li');
                         li.style = 'margin-bottom:8px;';
                         const id = 'dr-checklist-' + idx;
-                        li.innerHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${checklistState[item] ? 'checked' : ''}>${item}</label>`;
+                        li.innerHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${window.checklistState[item] ? 'checked' : ''}>${item}</label>`;
                         checklistUl.appendChild(li);
                     });
                     // Save checklist on change (attach after rendering)
-                    // console.log('Checklist loaded:', checklistUl.querySelectorAll('input[type=checkbox]'));
                     setTimeout(() => {
                         checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
                             cb.addEventListener('change', function() {
                                 // Update state
-                                checklistState[this.parentNode.textContent.trim()] = this.checked;
-                                console.log('Checklist state updated:', checklistState, checklistObj);
+                                window.checklistState[this.parentNode.textContent.trim()] = this.checked;
+                                console.log('Checklist state updated:', window.checklistState, window.checklistObj);
                                 // Cập nhật checklist phiếu khi thay đổi
-                                updateChecklistPhieu(checklistObj, checklistState, function(updateRes) {
+                                updateChecklistPhieu(window.checklistObj, window.checklistState, function(updateRes) {
                                     if (!(updateRes && updateRes.Status == 1)) {
                                         alert('Lưu checklist thất bại!');
                                     }

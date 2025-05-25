@@ -174,7 +174,8 @@
             '57. Cam kết phẫu thuật thủ thuật (hsoft)',
             'Bệnh án giấy Ngoại khoa',
             'Tờ điều trị (web)',
-            'Tạo phiếu Hội chẩn duyệt mổ (web)'
+            'Tạo phiếu Hội chẩn duyệt mổ (web)',
+            'Đánh giá nguy cơ huyết khối (web)'
         ];
         // Render sidebar for a patient
         function showSidebar(patient) {

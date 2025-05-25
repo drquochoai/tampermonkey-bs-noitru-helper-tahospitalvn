@@ -170,7 +170,7 @@
             'Phiếu kiểm tra HIV test (hsoft)',
             'Phiếu cung cấp thông tin, chẩn đoán và điều trị. (hsoft)',
             'Phiếu Khám vào viện (hsoft)',
-            '20. Biên bản hội chẩn mổ (hsoft)',
+            '20. Biên bản hội chẩn (hsoft)',
             '57. Cam kết phẫu thuật thủ thuật (hsoft)',
             'Bệnh án giấy Ngoại khoa',
             'Tờ điều trị (web)',

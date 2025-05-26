@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         BS Nội trú - Helper (TA Hospital)
+// @name         BS Nội Trú Helper by BS.CKI Trần Quốc Hoài, tahospital.vn
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.1
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -18,128 +18,6 @@
 
 (function () {
     'use strict';
-
-    // --- Utils: Common utility functions (date formatting, age calculation, etc.) ---
-    const Utils = {
-        /**
-         * Calculate age from a date string (ISO or dd/MM/yyyy)
-         * @param {string} dateString
-         * @returns {number|string}
-         */
-        calculateAge(dateString) {
-            if (!dateString) return '';
-            let birth;
-            if (dateString.includes('T')) {
-                // ISO format: yyyy-MM-ddTHH:mm:ss
-                birth = new Date(dateString.split('T')[0]);
-            } else if (/\d{2}\/\d{2}\/\d{4}/.test(dateString)) {
-                // dd/MM/yyyy
-                const [day, month, year] = dateString.split('/');
-                birth = new Date(`${year}-${month}-${day}`);
-            } else if (/\d{4}-\d{2}-\d{2}/.test(dateString)) {
-                // yyyy-MM-dd
-                birth = new Date(dateString);
-            } else {
-                birth = new Date(dateString);
-            }
-            if (isNaN(birth)) return '';
-            const today = new Date();
-            let age = today.getFullYear() - birth.getFullYear();
-            const m = today.getMonth() - birth.getMonth();
-            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-                age--;
-            }
-            return age;
-        },
-        /**
-         * Format a date string to dd/MM/yyyy
-         * @param {string|Date} date
-         * @returns {string}
-         */
-        formatDate(date) {
-            let d = date;
-            if (!d) return '';
-            if (typeof d === 'string' && d.includes('T')) d = d.split('T')[0];
-            if (typeof d === 'string' && d.includes('-')) {
-                // yyyy-MM-dd
-                const [y, m, day] = d.split('-');
-                return `${day}/${m}/${y}`;
-            } else if (typeof d === 'string' && d.includes('/')) {
-                // dd/MM/yyyy
-                return d;
-            } else if (d instanceof Date) {
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const year = d.getFullYear();
-                return `${day}/${month}/${year}`;
-            }
-            return d;
-        },
-        /**
-         * Format a date string to MM/dd/yyyy HH:mm (for API)
-         * @param {string|Date} date
-         * @returns {string}
-         */
-        formatDateForApi(date) {
-            let d = date;
-            let time = '00:00';
-            if (!d) return '';
-            if (typeof d === 'string' && d.includes('T')) d = d.split('T')[0];
-            if (typeof d === 'string' && d.includes(' ')) {
-                [d, time] = d.split(' ');
-            }
-            if (typeof d === 'string' && d.includes('-')) {
-                // yyyy-MM-dd
-                const [y, m, day] = d.split('-');
-                return `${m}/${day}/${y} ${time}`;
-            } else if (typeof d === 'string' && d.includes('/')) {
-                // dd/MM/yyyy
-                const [day, month, year] = d.split('/');
-                return `${month}/${day}/${year} ${time}`;
-            } else if (d instanceof Date) {
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const year = d.getFullYear();
-                return `${month}/${day}/${year} ${time}`;
-            }
-            return d;
-        },
-        /**
-         * Pad a number with leading zeros
-         * @param {number|string} n
-         * @param {number} width
-         * @returns {string}
-         */
-        pad(n, width = 2) {
-            n = n + '';
-            return n.length >= width ? n : new Array(width - n.length + 1).join('0') + n;
-        },
-        /**
-         * Get query param from URL
-         * @param {string} name
-         * @returns {string|null}
-         */
-        getQueryParam(name) {
-            const url = new URL(window.location.href);
-            return url.searchParams.get(name);
-        },
-        /**
-         * Copy text to clipboard
-         * @param {string} text
-         */
-        copyToClipboard(text) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text);
-            } else {
-                const textarea = document.createElement('textarea');
-                textarea.value = text;
-                document.body.appendChild(textarea);
-                textarea.select();
-                document.execCommand('copy');
-                document.body.removeChild(textarea);
-            }
-        }
-    };
 
     // Địa chỉ Google Apps Script API của Bác sĩ
     const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz48_viXo1mjhk-W2CsDbxLuFLFHyD2I7k2UchSmZROjqRC9S4hCRvbNmNOY5nP8HVBnA/exec';
@@ -194,7 +72,7 @@
      */
     async function uploadPatientListToGoogleAppsScript() {
         if (!window.dr_data || !Array.isArray(window.dr_data) || window.dr_data.length === 0) {
-            console.error('Không có dữ liệu bệnh nhân để upload lên Google Apps Script!');
+            alert('Không có dữ liệu bệnh nhân để upload lên Google Apps Script!');
             return;
         }
 
@@ -220,27 +98,27 @@
                         console.log('Phản hồi từ Google Apps Script:', response);
                         const result = JSON.parse(response.responseText);
                         if (response.status >= 200 && response.status < 300) {
-                            console.log('Đã gửi danh sách bệnh nhân lên Google Apps Script thành công!');
+                            alert('Đã gửi danh sách bệnh nhân lên Google Apps Script thành công!');
                             console.log('Kết quả từ Google Apps Script:', result);
                             resolve(result);
                         } else {
-                            console.error('Lỗi khi gửi lên Google Apps Script: ' + (result.error && result.error.message ? result.error.message : `HTTP Status ${response.status}`));
+                            alert('Lỗi khi gửi lên Google Apps Script: ' + (result.error && result.error.message ? result.error.message : `HTTP Status ${response.status}`));
                             console.error('Lỗi từ Google Apps Script:', result);
                             reject(new Error(result.error && result.error.message ? result.error.message : `HTTP Status ${response.status}`));
                         }
                     } catch (e) {
-                        console.error('Lỗi phân tích phản hồi từ Google Apps Script: ' + e.message);
+                        alert('Lỗi phân tích phản hồi từ Google Apps Script: ' + e.message);
                         console.error('Lỗi phân tích phản hồi:', e, response.responseText);
                         reject(new Error('Failed to parse response from Google Apps Script.'));
                     }
                 },
                 onerror: function (error) {
-                    console.error('Lỗi mạng khi gửi lên Google Apps Script: ' + error.statusText);
+                    alert('Lỗi mạng khi gửi lên Google Apps Script: ' + error.statusText);
                     console.error('Lỗi mạng (GM_xmlhttpRequest):', error);
                     reject(new Error('Network error or failed to connect to Google Apps Script.'));
                 },
                 ontimeout: function (error) {
-                    console.error('Yêu cầu tới Google Apps Script bị hết thời gian: ' + error.statusText);
+                    alert('Yêu cầu tới Google Apps Script bị hết thời gian: ' + error.statusText);
                     console.error('Yêu cầu hết thời gian (GM_xmlhttpRequest):', error);
                     reject(new Error('Request to Google Apps Script timed out.'));
                 }
@@ -381,7 +259,19 @@
     // Show dr_data as cards if ?show=true or ?nln in URL
     function showDashboardBenhNhanIfNeeded() {
         if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
-        addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
+        // Helper: Calculate age from date string
+        function calculateAge(dateString) {
+            if (!dateString) return '';
+            const birth = new Date(dateString);
+            if (isNaN(birth)) return '';
+            const today = new Date();
+            let age = today.getFullYear() - birth.getFullYear();
+            const m = today.getMonth() - birth.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+                age--;
+            }
+            return age;
+        }
         // Checklist items
         const checklistItems = [
             'Phiếu khai thác tiền sử dị ứng (hsoft)',
@@ -422,7 +312,7 @@
             const info = document.createElement('div');
             info.innerHTML = `
                 <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
-                <div><b>Tuổi:</b> <input id="dr-age" type="number" value="${Utils.calculateAge(patient.ngaysinh)}" style="width:60px"></div>
+                <div><b>Tuổi:</b> <input id="dr-age" type="number" value="${calculateAge(patient.ngaysinh)}" style="width:60px"></div>
                 <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
                 <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
                 <div><b>Kế hoạch điều trị:</b><br><textarea id="dr-treatment" style="width:95%;min-height:60px;resize:vertical;">${patient.kehoach || ''}</textarea></div>
@@ -438,7 +328,7 @@
                         // Save checklist state and treatment plan
                         updateChecklistPhieu(window.checklistObj, window.checklistState, function(updateRes) {
                             if (!(updateRes && updateRes.Status == 1)) {
-                                console.error('Lưu kế hoạch điều trị thất bại!');
+                                alert('Lưu kế hoạch điều trị thất bại!');
                             }
                         });
                     }
@@ -533,7 +423,7 @@
                                 // Cập nhật checklist phiếu khi thay đổi
                                 updateChecklistPhieu(window.checklistObj, window.checklistState, function(updateRes) {
                                     if (!(updateRes && updateRes.Status == 1)) {
-                                        console.error('Lưu checklist thất bại!');
+                                        alert('Lưu checklist thất bại!');
                                     }
                                 });
                             });
@@ -562,6 +452,50 @@
         function renderCards(data) {
             console.log('Rendering patient cards with data:', data);
             document.body.innerHTML = '';
+            const style = document.createElement('style');
+            style.textContent = `
+                .dr-card-list { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; padding: 30px; }
+                .dr-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.10); padding: 24px 20px 50px 20px; min-width: 260px; max-width: 320px; flex: 1 1 260px; display: flex; flex-direction: column; align-items: flex-start; position: relative; border: 2px solid #e3e3e3; cursor:pointer; }
+                .dr-card.dr-blue { background: #e3f2fd; border: 2px solid #90caf9; }
+                .dr-card h2 { margin: 0 0 8px 0; font-size: 1.2em; color: #1976d2; }
+                .dr-card .dr-label { font-weight: bold; color: #333; }
+                .dr-card .dr-value { margin-bottom: 6px; }
+                .dr-card .dr-detail-btn { position: absolute; right: 16px; bottom: 12px; background: #1976d2; color: #fff; border: none; border-radius: 50px; padding: 6px 16px 6px 10px; font-size: 15px; cursor: pointer; display: flex; align-items: center; box-shadow: 0 2px 6px rgba(25,118,210,0.10); }
+                .dr-card .dr-detail-btn svg { margin-right: 4px; }
+                .dr-total { text-align: center; font-size: 1.1em; margin-top: 30px; color: #1976d2; font-weight: bold; }
+                .dr-nodata, .dr-login { text-align: center; font-size: 1.2em; color: #b71c1c; margin-top: 40px; }
+                @media (max-width: 600px) { .dr-card-list { flex-direction: column; align-items: center; } }
+            `;
+            document.head.appendChild(style);
+            if (!data || !Array.isArray(data) || data.length === 0) {
+                // If no data, show message and redirect to login after 500ms
+                const nodata = document.createElement('div');
+                nodata.className = 'dr-nodata';
+                nodata.textContent = 'Không có dữ liệu. Vui lòng đăng nhập để xem dữ liệu.';
+                document.body.appendChild(nodata);
+                setTimeout(() => {
+                    window.location.href = 'https://bs-noitru.tahospital.vn/Home/Login';
+                }, 500);
+                return;
+            }
+            // Sort by room number (teN_PHONG), then by bed (teN_GIUONG)
+            data.sort((a, b) => {
+                const getRoom = v => {
+                    if (!v || typeof v !== 'string') return 9999;
+                    const m = v.match(/(\d+)/);
+                    return m ? parseInt(m[1], 10) : 9999;
+                };
+                const getBed = v => {
+                    if (!v || typeof v !== 'string') return 'Z';
+                    const m = v.match(/([A-Z])/i);
+                    return m ? m[1].toUpperCase() : 'Z';
+                };
+                const roomA = getRoom(a.teN_PHONG);
+                const roomB = getRoom(b.teN_PHONG);
+                if (roomA !== roomB) return roomA - roomB;
+                // If same room, sort by bed letter
+                return getBed(a.teN_GIUONG).localeCompare(getBed(b.teN_GIUONG));
+            });
             const container = document.createElement('div');
             container.className = 'dr-card-list';
             data.forEach(item => {
@@ -571,7 +505,7 @@
                 card.className = 'dr-card' + (isWhite ? '' : ' dr-blue');
                 card.innerHTML = `
                     <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span></h2>
-                    <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? item.ngaysinh.split('T')[0] : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
+                    <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? item.ngaysinh.split('T')[0] : ''} (${calculateAge(item.ngaysinh)} tuổi)</div>
                     <div class="dr-value"><span class="dr-label">Giới tính:</span> ${item.phai === 1 ? 'Nữ' : 'Nam'}</div>
                     <div class="dr-value"><span class="dr-label">Phòng - Giường:</span> ${item.teN_PHONG || ''} - ${item.teN_GIUONG || ''}</div>
                     <div class="dr-value"><span class="dr-label">Chẩn đoán:</span> ${item.chandoanvk || ''}</div>
@@ -757,7 +691,7 @@
         }).then(r => r.json()).then(res => {
             if (typeof callback === 'function') callback(res);
         }).catch(err => {
-            console.error('Lỗi tạo mới checklist phiếu!');
+            alert('Lỗi tạo mới checklist phiếu!');
             if (typeof callback === 'function') callback(null);
         });
     }
@@ -779,58 +713,10 @@
         }).then(r => r.json()).then(res => {
             if (typeof callback === 'function') callback(res);
         }).catch(err => {
-            console.error('Lỗi cập nhật checklist phiếu!');
+            alert('Lỗi cập nhật checklist phiếu!');
             if (typeof callback === 'function') callback(null);
         });
     }
 
-    // 1. Add global styles only once
-    function addGlobalStyles() {
-        if (document.getElementById('dr-global-style')) return;
-        const style = document.createElement('style');
-        style.id = 'dr-global-style';
-        style.textContent = `
-            .dr-card-list { display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; padding: 30px; }
-            .dr-card { background: #fff; border-radius: 20px; box-shadow: 0 2px 12px rgba(0,0,0,0.10); padding: 24px 20px 50px 20px; min-width: 260px; max-width: 320px; flex: 1 1 260px; display: flex; flex-direction: column; align-items: flex-start; position: relative; border: 2px solid #e3e3e3; cursor:pointer; }
-            .dr-card.dr-blue { background: #e3f2fd; border: 2px solid #90caf9; }
-            .dr-card h2 { margin: 0 0 8px 0; font-size: 1.2em; color: #1976d2; }
-            .dr-card .dr-label { font-weight: bold; color: #333; }
-            .dr-card .dr-value { margin-bottom: 6px; }
-            .dr-card .dr-detail-btn { position: absolute; right: 16px; bottom: 12px; background: #1976d2; color: #fff; border: none; border-radius: 50px; padding: 6px 16px 6px 10px; font-size: 15px; cursor: pointer; display: flex; align-items: center; box-shadow: 0 2px 6px rgba(25,118,210,0.10); }
-            .dr-card .dr-detail-btn svg { margin-right: 4px; }
-            .dr-total { text-align: center; font-size: 1.1em; margin-top: 30px; color: #1976d2; font-weight: bold; }
-            .dr-nodata, .dr-login { text-align: center; font-size: 1.2em; color: #b71c1c; margin-top: 40px; }
-            .dr-bottom-bar {
-                position: fixed;
-                left: 0; right: 0; bottom: 0;
-                width: 100vw;
-                background: #fff;
-                border-top: 2px solid #90caf9;
-                box-shadow: 0 -2px 8px rgba(25,118,210,0.08);
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 0 24px;
-                height: 54px;
-                z-index: 99999;
-                font-size: 1.1em;
-            }
-            .dr-bottom-bar-left { color: #1976d2; font-weight: bold; }
-            @media (max-width: 600px) {
-                .dr-bottom-bar { flex-direction: column; height: auto; padding: 8px 8px; }
-                .dr-card-list { flex-direction: column; align-items: center; }
-            }
-            #dr-sidebar-backdrop {
-                position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.25);z-index:99999;
-            }
-            #dr-sidebar {
-                position:fixed;top:0;right:0;width:400px;max-width:100vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    // Gọi hàm thêm style toàn cục khi khởi tạo dashboard
-    addGlobalStyles();
 
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         BS Nội trú - Helper (TA Hospital)
+// @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.4
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -153,9 +153,9 @@
         try {
             const formData = new FormData();
             formData.append('khoa', '551');
-            formData.append('phong', '');
-            formData.append('loaibn', '');
-            formData.append('mabn', '');
+            // formData.append('phong', '');
+            // formData.append('loaibn', '');
+            // formData.append('mabn', '');
             formData.append('tk', '0');
             formData.append('cbAll', '1');
 
@@ -422,7 +422,7 @@
             const info = document.createElement('div');
             info.innerHTML = `
                 <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
-                <div><b>Tuổi:</b> <input id="dr-age" type="number" value="${Utils.calculateAge(patient.ngaysinh)}" style="width:60px"></div>
+                <div><b>Tuổi:</b> ${Utils.calculateAge(patient.ngaysinh)}</div>
                 <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
                 <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
                 <div><b>Kế hoạch điều trị:</b><br><textarea id="dr-treatment" style="width:95%;min-height:60px;resize:vertical;">${patient.kehoach || ''}</textarea></div>
@@ -450,7 +450,7 @@
             const checklistUl = document.createElement('ul');
             checklistUl.style = 'overflow-y:auto;padding-left:0;list-style:none;margin:0 0 16px 0;';
             // Load checklist from server
-            function loadChecklist() {
+            function loadChecklist(retryCount = 0) {
                 checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
                 // AJAX POST to get checklist
                 const formData = new FormData();
@@ -499,6 +499,38 @@
                         createChecklistPhieu(patient, function(newRes) {
                             if (newRes && newRes.isValid) {
                                 // Sau khi tạo mới, reload lại checklist
+                                loadChecklist(retryCount + 1);
+                            } else {
+                                checklistUl.innerHTML = '<li>Lỗi tạo mới checklist phiếu!</li>';
+                                // Nếu lỗi tạo mới checklist phiếu, tắt sidebar và click lại bệnh nhân nếu chưa thử lại quá 1 lần
+                                if (retryCount < 1) {
+                                    setTimeout(() => {
+                                        sidebar.style.display = 'none';
+                                        backdrop.style.display = 'none';
+                                        setTimeout(() => {
+                                            showSidebar(patient);
+                                        }, 300);
+                                    }, 500);
+                                }
+                            }
+                        });
+                        return;
+                    }
+                    // Find object with TEXT
+                    // Find object with hoten ending with "%"
+                    window.checklistObj = null;
+                    for (let i = 0; i < res.data.length; i++) {
+                        if (typeof res.data[i].hoten === 'string' && res.data[i].hoten.trim().endsWith('%')) {
+                            window.checklistObj = res.data[i];
+                            break;
+                        }
+                    }
+                    // Fallback to last item if not found
+                    if (!window.checklistObj) {
+                        // If there is no checklistObj with hoten ending with '%', create a new one
+                        createChecklistPhieu(patient, function(newRes) {
+                            if (newRes && newRes.isValid) {
+                                // After creating, reload checklist
                                 loadChecklist();
                             } else {
                                 checklistUl.innerHTML = '<li>Lỗi tạo mới checklist phiếu!</li>';
@@ -506,8 +538,6 @@
                         });
                         return;
                     }
-                    // Find object with TEXT
-                    window.checklistObj = res.data[res.data.length - 1];
                     window.checklistState = {};
                     if (window.checklistObj && window.checklistObj.chuky) {
                         try { window.checklistState = JSON.parse(window.checklistObj.chuky); } catch(e) { window.checklistState = {}; }
@@ -571,7 +601,7 @@
                 card.className = 'dr-card' + (isWhite ? '' : ' dr-blue');
                 card.innerHTML = `
                     <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span></h2>
-                    <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? item.ngaysinh.split('T')[0] : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
+                    <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
                     <div class="dr-value"><span class="dr-label">Giới tính:</span> ${item.phai === 1 ? 'Nữ' : 'Nam'}</div>
                     <div class="dr-value"><span class="dr-label">Phòng - Giường:</span> ${item.teN_PHONG || ''} - ${item.teN_GIUONG || ''}</div>
                     <div class="dr-value"><span class="dr-label">Chẩn đoán:</span> ${item.chandoanvk || ''}</div>
@@ -739,13 +769,14 @@
         formData.append('status', '1');
         formData.append('thebaohiemyte', patient.thebaohiemyte || 'Không');
         formData.append('chuky', '{}');
+        formData.append('khac', '--*--');
         formData.append('khu', patient.khu || '1');
         formData.append('mabn', patient.mabn);
         formData.append('bieumauid', '027');
         formData.append('makp', patient.makp || '551');
         formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
         formData.append('actiontype', '');
-        formData.append('hoten', patient.hoten || '');
+        formData.append('hoten', patient.hoten+"%" || '');
         formData.append('ngaysinh', '10/10/1999');
         formData.append('gioitinh', patient.phai === 1 ? 'Nữ' : 'Nam');
         formData.append('diachi', patient.diachi || '');
@@ -832,5 +863,38 @@
 
     // Gọi hàm thêm style toàn cục khi khởi tạo dashboard
     addGlobalStyles();
+
+    // Thêm menu mở dashboard vào sidebar
+    function addDashboardMenuToSidebar() {
+        // Tìm nav sidebar
+        const nav = document.querySelector('nav.mt-2 ul.nav-sidebar');
+        if (!nav) return;
+        // Kiểm tra đã có menu chưa
+        if (nav.querySelector('.bsnt-dashboard-menu')) return;
+        // Tạo li mới
+        const li = document.createElement('li');
+        li.className = 'nav-item bsnt-dashboard-menu';
+        const a = document.createElement('a');
+        a.className = 'nav-link';
+        a.href = '/?nln';
+        a.target = '_blank'; // Mở trong tab mới
+        a.innerHTML = '<i class="nav-icon fas fa-tachometer-alt"></i> <p>Mở dashboard</p>';
+        // Style vàng và bo tròn
+        a.style.background = 'gold';
+        a.style.borderRadius = '12px';
+        a.style.color = '#333';
+        a.style.fontWeight = 'bold';
+        a.onmouseover = function() { a.style.background = '#ffe066'; };
+        a.onmouseout = function() { a.style.background = 'gold'; };
+        li.appendChild(a);
+        // Thêm vào đầu ul
+        nav.insertBefore(li, nav.firstChild);
+    }
+    // Gọi hàm khi trang chính load
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addDashboardMenuToSidebar);
+    } else {
+        addDashboardMenuToSidebar();
+    }
 
 })();

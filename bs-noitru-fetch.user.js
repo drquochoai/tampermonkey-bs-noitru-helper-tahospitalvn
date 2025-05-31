@@ -6,6 +6,7 @@
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
 // @match        https://dd-noitru.tahospital.vn/*
+// @match        https://hsba.tahospital.vn/*
 // @grant        GM_xmlhttpRequest
 // @license      MIT
 // @connect      google.com
@@ -608,15 +609,56 @@
                 `;
                 // Add detail button
                 const btn = document.createElement('button');
-                btn.className = 'dr-detail-btn';
+                btn.className = 'dr-detail-btn no-print';
                 btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12c-4.97 0-8.19-4.16-8.94-5C3.81 10.16 7.03 6 12 6s8.19 4.16 8.94 5c-.75.84-3.97 5-8.94 5zm0-8a3 3 0 100 6 3 3 0 000-6zm0 4a1 1 0 110-2 1 1 0 010 2z"/></svg>Tờ điều trị`;
+                btn.style.position = 'static';
                 btn.onclick = e => {
                     e.stopPropagation();
                     if (item.mabn) {
                         window.open(`https://bs-noitru.tahospital.vn/to-dieu-tri?mabn=${encodeURIComponent(item.mabn)}`, '_blank');
                     }
                 };
-                card.appendChild(btn);
+                // Add HSBA V2 button
+                const btnHsba2 = document.createElement('button');
+                btnHsba2.className = 'dr-detail-btn no-print';
+                btnHsba2.style.position = 'static';
+                btnHsba2.style.marginLeft = '8px';
+                btnHsba2.textContent = 'HSBA V2';
+                btnHsba2.onclick = function(e) {
+                    e.stopPropagation();
+                    fetch('/ToDieuTri/LoadLinkHsba', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        credentials: 'include',
+                        body: 'code=' + encodeURIComponent(item.mabn)
+                    })
+                    .then(r => r.json())
+                    .then(response => {
+                        if (response && response.data && response.data.link) {
+                            window.open(response.data.link, '_blank');
+                        } else {
+                            console.error('Không lấy được link HSBA V2');
+                        }
+                    })
+                    .catch(() => {
+                        console.error('Lỗi khi load link HSBA V2');
+                    });
+                };
+                // Button container for horizontal layout
+                const btnGroup = document.createElement('div');
+                btnGroup.style.display = 'flex';
+                btnGroup.style.gap = '8px';
+                btnGroup.style.justifyContent = 'flex-end';
+                btnGroup.style.alignItems = 'center';
+                btnGroup.style.position = 'absolute';
+                btnGroup.style.right = '16px';
+                btnGroup.style.bottom = '12px';
+                btnGroup.appendChild(btn);
+                btnGroup.appendChild(btnHsba2);
+                card.appendChild(btnGroup);
                 // Card click: show sidebar
                 card.onclick = () => showSidebar(item);
                 container.appendChild(card);
@@ -857,6 +899,9 @@
             #dr-sidebar {
                 position:fixed;top:0;right:0;width:400px;max-width:100vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;
             }
+            @media print {
+                .no-print { display: none !important; }
+            }
         `;
         document.head.appendChild(style);
     }
@@ -895,6 +940,55 @@
         document.addEventListener('DOMContentLoaded', addDashboardMenuToSidebar);
     } else {
         addDashboardMenuToSidebar();
+    }
+
+    // --- HSBA V2 PAGE ENHANCEMENT: Hide empty sections (no documents) ---
+    if (window.location.hostname === 'hsba.tahospital.vn') {
+        function hideEmptySections() {
+            document.querySelectorAll('div.MuiBox-root.css-0').forEach(div => {
+                const p = div.querySelector('p');
+                if (p && /\(0\)\s*$/.test(p.textContent)) {
+                    div.style.display = 'none';
+                }
+            });
+        }
+        // Wait for all AJAX content to load before running hideEmptySections
+        function waitForFullLoadAndHide() {
+            let lastCount = 0;
+            let stableCount = 0;
+            const maxWait = 20000; // 20 seconds max
+            const startTime = performance.now();
+            const interval = setInterval(() => {
+                const currentCount = document.querySelectorAll('div.MuiBox-root.css-0').length;
+                if (currentCount === lastCount) {
+                    stableCount++;
+                } else {
+                    stableCount = 0;
+                }
+                lastCount = currentCount;
+                // If count is stable for 10 checks (~10s) or maxWait reached, run hideEmptySections and click target div
+                if (stableCount > 10 || (performance.now() - startTime) > maxWait) {
+                    clearInterval(interval);
+                    hideEmptySections();
+                    // Click div with class 'MuiBox-root css-1ebnygn'
+                    const targetDiv = document.querySelector('div.MuiBox-root.css-1ebnygn');
+                    if (targetDiv) {
+                        targetDiv.click();
+                    }
+                }
+                // For debug:
+                // console.log(`Current sections: ${currentCount}, Stable count: ${stableCount}`);
+            }, 1000);
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', waitForFullLoadAndHide);
+        } else {
+            waitForFullLoadAndHide();
+        }
+        // Also observe for dynamic changes (in case of further AJAX updates)
+        const observer = new MutationObserver(hideEmptySections);
+        observer.observe(document.body, { childList: true, subtree: true });
+        
     }
 
 })();

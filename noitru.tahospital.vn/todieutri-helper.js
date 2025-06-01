@@ -4,7 +4,7 @@
     if (!/^(bs|dd)-noitru\.tahospital\.vn$/.test(window.location.hostname)) return;
     if (!/\/to-dieu-tri(\?.*)?$/.test(window.location.pathname)) return;
     // Thêm code xử lý riêng cho /to-dieu-tri tại đây
-
+    alert('Đã nạp helper cho trang /to-dieu-tri');
     // Nếu URL kết thúc bằng /to-dieu-tri thì tự động click #cbTaCa nếu tồn tại
     function autoClickCbTaCaIfNeeded() {
         if (/\/to-dieu-tri(\?.*)?$/.test(window.location.pathname) || window.location.href.includes('DanhSachBenhNhan')) {

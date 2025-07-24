@@ -1,0 +1,27 @@
+{
+  "name": "tampermonkey-bs-noitru-helper-tahospitalvn",
+  "version": "1.0.0",
+  "main": "bs-noitru-fetch.user.js",
+  "scripts": {
+    "build-and-copy": "npm run build && npm run copy",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "browserify src/bs-noitru-fetch.user.js -o dist/bs-noitru-fetch.user.js",
+    "copy": "node -e \"require('clipboardy').default.writeSync(require('fs').readFileSync('dist/bs-noitru-fetch.user.js','utf8'))\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drquochoai/tampermonkey-bs-noitru-helper-tahospitalvn.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/drquochoai/tampermonkey-bs-noitru-helper-tahospitalvn/issues"
+  },
+  "homepage": "https://github.com/drquochoai/tampermonkey-bs-noitru-helper-tahospitalvn#readme",
+  "description": "",
+  "devDependencies": {
+    "browserify": "^17.0.1",
+    "clipboardy": "^4.0.0"
+  }
+}

@@ -1,3 +1,23 @@
+// ==UserScript==
+// @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
+// @namespace    http://tampermonkey.net/
+// @version      1.2.9
+// @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
+// @author       BS.CKI Trần Quốc Hoài, tahospital.vn
+// @match        https://bs-noitru.tahospital.vn/*
+// @match        https://dd-noitru.tahospital.vn/*
+// @match        https://hsba.tahospital.vn/*
+// @grant        GM_xmlhttpRequest
+// @license      MIT
+// @connect      google.com
+// @connect      tahospital.vn
+// @connect      bs-noitru.tahospital.vn
+// @connect      script.google.com
+// @connect      googleusercontent.com
+// @connect      *
+// @sandbox      MAIN_WORLD
+// ==/UserScript==
+
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
 // DanhSachBenhNhan.js
 function DanhSachBenhNhan() {
@@ -136,26 +156,6 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 module.exports = DanhSachBenhNhan;
 
 },{}],2:[function(require,module,exports){
-// ==UserScript==
-// @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
-// @namespace    http://tampermonkey.net/
-// @version      1.2.8
-// @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
-// @author       BS.CKI Trần Quốc Hoài, tahospital.vn
-// @match        https://bs-noitru.tahospital.vn/*
-// @match        https://dd-noitru.tahospital.vn/*
-// @match        https://hsba.tahospital.vn/*
-// @grant        GM_xmlhttpRequest
-// @license      MIT
-// @connect      google.com
-// @connect      tahospital.vn
-// @connect      bs-noitru.tahospital.vn
-// @connect      script.google.com
-// @connect      googleusercontent.com
-// @connect      *
-// @sandbox      MAIN_WORLD
-// ==/UserScript==
-
 (function () {
     'use strict';
 
@@ -174,7 +174,7 @@ module.exports = DanhSachBenhNhan;
     window.GoogleAppsScriptUploader = uploader;
     // uploader.addUploadButton();
 
-    // ĐÃ XÓA các hàm phụ trợ fetchToDieuTriData, createDirectReportGeneration, addGlobalStyles, updateChecklistPhieu, createChecklistPhieu khỏi file này vì đã chuyển sang dashboard.support.js và được import trong dashboard.js
+    // ĐÃ XÓA toàn bộ định nghĩa các hàm createDirectReportGeneration, fetchToDieuTriData, addGlobalStyles, updateChecklistPhieu, createChecklistPhieu khỏi file này vì đã chuyển sang dashboard.support.js và được sử dụng qua dashboard.js
 
 
     // Show dr_data as cards if ?show=true or ?nln in URL

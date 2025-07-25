@@ -1,23 +1,3 @@
-// ==UserScript==
-// @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
-// @namespace    http://tampermonkey.net/
-// @version      1.2.9
-// @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
-// @author       BS.CKI Trần Quốc Hoài, tahospital.vn
-// @match        https://bs-noitru.tahospital.vn/*
-// @match        https://dd-noitru.tahospital.vn/*
-// @match        https://hsba.tahospital.vn/*
-// @grant        GM_xmlhttpRequest
-// @license      MIT
-// @connect      google.com
-// @connect      tahospital.vn
-// @connect      bs-noitru.tahospital.vn
-// @connect      script.google.com
-// @connect      googleusercontent.com
-// @connect      *
-// @sandbox      MAIN_WORLD
-// ==/UserScript==
-
 (function () {
     'use strict';
 

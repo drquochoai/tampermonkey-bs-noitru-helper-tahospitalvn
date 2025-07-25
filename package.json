@@ -5,7 +5,7 @@
   "scripts": {
     "build-and-copy": "npm run build && npm run copy",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "browserify src/bs-noitru-fetch.user.js -o dist/bs-noitru-fetch.user.js",
+    "build": "browserify src/bs-noitru-fetch.user.js -o dist/bs-noitru-fetch.user.js && node tampermonkey-header-name-and-version.js",
     "copy": "node -e \"require('clipboardy').default.writeSync(require('fs').readFileSync('dist/bs-noitru-fetch.user.js','utf8'))\""
   },
   "repository": {

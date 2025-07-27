@@ -724,11 +724,11 @@ function showDashboardBenhNhanIfNeeded() {
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
                     <div>
                         <label style="font-size:0.9em;color:#666;">Ngày PT:</label>
-                        <input type="date" id="dr-pt-date-popup" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
+                        <input type="text" id="dr-pt-date-popup" placeholder="dd/mm/yyyy" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
                     </div>
                     <div>
                         <label style="font-size:0.9em;color:#666;">Giờ PT:</label>
-                        <input type="time" id="dr-pt-time-popup" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
+                        <input type="time" id="dr-pt-time-popup" step="300" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
                     </div>
                 </div>
                 <div style="margin-bottom:12px;">
@@ -756,6 +756,24 @@ function showDashboardBenhNhanIfNeeded() {
             backdrop.appendChild(popup);
             document.body.appendChild(backdrop);
 
+            // Add CSS to hide AM/PM field
+            const style = document.createElement('style');
+            style.textContent = `
+                #dr-pt-time-popup::-webkit-datetime-edit-ampm-field { 
+                    display: none; 
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Cleanup function to remove the style when popup is closed
+            const originalClosePopup = function() {
+                document.body.removeChild(backdrop);
+                // Remove the injected style
+                if (style.parentNode) {
+                    style.parentNode.removeChild(style);
+                }
+            };
+
             // Setup event handlers
             const dateInput = popup.querySelector('#dr-pt-date-popup');
             const timeInput = popup.querySelector('#dr-pt-time-popup');
@@ -765,30 +783,59 @@ function showDashboardBenhNhanIfNeeded() {
             const cancelBtn = popup.querySelector('#dr-cancel-pt');
 
             // Set default values
-            // Set default date to tomorrow in yyyy-mm-dd format for input[type="date"]
+            // Set default date to tomorrow in dd/mm/yyyy format for text input
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowStr = tomorrow.getFullYear() + '-' + 
-                String(tomorrow.getMonth() + 1).padStart(2, '0') + '-' + 
-                String(tomorrow.getDate()).padStart(2, '0');
+            const tomorrowStr = String(tomorrow.getDate()).padStart(2, '0') + '/' + 
+                String(tomorrow.getMonth() + 1).padStart(2, '0') + '/' + 
+                tomorrow.getFullYear();
             dateInput.value = tomorrowStr;
 
-            // Set default time to 08:00
-            timeInput.value = '08:00';
+            // Set default time to 07:30
+            timeInput.value = '07:30';
 
             // Close popup function
             function closePopup() {
-                document.body.removeChild(backdrop);
+                originalClosePopup();
             }
 
             // Save function
             function savePhauThuat() {
-                const date = dateInput.value;
+                const date = dateInput.value.trim();
                 const time = timeInput.value;
                 const method = methodInput.value.trim();
                 
                 if (!date || !time || !method) {
                     alert('Vui lòng nhập đầy đủ thông tin phẫu thuật!');
+                    return;
+                }
+
+                // Validate date format dd/mm/yyyy
+                const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+                const dateMatch = date.match(dateRegex);
+                if (!dateMatch) {
+                    alert('Vui lòng nhập ngày theo định dạng dd/mm/yyyy!');
+                    return;
+                }
+
+                const day = parseInt(dateMatch[1]);
+                const month = parseInt(dateMatch[2]);
+                const year = parseInt(dateMatch[3]);
+
+                // Validate date values
+                if (month < 1 || month > 12) {
+                    alert('Tháng không hợp lệ (1-12)!');
+                    return;
+                }
+                if (day < 1 || day > 31) {
+                    alert('Ngày không hợp lệ (1-31)!');
+                    return;
+                }
+
+                // Check if date is valid
+                const dateObj = new Date(year, month - 1, day);
+                if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
+                    alert('Ngày không tồn tại!');
                     return;
                 }
 
@@ -802,11 +849,8 @@ function showDashboardBenhNhanIfNeeded() {
                     return;
                 }
 
-                // Convert date from yyyy-mm-dd to dd/mm/yyyy
-                const dateObj = new Date(date);
-                const formattedDate = String(dateObj.getDate()).padStart(2, '0') + '/' + 
-                    String(dateObj.getMonth() + 1).padStart(2, '0') + '/' + 
-                    dateObj.getFullYear();
+                // Use the validated date directly (already in dd/mm/yyyy format)
+                const formattedDate = date;
 
                 // Initialize phauThuatLog if not exists
                 if (!window.checklistState.phauThuatLog) {
@@ -863,8 +907,8 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             logContainer.innerHTML = phauThuatArray.map((entry, index) => `
-                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #4caf50;position:relative;">
-                    <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
+                <div class="pt-entry-clickable" data-index="${index}" style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #4caf50;position:relative;cursor:pointer;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='#fff'">
+                    <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
                     <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}</div>
                     <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
                     <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
@@ -874,12 +918,394 @@ function showDashboardBenhNhanIfNeeded() {
             // Add event listeners for remove buttons
             setTimeout(() => {
                 logContainer.querySelectorAll('.remove-pt-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation(); // Prevent triggering edit popup
                         const index = parseInt(this.getAttribute('data-index'));
                         removePhauThuat(index);
                     });
                 });
+
+                // Add event listeners for edit functionality
+                logContainer.querySelectorAll('.pt-entry-clickable').forEach(entry => {
+                    entry.addEventListener('click', function(e) {
+                        // Don't trigger if clicking the remove button
+                        if (e.target.classList.contains('remove-pt-btn')) return;
+                        
+                        const index = parseInt(this.getAttribute('data-index'));
+                        editPhauThuat(index);
+                    });
+                });
             }, 10);
+        }
+
+        // Edit phẫu thuật
+        function editPhauThuat(index) {
+            if (!window.checklistState.phauThuatLog || !window.checklistState.phauThuatLog[index]) {
+                console.error('Không tìm thấy dữ liệu phẫu thuật để sửa');
+                return;
+            }
+
+            const existingEntry = window.checklistState.phauThuatLog[index];
+            
+            // Create backdrop
+            const backdrop = document.createElement('div');
+            backdrop.id = 'dr-pt-edit-popup-backdrop';
+            backdrop.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 100002;
+                display: flex; align-items: center; justify-content: center;
+            `;
+
+            // Create popup
+            const popup = document.createElement('div');
+            popup.id = 'dr-pt-edit-popup';
+            popup.style.cssText = `
+                background: white; border-radius: 8px; padding: 24px;
+                max-width: 500px; width: 90vw; max-height: 80vh; overflow-y: auto;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            `;
+
+            popup.innerHTML = `
+                <h3 style="margin-top: 0; margin-bottom: 16px;">Sửa thông tin phẫu thuật</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:0.9em;color:#666;">Ngày PT:</label>
+                        <input type="text" id="dr-pt-date-edit" placeholder="dd/mm/yyyy" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.date}">
+                    </div>
+                    <div>
+                        <label style="font-size:0.9em;color:#666;">Giờ PT:</label>
+                        <input type="time" id="dr-pt-time-edit" step="300" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.time}">
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.9em;color:#666;">Phương pháp phẫu thuật (PPPT):</label>
+                    <input type="text" id="dr-pt-method-edit" placeholder="Nhập PPPT" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.method}">
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:0.9em;color:#666;margin-bottom:6px;display:block;">Bác sĩ thực hiện:</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.9em;">
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Dũng"> BS Dũng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Quyền"> BS Quyền</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hằng"> BS Hằng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hoài"> BS Hoài</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hiếu"> BS Hiếu</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hải"> BS Hải</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hưng"> BS Hưng</label>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button id="dr-cancel-pt-edit" style="background:#666;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Hủy</button>
+                    <button id="dr-save-pt-edit" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
+                </div>
+            `;
+
+            backdrop.appendChild(popup);
+            document.body.appendChild(backdrop);
+
+            // Add CSS to hide AM/PM field
+            const style = document.createElement('style');
+            style.textContent = `
+                #dr-pt-time-edit::-webkit-datetime-edit-ampm-field { 
+                    display: none; 
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Cleanup function to remove the style when popup is closed
+            const originalClosePopup = function() {
+                document.body.removeChild(backdrop);
+                // Remove the injected style
+                if (style.parentNode) {
+                    style.parentNode.removeChild(style);
+                }
+            };
+
+            // Setup event handlers
+            const dateInput = popup.querySelector('#dr-pt-date-edit');
+            const timeInput = popup.querySelector('#dr-pt-time-edit');
+            const methodInput = popup.querySelector('#dr-pt-method-edit');
+            const doctorCheckboxes = popup.querySelectorAll('.dr-pt-doctor-edit');
+            const saveBtn = popup.querySelector('#dr-save-pt-edit');
+            const cancelBtn = popup.querySelector('#dr-cancel-pt-edit');
+
+            // Pre-select existing doctors
+            const existingDoctors = existingEntry.doctors.split(', ');
+            doctorCheckboxes.forEach(cb => {
+                if (existingDoctors.includes(cb.value)) {
+                    cb.checked = true;
+                }
+            });
+
+            // Close popup function
+            function closePopup() {
+                originalClosePopup();
+            }
+
+            // Save function
+            function saveEditedPhauThuat() {
+                const date = dateInput.value.trim();
+                const time = timeInput.value;
+                const method = methodInput.value.trim();
+                
+                if (!date || !time || !method) {
+                    alert('Vui lòng nhập đầy đủ thông tin phẫu thuật!');
+                    return;
+                }
+
+                // Validate date format dd/mm/yyyy
+                const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+                const dateMatch = date.match(dateRegex);
+                if (!dateMatch) {
+                    alert('Vui lòng nhập ngày theo định dạng dd/mm/yyyy!');
+                    return;
+                }
+
+                const day = parseInt(dateMatch[1]);
+                const month = parseInt(dateMatch[2]);
+                const year = parseInt(dateMatch[3]);
+
+                // Validate date values
+                if (month < 1 || month > 12) {
+                    alert('Tháng không hợp lệ (1-12)!');
+                    return;
+                }
+                if (day < 1 || day > 31) {
+                    alert('Ngày không hợp lệ (1-31)!');
+                    return;
+                }
+
+                // Check if date is valid
+                const dateObj = new Date(year, month - 1, day);
+                if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
+                    alert('Ngày không tồn tại!');
+                    return;
+                }
+
+                // Get selected doctors
+                const selectedDoctors = Array.from(doctorCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedDoctors.length === 0) {
+                    alert('Vui lòng chọn ít nhất một bác sĩ!');
+                    return;
+                }
+
+                // Update the existing entry
+                window.checklistState.phauThuatLog[index] = {
+                    ...existingEntry,
+                    date: date,
+                    time: time,
+                    method: method,
+                    doctors: selectedDoctors.join(', ')
+                };
+
+                // Save to server
+                savePhauThuatLog();
+
+                // Re-render log
+                renderPhauThuatLog(window.checklistState.phauThuatLog);
+
+                // Update patient card display
+                updatePatientCardPhauThuat(patient);
+
+                // Close popup
+                closePopup();
+            }
+
+            // Event listeners
+            saveBtn.addEventListener('click', saveEditedPhauThuat);
+            cancelBtn.addEventListener('click', closePopup);
+            backdrop.addEventListener('click', function(e) {
+                if (e.target === backdrop) {
+                    closePopup();
+                }
+            });
+        }
+
+        // Edit phẫu thuật
+        function editPhauThuat(index) {
+            if (!window.checklistState.phauThuatLog || !window.checklistState.phauThuatLog[index]) {
+                console.error('Không tìm thấy dữ liệu phẫu thuật để sửa');
+                return;
+            }
+
+            const existingEntry = window.checklistState.phauThuatLog[index];
+            
+            // Create backdrop
+            const backdrop = document.createElement('div');
+            backdrop.id = 'dr-pt-edit-popup-backdrop';
+            backdrop.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 100002;
+                display: flex; align-items: center; justify-content: center;
+            `;
+
+            // Create popup
+            const popup = document.createElement('div');
+            popup.id = 'dr-pt-edit-popup';
+            popup.style.cssText = `
+                background: white; border-radius: 8px; padding: 24px;
+                max-width: 500px; width: 90vw; max-height: 80vh; overflow-y: auto;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            `;
+
+            popup.innerHTML = `
+                <h3 style="margin-top: 0; margin-bottom: 16px;">Sửa thông tin phẫu thuật</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:0.9em;color:#666;">Ngày PT:</label>
+                        <input type="text" id="dr-pt-date-edit" placeholder="dd/mm/yyyy" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.date}">
+                    </div>
+                    <div>
+                        <label style="font-size:0.9em;color:#666;">Giờ PT:</label>
+                        <input type="time" id="dr-pt-time-edit" step="300" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.time}">
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.9em;color:#666;">Phương pháp phẫu thuật (PPPT):</label>
+                    <input type="text" id="dr-pt-method-edit" placeholder="Nhập PPPT" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.method}">
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:0.9em;color:#666;margin-bottom:6px;display:block;">Bác sĩ thực hiện:</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.9em;">
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Dũng"> BS Dũng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Quyền"> BS Quyền</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hằng"> BS Hằng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hoài"> BS Hoài</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hiếu"> BS Hiếu</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hải"> BS Hải</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hưng"> BS Hưng</label>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button id="dr-cancel-pt-edit" style="background:#666;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Hủy</button>
+                    <button id="dr-save-pt-edit" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
+                </div>
+            `;
+
+            backdrop.appendChild(popup);
+            document.body.appendChild(backdrop);
+
+            // Add CSS to hide AM/PM field
+            const style = document.createElement('style');
+            style.textContent = `
+                #dr-pt-time-edit::-webkit-datetime-edit-ampm-field { 
+                    display: none; 
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Cleanup function to remove the style when popup is closed
+            const originalClosePopup = function() {
+                document.body.removeChild(backdrop);
+                // Remove the injected style
+                if (style.parentNode) {
+                    style.parentNode.removeChild(style);
+                }
+            };
+
+            // Setup event handlers
+            const dateInput = popup.querySelector('#dr-pt-date-edit');
+            const timeInput = popup.querySelector('#dr-pt-time-edit');
+            const methodInput = popup.querySelector('#dr-pt-method-edit');
+            const doctorCheckboxes = popup.querySelectorAll('.dr-pt-doctor-edit');
+            const saveBtn = popup.querySelector('#dr-save-pt-edit');
+            const cancelBtn = popup.querySelector('#dr-cancel-pt-edit');
+
+            // Pre-select existing doctors
+            const existingDoctors = existingEntry.doctors.split(', ');
+            doctorCheckboxes.forEach(cb => {
+                if (existingDoctors.includes(cb.value)) {
+                    cb.checked = true;
+                }
+            });
+
+            // Close popup function
+            function closePopup() {
+                originalClosePopup();
+            }
+
+            // Save function
+            function saveEditedPhauThuat() {
+                const date = dateInput.value.trim();
+                const time = timeInput.value;
+                const method = methodInput.value.trim();
+                
+                if (!date || !time || !method) {
+                    alert('Vui lòng nhập đầy đủ thông tin phẫu thuật!');
+                    return;
+                }
+
+                // Validate date format dd/mm/yyyy
+                const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+                const dateMatch = date.match(dateRegex);
+                if (!dateMatch) {
+                    alert('Vui lòng nhập ngày theo định dạng dd/mm/yyyy!');
+                    return;
+                }
+
+                const day = parseInt(dateMatch[1]);
+                const month = parseInt(dateMatch[2]);
+                const year = parseInt(dateMatch[3]);
+
+                // Validate date values
+                if (month < 1 || month > 12) {
+                    alert('Tháng không hợp lệ (1-12)!');
+                    return;
+                }
+                if (day < 1 || day > 31) {
+                    alert('Ngày không hợp lệ (1-31)!');
+                    return;
+                }
+
+                // Check if date is valid
+                const dateObj = new Date(year, month - 1, day);
+                if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
+                    alert('Ngày không tồn tại!');
+                    return;
+                }
+
+                // Get selected doctors
+                const selectedDoctors = Array.from(doctorCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedDoctors.length === 0) {
+                    alert('Vui lòng chọn ít nhất một bác sĩ!');
+                    return;
+                }
+
+                // Update the existing entry
+                window.checklistState.phauThuatLog[index] = {
+                    ...existingEntry,
+                    date: date,
+                    time: time,
+                    method: method,
+                    doctors: selectedDoctors.join(', ')
+                };
+
+                // Save to server
+                savePhauThuatLog();
+
+                // Re-render log
+                renderPhauThuatLog(window.checklistState.phauThuatLog);
+
+                // Update patient card display
+                updatePatientCardPhauThuat(patient);
+
+                // Close popup
+                closePopup();
+            }
+
+            // Event listeners
+            saveBtn.addEventListener('click', saveEditedPhauThuat);
+            cancelBtn.addEventListener('click', closePopup);
+            backdrop.addEventListener('click', function(e) {
+                if (e.target === backdrop) {
+                    closePopup();
+                }
+            });
         }
 
         // Remove phẫu thuật
@@ -913,6 +1339,7 @@ function showDashboardBenhNhanIfNeeded() {
         // Store reference for use in loadPhauThuatLogFromState
         window.currentRemovePhauThuat = removePhauThuat;
         window.currentRenderPhauThuatLog = renderPhauThuatLog;
+        window.currentEditPhauThuat = editPhauThuat;
     }
 
     // Helper function to create checklist section
@@ -934,6 +1361,8 @@ function showDashboardBenhNhanIfNeeded() {
     // Helper function to load checklist data
     async function loadChecklist(patient, checklistUl, retryCount = 0) {
         try {
+            console.log('DEBUG - dashboard.js loadChecklist called with patient:', JSON.stringify(patient, null, 2));
+            
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
             
             const res = await ChecklistService.loadChecklistData(patient);
@@ -1061,8 +1490,8 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             logContainer.innerHTML = phauThuatArray.map((entry, index) => `
-                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #4caf50;position:relative;">
-                    <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
+                <div class="pt-entry-clickable" data-index="${index}" style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #4caf50;position:relative;cursor:pointer;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='#fff'">
+                    <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
                     <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}</div>
                     <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
                     <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
@@ -1072,7 +1501,8 @@ function showDashboardBenhNhanIfNeeded() {
             // Add event listeners for remove buttons
             setTimeout(() => {
                 logContainer.querySelectorAll('.remove-pt-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
+                    btn.addEventListener('click', function(e) {
+                        e.stopPropagation(); // Prevent triggering edit popup
                         const index = parseInt(this.getAttribute('data-index'));
                         if (window.currentRemovePhauThuat) {
                             window.currentRemovePhauThuat(index);
@@ -1087,6 +1517,21 @@ function showDashboardBenhNhanIfNeeded() {
                                     ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
                                 }
                             }
+                        }
+                    });
+                });
+
+                // Add event listeners for edit functionality
+                logContainer.querySelectorAll('.pt-entry-clickable').forEach(entry => {
+                    entry.addEventListener('click', function(e) {
+                        // Don't trigger if clicking the remove button
+                        if (e.target.classList.contains('remove-pt-btn')) return;
+                        
+                        const index = parseInt(this.getAttribute('data-index'));
+                        if (window.currentEditPhauThuat) {
+                            window.currentEditPhauThuat(index);
+                        } else {
+                            console.warn('Edit function not available');
                         }
                     });
                 });
@@ -1912,9 +2357,23 @@ const ChecklistService = {
      */
     async loadChecklistData(patient) {
         const formData = new FormData();
-        formData.append('mabn', patient.mabn + 9898);
+        
+        // DEBUG: Try both with and without 9898 suffix
+        const originalMabn = patient.mabn;
+        const mabnWith9898 = patient.mabn + 9898;
+        
+        console.log('DEBUG - Trying both mabn formats:', { originalMabn, mabnWith9898 });
+        
+        // First try with 9898 suffix (original logic)
+        formData.append('mabn', mabnWith9898);
         
         const { tungay, denngay } = DateUtils.getChecklistDateRange(patient.ngayvv);
+        console.log('DEBUG - DateUtils.getChecklistDateRange result:', { 
+            inputNgayvv: patient.ngayvv, 
+            outputTungay: tungay, 
+            outputDenngay: denngay 
+        });
+        
         formData.append('tungay', tungay);
         formData.append('denngay', denngay);
 
@@ -1924,22 +2383,57 @@ const ChecklistService = {
             body: formData
         });
 
-        return response.json();
+        const result = await response.json();
+        console.log('DEBUG - ChecklistService.loadChecklistData API response (with 9898):', result);
+        
+        // If no data found with 9898 suffix, try without it
+        if (!result.data || result.data.length === 0) {
+            console.log('DEBUG - No data with 9898 suffix, trying original mabn:', originalMabn);
+            
+            const fallbackFormData = new FormData();
+            fallbackFormData.append('mabn', originalMabn);
+            fallbackFormData.append('tungay', tungay);
+            fallbackFormData.append('denngay', denngay);
+            
+            const fallbackResponse = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+                method: 'POST',
+                credentials: 'include',
+                body: fallbackFormData
+            });
+            
+            const fallbackResult = await fallbackResponse.json();
+            console.log('DEBUG - ChecklistService.loadChecklistData API response (original mabn):', fallbackResult);
+            
+            return fallbackResult;
+        }
+        
+        return result;
     },
 
     /**
      * Find existing checklist object from response data
      */
     findChecklistObject(responseData) {
+        console.log('DEBUG - findChecklistObject input:', responseData);
+        
         if (!responseData.data || !Array.isArray(responseData.data) || responseData.data.length === 0) {
+            console.log('DEBUG - No data array or empty array');
             return null;
         }
 
+        console.log('DEBUG - Searching through', responseData.data.length, 'checklist objects');
+        
         for (let i = 0; i < responseData.data.length; i++) {
-            if (typeof responseData.data[i].hoten === 'string' && responseData.data[i].hoten.trim().endsWith('%')) {
-                return responseData.data[i];
+            const item = responseData.data[i];
+            console.log(`DEBUG - Checklist object ${i}:`, item);
+            
+            if (typeof item.hoten === 'string' && item.hoten.trim().endsWith('%')) {
+                console.log('DEBUG - Found matching checklist object with hoten ending with %');
+                return item;
             }
         }
+        
+        console.log('DEBUG - No matching checklist object found');
         return null;
     },
 
@@ -1975,6 +2469,8 @@ const ChecklistService = {
                 mavaovien: checklistObj.mavaovien,
                 ngayvv: checklistObj.tungay // Use tungay as ngayvv for date range calculation
             };
+
+            console.log('DEBUG - checklistService.loadChecklistState patient object:', patient);
 
             const responseData = await this.loadChecklistData(patient);
             const foundChecklistObj = this.findChecklistObject(responseData);
@@ -2042,6 +2538,12 @@ const PatientService = {
                 return [];
             }
 
+            // DEBUG: Check raw tungay format before mapping
+            console.log('DEBUG - Raw tungay format from API:');
+            arr.slice(0, 3).forEach((item, index) => {
+                console.log(`Raw item ${index + 1} - mabn: ${item.mabn}, tungay: ${item.tungay}, typeof: ${typeof item.tungay}`);
+            });
+
             return PatientDataMapper.mapPatientArray(arr);
         } catch (error) {
             console.error('Error fetching patient data:', error);
@@ -2059,6 +2561,12 @@ const PatientService = {
 
         console.log('Starting to enrich patient data with checklist information for', patients.length, 'patients');
 
+        // DEBUG: Check tungay format in the first few patients
+        console.log('DEBUG - Sample patient data tungay format:');
+        patients.slice(0, 3).forEach((patient, index) => {
+            console.log(`Patient ${index + 1} - mabn: ${patient.mabn}, tungay: ${patient.tungay}, typeof: ${typeof patient.tungay}`);
+        });
+
         // Process patients in batches to avoid overwhelming the server
         const batchSize = 5;
         const enrichedPatients = [...patients]; // Copy array to avoid mutation
@@ -2071,13 +2579,17 @@ const PatientService = {
                 const actualIndex = i + batchIndex;
                 try {
                     // Create checklist object for this patient
+                    // Use patient's ngayvv (actual admission date) instead of old tungay
+                    console.log('DEBUG - Patient ngayvv:', patient.ngayvv);
+                    console.log('DEBUG - Background enrichment patient object:', JSON.stringify(patient, null, 2));
+                    
                     const checklistObj = {
                         mabn: patient.mabn,
                         mavaovien: patient.mavaovien,
-                        tungay: patient.tungay
+                        tungay: patient.ngayvv // Use ngayvv (admission date) instead of tungay
                     };
 
-                    console.log('Loading checklist for patient:', patient.mabn);
+                    console.log('Loading checklist for patient:', patient.mabn, 'with ngayvv:', patient.ngayvv);
 
                     // Load checklist state
                     const checklistState = await ChecklistService.loadChecklistState(checklistObj);
@@ -2455,6 +2967,7 @@ module.exports = Utils;
 const DateUtils = {
     /**
      * Convert Vietnamese date format (dd/mm/yyyy) to US format (mm/dd/yyyy)
+     * Also handles cases where input is already in mm/dd/yyyy format
      */
     convertToUSFormat(admitDate) {
         if (!admitDate) {
@@ -2465,12 +2978,44 @@ const DateUtils = {
             return `${mm}/${dd}/${yyyy} 00:00`;
         }
 
+        // DEBUG: Log input format
+        console.log('DEBUG - DateUtils.convertToUSFormat input:', admitDate);
+
         if (/^\d{2}\/\d{2}\/\d{4}/.test(admitDate)) {
-            const [day, month, yearAndTime] = admitDate.split('/');
+            const [part1, part2, yearAndTime] = admitDate.split('/');
             const [year, time] = yearAndTime.split(' ');
-            return `${month}/${day}/${year} ${time || '00:00'}`;
+            
+            // Try to determine if it's dd/mm/yyyy or mm/dd/yyyy
+            // If part1 > 12, it must be dd/mm/yyyy format
+            // If part2 > 12, it must be mm/dd/yyyy format  
+            const num1 = parseInt(part1);
+            const num2 = parseInt(part2);
+            
+            let month, day;
+            
+            if (num1 > 12) {
+                // part1 is day, part2 is month (dd/mm/yyyy format)
+                day = part1;
+                month = part2;
+                console.log('DEBUG - Detected dd/mm/yyyy format');
+            } else if (num2 > 12) {
+                // part1 is month, part2 is day (mm/dd/yyyy format - already US format)
+                month = part1;
+                day = part2;
+                console.log('DEBUG - Detected mm/dd/yyyy format (already US format)');
+            } else {
+                // Both numbers <= 12, assume Vietnamese format (dd/mm/yyyy)
+                day = part1;
+                month = part2;
+                console.log('DEBUG - Ambiguous format, assuming dd/mm/yyyy');
+            }
+            
+            const result = `${month}/${day}/${year} ${time || '00:00'}`;
+            console.log('DEBUG - DateUtils.convertToUSFormat output:', result);
+            return result;
         }
 
+        console.log('DEBUG - DateUtils.convertToUSFormat: returning input as-is');
         return admitDate;
     },
 

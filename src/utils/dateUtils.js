@@ -3,6 +3,7 @@
 const DateUtils = {
     /**
      * Convert Vietnamese date format (dd/mm/yyyy) to US format (mm/dd/yyyy)
+     * Also handles cases where input is already in mm/dd/yyyy format
      */
     convertToUSFormat(admitDate) {
         if (!admitDate) {
@@ -13,12 +14,44 @@ const DateUtils = {
             return `${mm}/${dd}/${yyyy} 00:00`;
         }
 
+        // DEBUG: Log input format
+        console.log('DEBUG - DateUtils.convertToUSFormat input:', admitDate);
+
         if (/^\d{2}\/\d{2}\/\d{4}/.test(admitDate)) {
-            const [day, month, yearAndTime] = admitDate.split('/');
+            const [part1, part2, yearAndTime] = admitDate.split('/');
             const [year, time] = yearAndTime.split(' ');
-            return `${month}/${day}/${year} ${time || '00:00'}`;
+            
+            // Try to determine if it's dd/mm/yyyy or mm/dd/yyyy
+            // If part1 > 12, it must be dd/mm/yyyy format
+            // If part2 > 12, it must be mm/dd/yyyy format  
+            const num1 = parseInt(part1);
+            const num2 = parseInt(part2);
+            
+            let month, day;
+            
+            if (num1 > 12) {
+                // part1 is day, part2 is month (dd/mm/yyyy format)
+                day = part1;
+                month = part2;
+                console.log('DEBUG - Detected dd/mm/yyyy format');
+            } else if (num2 > 12) {
+                // part1 is month, part2 is day (mm/dd/yyyy format - already US format)
+                month = part1;
+                day = part2;
+                console.log('DEBUG - Detected mm/dd/yyyy format (already US format)');
+            } else {
+                // Both numbers <= 12, assume Vietnamese format (dd/mm/yyyy)
+                day = part1;
+                month = part2;
+                console.log('DEBUG - Ambiguous format, assuming dd/mm/yyyy');
+            }
+            
+            const result = `${month}/${day}/${year} ${time || '00:00'}`;
+            console.log('DEBUG - DateUtils.convertToUSFormat output:', result);
+            return result;
         }
 
+        console.log('DEBUG - DateUtils.convertToUSFormat: returning input as-is');
         return admitDate;
     },
 

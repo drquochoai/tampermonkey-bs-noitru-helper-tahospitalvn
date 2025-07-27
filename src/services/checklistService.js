@@ -9,9 +9,23 @@ const ChecklistService = {
      */
     async loadChecklistData(patient) {
         const formData = new FormData();
-        formData.append('mabn', patient.mabn + 9898);
+        
+        // DEBUG: Try both with and without 9898 suffix
+        const originalMabn = patient.mabn;
+        const mabnWith9898 = patient.mabn + 9898;
+        
+        console.log('DEBUG - Trying both mabn formats:', { originalMabn, mabnWith9898 });
+        
+        // First try with 9898 suffix (original logic)
+        formData.append('mabn', mabnWith9898);
         
         const { tungay, denngay } = DateUtils.getChecklistDateRange(patient.ngayvv);
+        console.log('DEBUG - DateUtils.getChecklistDateRange result:', { 
+            inputNgayvv: patient.ngayvv, 
+            outputTungay: tungay, 
+            outputDenngay: denngay 
+        });
+        
         formData.append('tungay', tungay);
         formData.append('denngay', denngay);
 
@@ -21,22 +35,57 @@ const ChecklistService = {
             body: formData
         });
 
-        return response.json();
+        const result = await response.json();
+        console.log('DEBUG - ChecklistService.loadChecklistData API response (with 9898):', result);
+        
+        // If no data found with 9898 suffix, try without it
+        if (!result.data || result.data.length === 0) {
+            console.log('DEBUG - No data with 9898 suffix, trying original mabn:', originalMabn);
+            
+            const fallbackFormData = new FormData();
+            fallbackFormData.append('mabn', originalMabn);
+            fallbackFormData.append('tungay', tungay);
+            fallbackFormData.append('denngay', denngay);
+            
+            const fallbackResponse = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+                method: 'POST',
+                credentials: 'include',
+                body: fallbackFormData
+            });
+            
+            const fallbackResult = await fallbackResponse.json();
+            console.log('DEBUG - ChecklistService.loadChecklistData API response (original mabn):', fallbackResult);
+            
+            return fallbackResult;
+        }
+        
+        return result;
     },
 
     /**
      * Find existing checklist object from response data
      */
     findChecklistObject(responseData) {
+        console.log('DEBUG - findChecklistObject input:', responseData);
+        
         if (!responseData.data || !Array.isArray(responseData.data) || responseData.data.length === 0) {
+            console.log('DEBUG - No data array or empty array');
             return null;
         }
 
+        console.log('DEBUG - Searching through', responseData.data.length, 'checklist objects');
+        
         for (let i = 0; i < responseData.data.length; i++) {
-            if (typeof responseData.data[i].hoten === 'string' && responseData.data[i].hoten.trim().endsWith('%')) {
-                return responseData.data[i];
+            const item = responseData.data[i];
+            console.log(`DEBUG - Checklist object ${i}:`, item);
+            
+            if (typeof item.hoten === 'string' && item.hoten.trim().endsWith('%')) {
+                console.log('DEBUG - Found matching checklist object with hoten ending with %');
+                return item;
             }
         }
+        
+        console.log('DEBUG - No matching checklist object found');
         return null;
     },
 
@@ -72,6 +121,8 @@ const ChecklistService = {
                 mavaovien: checklistObj.mavaovien,
                 ngayvv: checklistObj.tungay // Use tungay as ngayvv for date range calculation
             };
+
+            console.log('DEBUG - checklistService.loadChecklistState patient object:', patient);
 
             const responseData = await this.loadChecklistData(patient);
             const foundChecklistObj = this.findChecklistObject(responseData);

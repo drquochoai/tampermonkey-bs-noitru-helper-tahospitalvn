@@ -82,7 +82,7 @@ DanhSachBenhNhan.prototype._fetchDanhSach = function(mabn) {
         var dateStr = month + '/' + day + '/' + year + ' 07:00';
         formData.append('tungay', "01/01/1001 01:01");
         formData.append('denngay',  "01/01/3001 01:01");
-        fetch('https://bs-noitru.tahospital.vn/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+        fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
             method: 'POST',
             credentials: 'include',
             body: formData
@@ -121,7 +121,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
     const day = String(now.getDate()).padStart(2, '0');
     const year = now.getFullYear();
     formData.append('maql', `${month}/${day}/${year} 07:00`);
-    fetch('https://bs-noitru.tahospital.vn/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/CreateAjax', {
+    fetch('/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/CreateAjax', {
         method: 'POST',
         credentials: 'include',
         body: formData

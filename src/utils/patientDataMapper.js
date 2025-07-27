@@ -192,6 +192,43 @@ const PatientDataMapper = {
             const bedAlphaB = this.extractAlphaValue(bedB);
             return bedAlphaA.localeCompare(bedAlphaB);
         });
+    },
+
+    /**
+     * Map surgery data from checklist state
+     */
+    mapPhauThuatData(checklistData) {
+        if (!checklistData || !checklistData.phauThuatLog) {
+            return null;
+        }
+
+        const logs = checklistData.phauThuatLog;
+        if (!Array.isArray(logs) || logs.length === 0) {
+            return null;
+        }
+
+        // Get the latest surgery record (first one since newest is first)
+        const latestSurgery = logs[0];
+        
+        return {
+            ngayPhauThuat: latestSurgery.date || '', // Already in dd/mm/yyyy format
+            gioPhauThuat: latestSurgery.time || '', // Already in HH:MM format
+            pppt: latestSurgery.method || '',
+            bacSi: latestSurgery.doctors || '',
+            timestamp: latestSurgery.id || new Date().getTime()
+        };
+    },
+
+    /**
+     * Check if patient has surgery data
+     */
+    hasPhauThuatData(checklistData) {
+        if (!checklistData || !checklistData.phauThuatLog) {
+            return false;
+        }
+
+        const logs = checklistData.phauThuatLog;
+        return Array.isArray(logs) && logs.length > 0;
     }
 };
 

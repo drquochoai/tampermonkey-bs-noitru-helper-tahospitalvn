@@ -57,6 +57,37 @@ const ChecklistService = {
     },
 
     /**
+     * Load checklist state for a patient (combination of loadChecklistData and parseChecklistState)
+     */
+    async loadChecklistState(checklistObj) {
+        try {
+            // If we already have a checklist object, just parse its state
+            if (checklistObj && checklistObj.chuky) {
+                return this.parseChecklistState(checklistObj);
+            }
+
+            // Otherwise, we need to construct a patient object and load data
+            const patient = {
+                mabn: checklistObj.mabn,
+                mavaovien: checklistObj.mavaovien,
+                ngayvv: checklistObj.tungay // Use tungay as ngayvv for date range calculation
+            };
+
+            const responseData = await this.loadChecklistData(patient);
+            const foundChecklistObj = this.findChecklistObject(responseData);
+            
+            if (foundChecklistObj) {
+                return this.parseChecklistState(foundChecklistObj);
+            }
+            
+            return null;
+        } catch (error) {
+            console.warn('Failed to load checklist state:', error);
+            return null;
+        }
+    },
+
+    /**
      * Update checklist state on server
      */
     async updateChecklistState(checklistObj, checklistState) {

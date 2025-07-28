@@ -31,7 +31,8 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                 ${quickYLenhActions.map(action => `
                     <button class="quick-ylenh-btn" data-action="${action.label}" style="color: ${action.color}; border-color: ${action.color};">
                         <span class="icon">${action.icon}</span>
-                        <span>${action.label}</span>
+                        <span class="text">${action.label}</span>
+                        <span class="tick" style="display: none;">✅</span>
                     </button>
                 `).join('')}
             </div>

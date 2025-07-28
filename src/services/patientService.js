@@ -109,6 +109,13 @@ const PatientService = {
         console.log('Enrichment completed. Patients with surgery info:', 
             enrichedPatients.filter(p => p.phauThuatInfo).length);
 
+        // Check for celebration animations after enrichment
+        setTimeout(() => {
+            if (typeof window.checkAllCelebrationAnimations === 'function') {
+                window.checkAllCelebrationAnimations(enrichedPatients);
+            }
+        }, 200);
+
         return enrichedPatients;
     },
 
@@ -156,6 +163,13 @@ const PatientService = {
             }
             
             console.log('Background enrichment completed');
+            
+            // Check for celebration animations after background enrichment
+            setTimeout(() => {
+                if (typeof window.checkAllCelebrationAnimations === 'function') {
+                    window.checkAllCelebrationAnimations(enrichedData);
+                }
+            }, 200);
         } catch (error) {
             console.error('Background enrichment failed:', error);
         }

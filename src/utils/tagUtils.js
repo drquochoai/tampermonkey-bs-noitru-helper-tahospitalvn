@@ -1,4 +1,5 @@
 // tagUtils.js
+const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 // Helper function to create y lệnh tags
 function createYLenhTags(patient) {
@@ -9,7 +10,7 @@ function createYLenhTags(patient) {
         return '';
     }
 
-    // Filter for today's entries
+    // Filter for today's entries (INCLUDE all entries for dashboard cards)
     const today = new Date();
     const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
     
@@ -17,7 +18,7 @@ function createYLenhTags(patient) {
         return entry.timestamp && entry.timestamp.startsWith(todayStr);
     });
 
-    console.log('Today entries for patient', patient.mabn, ':', todayEntries);
+    console.log('Today entries (including quick actions) for patient', patient.mabn, ':', todayEntries);
 
     if (todayEntries.length === 0) {
         return '';
@@ -30,12 +31,19 @@ function createYLenhTags(patient) {
         // Determine tag color based on content
         let color = '#4caf50'; // default green
         const content = entry.content.toLowerCase();
-        if (content.includes('xuất viện')) color = '#4caf50';
+        let isDischarge = false;
+        
+        if (content.includes('xuất viện')) {
+            color = '#4caf50';
+            isDischarge = true;
+        }
         else if (content.includes('rút odl')) color = '#ff9800';
         else if (content.includes('sonde')) color = '#9c27b0';
         else if (content.includes('thay băng')) color = '#2196f3';
         
-        return `<span class="ylenh-tag" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
+        const dischargeClass = isDischarge ? ' discharge' : '';
+        
+        return `<span class="ylenh-tag${dischargeClass}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
             <span class="icon">📋</span>
             ${entry.content}
         </span>`;
@@ -52,6 +60,43 @@ function hexToRgb(hex) {
     return result ? 
         `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : 
         '76, 175, 80'; // fallback green
+}
+
+// Helper function to check for discharge tags and add xuatvienanimation class
+function checkAndAddCelebrationClass(card, patient) {
+    if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
+        card.classList.remove('xuatvienanimation');
+        console.log('No checklistState or yLenhLog for patient:', patient?.mabn);
+        return;
+    }
+
+    // Check if today's entries include "Xuất viện" (including quick actions)
+    const today = new Date();
+    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+    
+    console.log('DEBUG checkAndAddCelebrationClass - Today:', todayStr);
+    console.log('DEBUG checkAndAddCelebrationClass - yLenhLog entries:', patient.checklistState.yLenhLog);
+    
+    // Check ALL entries (including quick actions) for "xuất viện"
+    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
+        const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
+        const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
+        
+        console.log('DEBUG entry:', entry.content, 'timestamp:', entry.timestamp, 'hasDischarge:', hasDischarge, 'isToday:', isToday);
+        
+        // Check for today's discharge entries (including quick actions)
+        return hasDischarge && isToday;
+    });
+
+    console.log('DEBUG discharge entries found:', dischargeEntries);
+
+    if (dischargeEntries.length > 0) {
+        card.classList.add('xuatvienanimation');
+        console.log('🎉 Added xuatvienanimation class to card for patient:', patient.mabn);
+    } else {
+        card.classList.remove('xuatvienanimation');
+        console.log('❌ No discharge entries found for patient:', patient.mabn);
+    }
 }
 
 // Global function to update patient card tags
@@ -119,8 +164,13 @@ function updatePatientCardTags(patientMabn) {
         // Insert tags before the action buttons
         actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
         console.log('Inserted new tags before actions container');
+        
+        // Check if there's a discharge tag and add celebration class to card
+        checkAndAddCelebrationClass(targetCard, patient);
     } else {
         console.log('No tags to display for patient:', patientMabn);
+        // Remove xuatvienanimation class if no tags
+        targetCard.classList.remove('xuatvienanimation');
     }
 }
 

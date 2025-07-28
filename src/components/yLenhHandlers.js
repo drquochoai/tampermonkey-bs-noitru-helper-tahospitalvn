@@ -1,19 +1,14 @@
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
+const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 function setupYLenhHandlers(infoElement, patient) {
     const input = infoElement.querySelector('#dr-y-lenh-input');
     const addBtn = infoElement.querySelector('#dr-add-y-lenh');
     const logContainer = infoElement.querySelector('#dr-y-lenh-log');
 
-    // Quick action y lệnh buttons - matches dashboard.js
-    const quickYLenhActions = [
-        { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
-        { label: 'Thay băng', icon: '👗', color: '#310994ff' },
-        { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
-        { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
-        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' }
-    ];
+    // Use configured quick y lệnh actions
+    const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
 
     // Load existing y lệnh when checklist is loaded
     function loadYLenhLog() {
@@ -22,20 +17,37 @@ function setupYLenhHandlers(infoElement, patient) {
         }
     }
 
-    // Render y lệnh log
+    // Render y lệnh log (filter out quick actions from display)
     function renderYLenhLog(yLenhArray) {
         if (!Array.isArray(yLenhArray) || yLenhArray.length === 0) {
             logContainer.innerHTML = '<div style="color:#888;font-style:italic;">Chưa có y lệnh nào...</div>';
             return;
         }
 
-        logContainer.innerHTML = yLenhArray.map((entry, index) => `
-            <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;">
-                <button class="remove-y-lenh-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
-                <div style="font-size:0.9em;color:#666;margin-bottom:4px;">${entry.timestamp}</div>
-                <div style="font-weight:bold;color:#333;">${entry.content}</div>
-            </div>
-        `).join('');
+        // Filter out quick actions for log display only
+        const quickActionLabels = BS_CAI_DAT.quickYLenhActions.map(action => action.label);
+        const manualEntries = yLenhArray.filter(entry => !quickActionLabels.includes(entry.content));
+
+        if (manualEntries.length === 0) {
+            logContainer.innerHTML = '<div style="color:#888;font-style:italic;">Chưa có y lệnh manual nào...</div>';
+            return;
+        }
+
+        logContainer.innerHTML = manualEntries.map((entry, index) => {
+            // Find original index in full array for correct removal
+            const originalIndex = yLenhArray.findIndex(originalEntry => 
+                originalEntry.id === entry.id || 
+                (originalEntry.timestamp === entry.timestamp && originalEntry.content === entry.content)
+            );
+            
+            return `
+                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;">
+                    <button class="remove-y-lenh-btn" data-index="${originalIndex}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
+                    <div style="font-size:0.9em;color:#666;margin-bottom:4px;">${entry.timestamp}</div>
+                    <div style="font-weight:bold;color:#333;">${entry.content}</div>
+                </div>
+            `;
+        }).join('');
 
         // Add event listeners for remove buttons
         setTimeout(() => {
@@ -93,6 +105,17 @@ function setupYLenhHandlers(infoElement, patient) {
             console.log('Calling updatePatientCardTags for patient:', patient.mabn);
             window.updatePatientCardTags(patient.mabn);
         }
+        
+        // Also check celebration animation specifically after adding tag
+        setTimeout(() => {
+            if (typeof window.checkAllCelebrationAnimations === 'function') {
+                // Find the updated patient data
+                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                if (patientInData) {
+                    window.checkAllCelebrationAnimations([patientInData]);
+                }
+            }
+        }, 100);
     }
 
     // Remove y lệnh
@@ -116,6 +139,17 @@ function setupYLenhHandlers(infoElement, patient) {
                 console.log('Calling updatePatientCardTags after removal for patient:', patient.mabn);
                 window.updatePatientCardTags(patient.mabn);
             }
+            
+            // Also check celebration animation specifically after removing tag
+            setTimeout(() => {
+                if (typeof window.checkAllCelebrationAnimations === 'function') {
+                    // Find the updated patient data
+                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) {
+                        window.checkAllCelebrationAnimations([patientInData]);
+                    }
+                }
+            }, 100);
         }
     }
 
@@ -137,22 +171,116 @@ function setupYLenhHandlers(infoElement, patient) {
         }
     });
 
-    // Quick action buttons event listeners
+    // Quick action buttons event listeners - Toggle logic
     infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const actionText = this.getAttribute('data-action');
-            addYLenh(actionText);
-            
-            // Visual feedback
-            this.style.transform = 'scale(0.95)';
-            setTimeout(() => {
-                this.style.transform = '';
-            }, 150);
+            toggleQuickYLenh(actionText, this);
         });
     });
 
+    // Function to toggle quick y lệnh (ON/OFF state)
+    function toggleQuickYLenh(actionText, buttonElement) {
+        // Check if this action already exists today
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        
+        if (!window.checklistState.yLenhLog) {
+            window.checklistState.yLenhLog = [];
+        }
+
+        // Find existing entry for this action today
+        const existingIndex = window.checklistState.yLenhLog.findIndex(entry => {
+            const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
+            return entryDate === todayStr && entry.content === actionText;
+        });
+
+        if (existingIndex !== -1) {
+            // Entry exists - REMOVE it (toggle OFF)
+            window.checklistState.yLenhLog.splice(existingIndex, 1);
+            buttonElement.classList.remove('active');
+            console.log('Removed quick action:', actionText);
+        } else {
+            // Entry doesn't exist - ADD it (toggle ON)
+            const now = new Date();
+            const timestamp = `${todayStr} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            const doctorName = 'BS';
+
+            const newEntry = {
+                timestamp: `${timestamp} - ${doctorName}`,
+                content: actionText,
+                id: Date.now()
+            };
+
+            window.checklistState.yLenhLog.unshift(newEntry);
+            buttonElement.classList.add('active');
+            console.log('Added quick action:', actionText);
+        }
+
+        // Save changes
+        saveYLenhLog();
+        renderYLenhLog(window.checklistState.yLenhLog);
+
+        // Update patient object in window.dr_data
+        if (window.dr_data && patient.mabn) {
+            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+            if (patientInData) {
+                patientInData.checklistState = { ...window.checklistState };
+            }
+        }
+
+        // Update card tags (but these quick actions won't be displayed as tags)
+        if (window.updatePatientCardTags) {
+            window.updatePatientCardTags(patient.mabn);
+        }
+
+        // Check celebration animation for "Xuất viện"
+        if (actionText === 'Xuất viện') {
+            setTimeout(() => {
+                if (typeof window.checkAllCelebrationAnimations === 'function') {
+                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) {
+                        window.checkAllCelebrationAnimations([patientInData]);
+                    }
+                }
+            }, 100);
+        }
+
+        // Visual feedback
+        buttonElement.style.transform = 'scale(0.95)';
+        setTimeout(() => {
+            buttonElement.style.transform = '';
+        }, 150);
+    }
+
+    // Function to update button states based on existing log
+    function updateQuickActionButtonStates() {
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        
+        infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
+            const actionText = btn.getAttribute('data-action');
+            
+            // Check if this action exists today
+            const existsToday = window.checklistState && window.checklistState.yLenhLog && 
+                window.checklistState.yLenhLog.some(entry => {
+                    const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
+                    return entryDate === todayStr && entry.content === actionText;
+                });
+
+            if (existsToday) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
     // Load existing data after a short delay to ensure checklist is loaded
-    setTimeout(loadYLenhLog, 100);
+    setTimeout(() => {
+        loadYLenhLog();
+        updateQuickActionButtonStates();
+    }, 100);
 
     // Store reference to removeYLenh for use in loadYLenhLogFromState
     window.currentRemoveYLenh = removeYLenh;
@@ -162,7 +290,8 @@ function setupYLenhHandlers(infoElement, patient) {
         loadYLenhLog,
         renderYLenhLog,
         addYLenh,
-        removeYLenh
+        removeYLenh,
+        updateQuickActionButtonStates
     };
 }
 

@@ -220,19 +220,115 @@ function addGlobalStyles() {
             overflow-y: auto;
             transition: right 0.2s;
         }
+        /* Xuất viện animation class - Hiệu ứng ngôi sao */
+        .dr-card.xuatvienanimation {
+            position: relative;
+            overflow: hidden;
+            border: 3px solid #ffd700 !important;
+            background: linear-gradient(135deg, #fff9c4, #ffffff) !important;
+            animation: starGlow 3s ease-in-out infinite;
+        }
+        
+        /* Xuất viện animation cho card blue - border blue glow */
+        .dr-card.xuatvienanimation.dr-blue {
+            border: 3px solid #2196f3 !important;
+            background: linear-gradient(135deg, #e3f2fd, #ffffff) !important;
+            animation: starGlowBlue 3s ease-in-out infinite;
+        }
+        
+        .dr-card.xuatvienanimation::before {
+            content: '⭐';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            animation: starRotate 2s linear infinite;
+            z-index: 10;
+        }
+        
+        .dr-card.xuatvienanimation::after {
+            content: '✨ 🎉 ✨';
+            position: absolute;
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            animation: sparkle 1.5s ease-in-out infinite;
+            z-index: 10;
+        }
+        
+        @keyframes starGlow {
+            0%, 100% { 
+                box-shadow: 0 2px 12px rgba(0,0,0,0.10), 0 0 20px rgba(255, 215, 0, 0.4);
+            }
+            50% { 
+                box-shadow: 0 2px 12px rgba(0,0,0,0.10), 0 0 30px rgba(255, 215, 0, 0.8);
+            }
+        }
+        
+        @keyframes starGlowBlue {
+            0%, 100% { 
+                box-shadow: 0 2px 12px rgba(0,0,0,0.10), 0 0 20px rgba(33, 150, 243, 0.4);
+            }
+            50% { 
+                box-shadow: 0 2px 12px rgba(0,0,0,0.10), 0 0 30px rgba(33, 150, 243, 0.8);
+            }
+        }
+        
+        @keyframes starRotate {
+            0% { transform: rotate(0deg) scale(1); }
+            25% { transform: rotate(90deg) scale(1.2); }
+            50% { transform: rotate(180deg) scale(1); }
+            75% { transform: rotate(270deg) scale(1.2); }
+            100% { transform: rotate(360deg) scale(1); }
+        }
+        
+        @keyframes sparkle {
+            0%, 100% { 
+                opacity: 0.6;
+                transform: translateX(-50%) translateY(0px);
+            }
+            50% { 
+                opacity: 1;
+                transform: translateX(-50%) translateY(-5px);
+            }
+        }
+        
         @media print {
             .no-print { 
                 display: none !important; 
             }
-            .dr-card, .dr-card.dr-blue {
-                background: #fff !important;
-                border: 2px solid #888 !important;
+            /* White cards (214, 215, 216) - giữ màu trắng khi in */
+            .dr-card:not(.dr-blue) {
+                background: #0d8ae3ff !important;
+                border: 2px solid #c4490bff !important;
+                color: #000 !important;
+            }
+            /* Blue cards (các phòng khác) - giữ background blue khi in */
+            .dr-card.dr-blue {
+                background: #e3f2fd !important;
+                border: 2px solid #2196f3 !important;
                 color: #000 !important;
             }
             .dr-card h2 {
                 color: #000 !important;
             }
             .dr-bottom-bar {
+                display: none !important;
+            }
+            /* Tắt animation khi in */
+            .dr-card.xuatvienanimation,
+            .dr-card.xuatvienanimation.dr-blue {
+                animation: none !important;
+                border: 2px solid #ccc !important;
+                background: #fff !important;
+            }
+            .dr-card.xuatvienanimation::before,
+            .dr-card.xuatvienanimation.dr-blue::before {
+                display: none !important;
+            }
+            .dr-card.xuatvienanimation::after,
+            .dr-card.xuatvienanimation.dr-blue::after {
                 display: none !important;
             }
         }

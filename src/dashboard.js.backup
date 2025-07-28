@@ -20,77 +20,14 @@ const LoginHandler = require('./components/loginHandler');
 const { createPatientInfoSection } = require('./components/patientInfoSection');
 const { createYLenhTags, updatePatientCardTags } = require('./utils/tagUtils');
 
-// Make test function available globally immediately
-window.testYLenhTags = function(mabn = null) {
-    const testMabn = mabn || '2510149440'; // Use provided or default
-    const patient = window.dr_data?.find(p => p.mabn === testMabn);
-    
-    if (!patient) {
-        console.log('TEST: Patient not found for mabn:', testMabn);
-        console.log('Available patients:', window.dr_data?.map(p => p.mabn) || 'No dr_data');
-        return;
-    }
-    
-    console.log('TEST: Found patient:', patient.mabn);
-    console.log('TEST: checklistState exists:', !!patient.checklistState);
-    
-    if (!patient.checklistState) {
-        // Create mock checklistState for testing
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-        
-        patient.checklistState = {
-            yLenhLog: [
-                {
-                    timestamp: "28/07/2025 14:30 - BS",
-                    date: todayStr, // Add proper date field
-                    content: "Xuất viện",
-                    id: Date.now()
-                },
-                {
-                    timestamp: "28/07/2025 10:15 - BS",
-                    date: todayStr, // Add proper date field
-                    content: "Rút ODL vết mổ",
-                    id: Date.now() + 1
-                }
-            ]
-        };
-        console.log('TEST: Created mock checklistState with y lệnh data for date:', todayStr);
-    }
-    
-    // Test createYLenhTags
-    const tagsHtml = createYLenhTags(patient);
-    console.log('TEST: Generated tags HTML:', tagsHtml);
-    
-    // Update the card
-    window.updatePatientCardTags(testMabn);
-    console.log('TEST: Updated patient card tags');
-    
-    // Check if celebration class was added
-    setTimeout(() => {
-        const cards = document.querySelectorAll('.dr-card');
-        cards.forEach((card, index) => {
-            const cardText = card.textContent || '';
-            if (cardText.includes(testMabn)) {
-                console.log('TEST: Found card for patient, classes:', card.className);
-                console.log('TEST: Card has xuatvienanimation class:', card.classList.contains('xuatvienanimation'));
-                if (card.classList.contains('xuatvienanimation')) {
-                    console.log('🎉 SUCCESS: Card has xuất viện animation!');
-                } else {
-                    console.log('❌ ISSUE: Card does not have xuatvienanimation class');
-                }
-            }
-        });
-    }, 100);
-};
-
-// Make utilities available globally
-window.updatePatientCardTags = updatePatientCardTags;
-window.createYLenhTags = createYLenhTags;
-
 function showDashboardBenhNhanIfNeeded() {
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
+    
+    // Ensure tagUtils is available globally
+    if (typeof window.updatePatientCardTags === 'undefined') {
+        window.updatePatientCardTags = updatePatientCardTags;
+    }
     
     // Inject CSS styles for quick actions and tags
     if (!document.getElementById('dr-ylenh-styles')) {
@@ -124,7 +61,6 @@ function showDashboardBenhNhanIfNeeded() {
                 transition: all 0.2s ease;
                 border: 2px solid transparent;
                 white-space: nowrap;
-                position: relative;
             }
 
             .quick-ylenh-btn:hover {
@@ -136,24 +72,6 @@ function showDashboardBenhNhanIfNeeded() {
             .quick-ylenh-btn:active {
                 transform: translateY(0);
                 box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            }
-
-            /* Trạng thái toggle ON - viền đỏ đậm + tick xanh */
-            .quick-ylenh-btn.active {
-                border: 3px solid #d32f2f !important;
-                background-color: #ffebee;
-                box-shadow: 0 0 10px rgba(211, 47, 47, 0.3);
-            }
-
-            .quick-ylenh-btn.active .tick {
-                display: inline !important;
-                color: #4caf50;
-                font-weight: bold;
-                margin-left: 4px;
-            }
-
-            .quick-ylenh-btn.active .text {
-                font-weight: bold;
             }
 
             .quick-ylenh-btn .icon {
@@ -180,14 +98,6 @@ function showDashboardBenhNhanIfNeeded() {
                 font-size: 11px;
                 font-weight: 500;
                 white-space: nowrap;
-            }
-
-            /* Hiệu ứng cho tag Xuất viện - giữ đơn giản */
-            .ylenh-tag.discharge {
-                background: linear-gradient(45deg, #4caf50, #66bb6a) !important;
-                color: white !important;
-                border: 2px solid #4caf50 !important;
-                font-weight: bold !important;
             }
 
             .ylenh-tag.completed {
@@ -255,12 +165,7 @@ function showDashboardBenhNhanIfNeeded() {
                     </div>
                     <div>
                         <label style="font-size:0.9em;color:#666;">Giờ PT:</label>
-                        <div style="display:flex;gap:4px;align-items:center;">
-                            <input type="number" id="dr-pt-hour-popup" min="0" max="23" placeholder="HH" style="width:50px;padding:6px;border:1px solid #ddd;border-radius:4px;text-align:center;" />
-                            <span style="font-weight:bold;">:</span>
-                            <input type="number" id="dr-pt-minute-popup" min="0" max="59" step="5" placeholder="MM" style="width:50px;padding:6px;border:1px solid #ddd;border-radius:4px;text-align:center;" />
-                            <small style="margin-left:8px;color:#888;">(24h)</small>
-                        </div>
+                        <input type="time" id="dr-pt-time-popup" step="300" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
                     </div>
                 </div>
                 <div style="margin-bottom:12px;">
@@ -275,67 +180,38 @@ function showDashboardBenhNhanIfNeeded() {
                 </div>
                 <div style="display: flex; gap: 8px; justify-content: flex-end;">
                     <button id="dr-cancel-pt" style="background:#666;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Hủy</button>
-                    <button id="dr-save-pt" style="background:${BS_CAI_DAT.colors.primary};color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
+                    <button id="dr-save-pt" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
                 </div>
             `;
 
             backdrop.appendChild(popup);
             document.body.appendChild(backdrop);
 
-            // Cleanup function to remove the popup when closed
+            // Add CSS to hide AM/PM field
+            const style = document.createElement('style');
+            style.textContent = `
+                #dr-pt-time-popup::-webkit-datetime-edit-ampm-field { 
+                    display: none; 
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Cleanup function to remove the style when popup is closed
             const originalClosePopup = function() {
                 document.body.removeChild(backdrop);
-                // Restore original language
-                document.documentElement.lang = originalLang || 'vi';
+                // Remove the injected style
+                if (style.parentNode) {
+                    style.parentNode.removeChild(style);
+                }
             };
 
             // Setup event handlers
             const dateInput = popup.querySelector('#dr-pt-date-popup');
-            const hourInput = popup.querySelector('#dr-pt-hour-popup');
-            const minuteInput = popup.querySelector('#dr-pt-minute-popup');
+            const timeInput = popup.querySelector('#dr-pt-time-popup');
             const methodInput = popup.querySelector('#dr-pt-method-popup');
             const doctorCheckboxes = popup.querySelectorAll('.dr-pt-doctor-popup');
             const saveBtn = popup.querySelector('#dr-save-pt');
             const cancelBtn = popup.querySelector('#dr-cancel-pt');
-
-            // Add input validation and formatting for time inputs
-            hourInput.addEventListener('input', function() {
-                let value = parseInt(this.value);
-                if (value > 23) this.value = 23;
-                if (value < 0) this.value = 0;
-                // Auto-focus to minute when hour is complete
-                if (this.value.length === 2) {
-                    minuteInput.focus();
-                    minuteInput.select(); // Select all content when auto-focusing
-                }
-            });
-
-            // Select all content when focusing on hour input
-            hourInput.addEventListener('focus', function() {
-                this.select();
-            });
-
-            minuteInput.addEventListener('input', function() {
-                let value = parseInt(this.value);
-                if (value > 59) this.value = 59;
-                if (value < 0) this.value = 0;
-                // Format to 2 digits on blur
-                if (this.value && this.value.length === 1) {
-                    this.value = '0' + this.value;
-                }
-            });
-
-            // Select all content when focusing on minute input
-            minuteInput.addEventListener('focus', function() {
-                this.select();
-            });
-
-            // Format hour to 2 digits on blur
-            hourInput.addEventListener('blur', function() {
-                if (this.value && this.value.length === 1) {
-                    this.value = '0' + this.value;
-                }
-            });
 
             // Set default values based on configuration
             const config = BS_CAI_DAT.phauThuatDefaults;
@@ -358,44 +234,22 @@ function showDashboardBenhNhanIfNeeded() {
 
             // Set default time from configuration
             if (config.defaultTime) {
-                const [defaultHour, defaultMinute] = config.defaultTime.split(':');
-                hourInput.value = defaultHour;
-                minuteInput.value = defaultMinute;
+                timeInput.value = config.defaultTime;
             }
 
             // Close popup function
             function closePopup() {
-                // Restore original language if changed
                 originalClosePopup();
             }
 
             // Save function
             function savePhauThuat() {
                 const date = dateInput.value.trim();
-                const hour = hourInput.value.trim();
-                const minute = minuteInput.value.trim();
+                const time = timeInput.value;
                 const method = methodInput.value.trim();
                 
-                // Combine hour and minute into time string
-                let time = '';
-                if (hour && minute) {
-                    const h = parseInt(hour, 10);
-                    const m = parseInt(minute, 10);
-                    
-                    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-                        time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                        console.log('Add save - Combined time:', time);
-                    } else {
-                        alert('Thời gian không hợp lệ. Giờ: 0-23, Phút: 0-59');
-                        return;
-                    }
-                } else if (hour || minute) {
-                    alert('Vui lòng nhập đầy đủ giờ và phút');
-                    return;
-                }
-                
                 if (!date || !time || !method) {
-                    alert(BS_CAI_DAT.validation.messages.missingPhauThuatInfo);
+                    alert('Vui lòng nhập đầy đủ thông tin phẫu thuật!');
                     return;
                 }
 
@@ -403,7 +257,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
                 const dateMatch = date.match(dateRegex);
                 if (!dateMatch) {
-                    alert(BS_CAI_DAT.validation.messages.invalidDateFormat);
+                    alert('Vui lòng nhập ngày theo định dạng dd/mm/yyyy!');
                     return;
                 }
 
@@ -413,18 +267,18 @@ function showDashboardBenhNhanIfNeeded() {
 
                 // Validate date values
                 if (month < 1 || month > 12) {
-                    alert(BS_CAI_DAT.validation.messages.invalidMonth);
+                    alert('Tháng không hợp lệ (1-12)!');
                     return;
                 }
                 if (day < 1 || day > 31) {
-                    alert(BS_CAI_DAT.validation.messages.invalidDay);
+                    alert('Ngày không hợp lệ (1-31)!');
                     return;
                 }
 
                 // Check if date is valid
                 const dateObj = new Date(year, month - 1, day);
                 if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
-                    alert(BS_CAI_DAT.validation.messages.invalidDate);
+                    alert('Ngày không tồn tại!');
                     return;
                 }
 
@@ -434,7 +288,7 @@ function showDashboardBenhNhanIfNeeded() {
                     .map(cb => cb.value);
 
                 if (selectedDoctors.length === 0) {
-                    alert(BS_CAI_DAT.validation.messages.noDoctorSelected);
+                    alert('Vui lòng chọn ít nhất một bác sĩ!');
                     return;
                 }
 
@@ -563,12 +417,7 @@ function showDashboardBenhNhanIfNeeded() {
                     </div>
                     <div>
                         <label style="font-size:0.9em;color:#666;">Giờ PT:</label>
-                        <div style="display:flex;gap:4px;align-items:center;">
-                            <input type="number" id="dr-pt-hour-edit" min="0" max="23" placeholder="HH" style="width:50px;padding:6px;border:1px solid #ddd;border-radius:4px;text-align:center;" />
-                            <span style="font-weight:bold;">:</span>
-                            <input type="number" id="dr-pt-minute-edit" min="0" max="59" step="5" placeholder="MM" style="width:50px;padding:6px;border:1px solid #ddd;border-radius:4px;text-align:center;" />
-                            <small style="margin-left:8px;color:#888;">(24h)</small>
-                        </div>
+                        <input type="time" id="dr-pt-time-edit" step="300" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.time}">
                     </div>
                 </div>
                 <div style="margin-bottom:12px;">
@@ -578,77 +427,49 @@ function showDashboardBenhNhanIfNeeded() {
                 <div style="margin-bottom:16px;">
                     <label style="font-size:0.9em;color:#666;margin-bottom:6px;display:block;">Bác sĩ thực hiện:</label>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.9em;">
-                        ${createDoctorCheckboxes('dr-pt-doctor-edit')}
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Dũng"> BS Dũng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Quyền"> BS Quyền</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hằng"> BS Hằng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hoài"> BS Hoài</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hiếu"> BS Hiếu</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hải"> BS Hải</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hưng"> BS Hưng</label>
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; justify-content: flex-end;">
                     <button id="dr-cancel-pt-edit" style="background:#666;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Hủy</button>
-                    <button id="dr-save-pt-edit" style="background:${BS_CAI_DAT.colors.primary};color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
+                    <button id="dr-save-pt-edit" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
                 </div>
             `;
 
             backdrop.appendChild(popup);
             document.body.appendChild(backdrop);
 
-            // Cleanup function to remove the popup when closed
+            // Add CSS to hide AM/PM field
+            const style = document.createElement('style');
+            style.textContent = `
+                #dr-pt-time-edit::-webkit-datetime-edit-ampm-field { 
+                    display: none; 
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Cleanup function to remove the style when popup is closed
             const originalClosePopup = function() {
                 document.body.removeChild(backdrop);
+                // Remove the injected style
+                if (style.parentNode) {
+                    style.parentNode.removeChild(style);
+                }
             };
 
             // Setup event handlers
             const dateInput = popup.querySelector('#dr-pt-date-edit');
-            const hourInput = popup.querySelector('#dr-pt-hour-edit');
-            const minuteInput = popup.querySelector('#dr-pt-minute-edit');
+            const timeInput = popup.querySelector('#dr-pt-time-edit');
             const methodInput = popup.querySelector('#dr-pt-method-edit');
             const doctorCheckboxes = popup.querySelectorAll('.dr-pt-doctor-edit');
             const saveBtn = popup.querySelector('#dr-save-pt-edit');
             const cancelBtn = popup.querySelector('#dr-cancel-pt-edit');
-            
-            // Set existing time values
-            if (existingEntry.time) {
-                const [existingHour, existingMinute] = existingEntry.time.split(':');
-                hourInput.value = existingHour;
-                minuteInput.value = existingMinute;
-            }
-            
-            // Add input validation and formatting for time inputs
-            hourInput.addEventListener('input', function() {
-                let value = parseInt(this.value);
-                if (value > 23) this.value = 23;
-                if (value < 0) this.value = 0;
-                // Auto-focus to minute when hour is complete
-                if (this.value.length === 2) {
-                    minuteInput.focus();
-                    minuteInput.select(); // Select all content when auto-focusing
-                }
-            });
-
-            // Select all content when focusing on hour input
-            hourInput.addEventListener('focus', function() {
-                this.select();
-            });
-
-            minuteInput.addEventListener('input', function() {
-                let value = parseInt(this.value);
-                if (value > 59) this.value = 59;
-                if (value < 0) this.value = 0;
-                // Format to 2 digits on blur
-                if (this.value && this.value.length === 1) {
-                    this.value = '0' + this.value;
-                }
-            });
-
-            // Select all content when focusing on minute input
-            minuteInput.addEventListener('focus', function() {
-                this.select();
-            });
-
-            // Format hour to 2 digits on blur
-            hourInput.addEventListener('blur', function() {
-                if (this.value && this.value.length === 1) {
-                    this.value = '0' + this.value;
-                }
-            });
 
             // Pre-select existing doctors
             const existingDoctors = existingEntry.doctors.split(', ');
@@ -666,30 +487,11 @@ function showDashboardBenhNhanIfNeeded() {
             // Save function
             function saveEditedPhauThuat() {
                 const date = dateInput.value.trim();
-                const hour = hourInput.value.trim();
-                const minute = minuteInput.value.trim();
+                const time = timeInput.value;
                 const method = methodInput.value.trim();
                 
-                // Combine hour and minute into time string
-                let time = '';
-                if (hour && minute) {
-                    const h = parseInt(hour, 10);
-                    const m = parseInt(minute, 10);
-                    
-                    if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
-                        time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                        console.log('Edit save - Combined time:', time);
-                    } else {
-                        alert('Thời gian không hợp lệ. Giờ: 0-23, Phút: 0-59');
-                        return;
-                    }
-                } else if (hour || minute) {
-                    alert('Vui lòng nhập đầy đủ giờ và phút');
-                    return;
-                }
-                
                 if (!date || !time || !method) {
-                    alert(BS_CAI_DAT.validation.messages.missingPhauThuatInfo);
+                    alert('Vui lòng nhập đầy đủ thông tin phẫu thuật!');
                     return;
                 }
 
@@ -697,7 +499,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
                 const dateMatch = date.match(dateRegex);
                 if (!dateMatch) {
-                    alert(BS_CAI_DAT.validation.messages.invalidDateFormat);
+                    alert('Vui lòng nhập ngày theo định dạng dd/mm/yyyy!');
                     return;
                 }
 
@@ -707,18 +509,18 @@ function showDashboardBenhNhanIfNeeded() {
 
                 // Validate date values
                 if (month < 1 || month > 12) {
-                    alert(BS_CAI_DAT.validation.messages.invalidMonth);
+                    alert('Tháng không hợp lệ (1-12)!');
                     return;
                 }
                 if (day < 1 || day > 31) {
-                    alert(BS_CAI_DAT.validation.messages.invalidDay);
+                    alert('Ngày không hợp lệ (1-31)!');
                     return;
                 }
 
                 // Check if date is valid
                 const dateObj = new Date(year, month - 1, day);
                 if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
-                    alert(BS_CAI_DAT.validation.messages.invalidDate);
+                    alert('Ngày không tồn tại!');
                     return;
                 }
 
@@ -728,7 +530,7 @@ function showDashboardBenhNhanIfNeeded() {
                     .map(cb => cb.value);
 
                 if (selectedDoctors.length === 0) {
-                    alert(BS_CAI_DAT.validation.messages.noDoctorSelected);
+                    alert('Vui lòng chọn ít nhất một bác sĩ!');
                     return;
                 }
 
@@ -764,6 +566,190 @@ function showDashboardBenhNhanIfNeeded() {
             });
         }
 
+        // Edit phẫu thuật
+        function editPhauThuat(index) {
+            if (!window.checklistState.phauThuatLog || !window.checklistState.phauThuatLog[index]) {
+                console.error('Không tìm thấy dữ liệu phẫu thuật để sửa');
+                return;
+            }
+
+            const existingEntry = window.checklistState.phauThuatLog[index];
+            
+            // Create backdrop
+            const backdrop = document.createElement('div');
+            backdrop.id = 'dr-pt-edit-popup-backdrop';
+            backdrop.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.5); z-index: 100002;
+                display: flex; align-items: center; justify-content: center;
+            `;
+
+            // Create popup
+            const popup = document.createElement('div');
+            popup.id = 'dr-pt-edit-popup';
+            popup.style.cssText = `
+                background: white; border-radius: 8px; padding: 24px;
+                max-width: 500px; width: 90vw; max-height: 80vh; overflow-y: auto;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            `;
+
+            popup.innerHTML = `
+                <h3 style="margin-top: 0; margin-bottom: 16px;">Sửa thông tin phẫu thuật</h3>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                    <div>
+                        <label style="font-size:0.9em;color:#666;">Ngày PT:</label>
+                        <input type="text" id="dr-pt-date-edit" placeholder="dd/mm/yyyy" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.date}">
+                    </div>
+                    <div>
+                        <label style="font-size:0.9em;color:#666;">Giờ PT:</label>
+                        <input type="time" id="dr-pt-time-edit" step="300" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.time}">
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="font-size:0.9em;color:#666;">Phương pháp phẫu thuật (PPPT):</label>
+                    <input type="text" id="dr-pt-method-edit" placeholder="Nhập PPPT" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" value="${existingEntry.method}">
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="font-size:0.9em;color:#666;margin-bottom:6px;display:block;">Bác sĩ thực hiện:</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.9em;">
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Dũng"> BS Dũng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Quyền"> BS Quyền</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hằng"> BS Hằng</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hoài"> BS Hoài</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hiếu"> BS Hiếu</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hải"> BS Hải</label>
+                        <label><input type="checkbox" class="dr-pt-doctor-edit" value="BS Hưng"> BS Hưng</label>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button id="dr-cancel-pt-edit" style="background:#666;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Hủy</button>
+                    <button id="dr-save-pt-edit" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;">Lưu</button>
+                </div>
+            `;
+
+            backdrop.appendChild(popup);
+            document.body.appendChild(backdrop);
+
+            // Add CSS to hide AM/PM field
+            const style = document.createElement('style');
+            style.textContent = `
+                #dr-pt-time-edit::-webkit-datetime-edit-ampm-field { 
+                    display: none; 
+                }
+            `;
+            document.head.appendChild(style);
+
+            // Cleanup function to remove the style when popup is closed
+            const originalClosePopup = function() {
+                document.body.removeChild(backdrop);
+                // Remove the injected style
+                if (style.parentNode) {
+                    style.parentNode.removeChild(style);
+                }
+            };
+
+            // Setup event handlers
+            const dateInput = popup.querySelector('#dr-pt-date-edit');
+            const timeInput = popup.querySelector('#dr-pt-time-edit');
+            const methodInput = popup.querySelector('#dr-pt-method-edit');
+            const doctorCheckboxes = popup.querySelectorAll('.dr-pt-doctor-edit');
+            const saveBtn = popup.querySelector('#dr-save-pt-edit');
+            const cancelBtn = popup.querySelector('#dr-cancel-pt-edit');
+
+            // Pre-select existing doctors
+            const existingDoctors = existingEntry.doctors.split(', ');
+            doctorCheckboxes.forEach(cb => {
+                if (existingDoctors.includes(cb.value)) {
+                    cb.checked = true;
+                }
+            });
+
+            // Close popup function
+            function closePopup() {
+                originalClosePopup();
+            }
+
+            // Save function
+            function saveEditedPhauThuat() {
+                const date = dateInput.value.trim();
+                const time = timeInput.value;
+                const method = methodInput.value.trim();
+                
+                if (!date || !time || !method) {
+                    alert('Vui lòng nhập đầy đủ thông tin phẫu thuật!');
+                    return;
+                }
+
+                // Validate date format dd/mm/yyyy
+                const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+                const dateMatch = date.match(dateRegex);
+                if (!dateMatch) {
+                    alert('Vui lòng nhập ngày theo định dạng dd/mm/yyyy!');
+                    return;
+                }
+
+                const day = parseInt(dateMatch[1]);
+                const month = parseInt(dateMatch[2]);
+                const year = parseInt(dateMatch[3]);
+
+                // Validate date values
+                if (month < 1 || month > 12) {
+                    alert('Tháng không hợp lệ (1-12)!');
+                    return;
+                }
+                if (day < 1 || day > 31) {
+                    alert('Ngày không hợp lệ (1-31)!');
+                    return;
+                }
+
+                // Check if date is valid
+                const dateObj = new Date(year, month - 1, day);
+                if (dateObj.getDate() !== day || dateObj.getMonth() !== month - 1 || dateObj.getFullYear() !== year) {
+                    alert('Ngày không tồn tại!');
+                    return;
+                }
+
+                // Get selected doctors
+                const selectedDoctors = Array.from(doctorCheckboxes)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+
+                if (selectedDoctors.length === 0) {
+                    alert('Vui lòng chọn ít nhất một bác sĩ!');
+                    return;
+                }
+
+                // Update the existing entry
+                window.checklistState.phauThuatLog[index] = {
+                    ...existingEntry,
+                    date: date,
+                    time: time,
+                    method: method,
+                    doctors: selectedDoctors.join(', ')
+                };
+
+                // Save to server
+                savePhauThuatLog();
+
+                // Re-render log
+                renderPhauThuatLog(window.checklistState.phauThuatLog);
+
+                // Update patient card display
+                updatePatientCardPhauThuat(patient);
+
+                // Close popup
+                closePopup();
+            }
+
+            // Event listeners
+            saveBtn.addEventListener('click', saveEditedPhauThuat);
+            cancelBtn.addEventListener('click', closePopup);
+            backdrop.addEventListener('click', function(e) {
+                if (e.target === backdrop) {
+                    closePopup();
+                }
+            });
+        }
 
         // Remove phẫu thuật
         function removePhauThuat(index) {
@@ -1038,9 +1024,6 @@ function showDashboardBenhNhanIfNeeded() {
         const info = createPatientInfoSection(patient, quickYLenhActions);
         sidebar.appendChild(info);
         
-        // Setup phẫu thuật handlers for the info section
-        setupPhauThuatHandlers(info, patient);
-        
         // Checklist section
         const checklistDiv = createChecklistSection(patient);
         sidebar.appendChild(checklistDiv);
@@ -1072,9 +1055,6 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Add bottom bar
         createBottomBar(sortedData.length);
-        
-        // Note: Celebration animations will be checked after enrichment completes
-        // via window.checkAllCelebrationAnimations function
 
         // Store refresh function globally for background enrichment
         window.refreshPatientCards = function(newData) {
@@ -1090,30 +1070,16 @@ function showDashboardBenhNhanIfNeeded() {
                         const ptInfoContainer = card.querySelector('.dr-pt-info');
                         if (ptInfoContainer) {
                             const ptData = item.phauThuatInfo;
-                            console.log('Surgery data for refresh:', ptData);
-                            
-                            // Handle both old format (ngayPhauThuat/gioPhauThuat) and new format (date/time)
-                            let dateTime = '';
-                            if (ptData.date && ptData.time) {
-                                // New format from phauThuatHandlers
-                                dateTime = `${ptData.date} ${ptData.time}`;
-                            } else if (ptData.ngayPhauThuat && ptData.gioPhauThuat) {
-                                // Old format
-                                dateTime = `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}`;
-                            } else if (ptData.date) {
-                                dateTime = ptData.date;
-                            } else if (ptData.ngayPhauThuat) {
-                                dateTime = ptData.ngayPhauThuat;
-                            }
-                            
-                            const method = ptData.method || ptData.pppt || '';
+                            const dateTime = ptData.ngayPhauThuat && ptData.gioPhauThuat ? 
+                                `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}` : 
+                                (ptData.ngayPhauThuat || '');
                             
                             ptInfoContainer.innerHTML = `
-                                <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}</div>
+                                <div class="dr-value"><span class="dr-label">PPPT:</span> ${ptData.pppt || ''}</div>
                                 <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
                             `;
                             
-                            console.log('Updated surgery info for card:', item.mabn, 'with dateTime:', dateTime, 'method:', method);
+                            console.log('Updated surgery info for card:', item.mabn);
                         }
                     }
                     
@@ -1141,6 +1107,47 @@ function showDashboardBenhNhanIfNeeded() {
     }
 
     // Note: createYLenhTags and updatePatientCardTags functions are now in utils/tagUtils.js
+
+    // DEBUG function to manually test y lệnh tags
+    window.testYLenhTags = function(mabn = null) {
+        const testMabn = mabn || '2510149440'; // Use provided or default
+        const patient = window.dr_data?.find(p => p.mabn === testMabn);
+        
+        if (!patient) {
+            console.log('TEST: Patient not found for mabn:', testMabn);
+            return;
+        }
+        
+        console.log('TEST: Found patient:', patient.mabn);
+        console.log('TEST: checklistState exists:', !!patient.checklistState);
+        
+        if (!patient.checklistState) {
+            // Create mock checklistState for testing
+            patient.checklistState = {
+                yLenhLog: [
+                    {
+                        timestamp: "28/07/2025 14:30 - BS",
+                        content: "Xuất viện",
+                        id: Date.now()
+                    },
+                    {
+                        timestamp: "28/07/2025 10:15 - BS", 
+                        content: "Rút ODL vết mổ",
+                        id: Date.now() + 1
+                    }
+                ]
+            };
+            console.log('TEST: Created mock checklistState with y lệnh data');
+        }
+        
+        // Test createYLenhTags
+        const tagsHtml = createYLenhTags(patient);
+        console.log('TEST: Generated tags HTML:', tagsHtml);
+        
+        // Update the card
+        window.updatePatientCardTags(testMabn);
+        console.log('TEST: Updated patient card tags');
+    };
 
     // Helper function to create patient card
     function createPatientCard(item) {
@@ -1191,81 +1198,23 @@ function showDashboardBenhNhanIfNeeded() {
         const btnGroup = createActionButtons(item);
         card.appendChild(btnGroup);
         
-        // Note: Celebration animation will be checked after enrichment completes
-        // Animation check removed from here to avoid checking before data is enriched
-        
         // Add click handler to show sidebar
         card.onclick = () => showSidebar(item);
         
         return card;
     }
 
-    // Helper function to check celebration for card
-    function checkCelebrationForCard(card, patient) {
-        if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
-            card.classList.remove('xuatvienanimation');
-            return;
-        }
-
-        // Check if any entries contain "xuất viện"
-        const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
-            return entry.content && entry.content.toLowerCase().includes('xuất viện');
-        });
-
-        if (dischargeEntries.length > 0) {
-            card.classList.add('xuatvienanimation');
-            console.log('🎉 Added xuatvienanimation class to card for patient:', patient.mabn);
-        } else {
-            card.classList.remove('xuatvienanimation');
-        }
-    }
-
-    // Global function to check celebration animations for all cards
-    window.checkAllCelebrationAnimations = function(enrichedPatients) {
-        console.log('🌟 Checking celebration animations for all cards after enrichment...');
-        const cards = document.querySelectorAll('.dr-card');
-        
-        cards.forEach((card) => {
-            // Get patient MABN from card
-            const cardTitle = card.querySelector('h2');
-            if (!cardTitle) return;
-            
-            const cardText = cardTitle.textContent;
-            const mabnMatch = cardText.match(/(\d{8,})/); // Find MABN pattern
-            if (!mabnMatch) return;
-            
-            const mabn = mabnMatch[1];
-            
-            // Find corresponding patient in enriched data
-            const patient = enrichedPatients.find(p => p.mabn === mabn);
-            if (patient) {
-                checkCelebrationForCard(card, patient);
-            }
-        });
-    };
-
     // Helper function to update patient card surgery info
-    function updatePatientCardPhauThuat(patient, customChecklistState = null) {
-        console.log('updatePatientCardPhauThuat called for patient:', patient.mabn);
-        console.log('customChecklistState provided:', !!customChecklistState);
-        console.log('window.checklistState available:', !!window.checklistState);
-        
+    function updatePatientCardPhauThuat(patient) {
         // Find patient card in DOM
         const cards = document.querySelectorAll('.dr-card');
         for (let card of cards) {
             const cardTitle = card.querySelector('h2');
             if (cardTitle && cardTitle.textContent.includes(patient.mabn)) {
-                console.log('Found card for patient:', patient.mabn);
-                
-                // Use custom checklistState if provided, otherwise fall back to global
-                const checklistState = customChecklistState || window.checklistState;
-                console.log('Using checklistState:', checklistState);
-                
                 // Get latest surgery info from checklistState
                 let ptInfo = '';
-                if (checklistState && checklistState.phauThuatLog && checklistState.phauThuatLog.length > 0) {
-                    const latestPT = checklistState.phauThuatLog[0]; // Latest is first
-                    console.log('Latest surgery found:', latestPT);
+                if (window.checklistState && window.checklistState.phauThuatLog && window.checklistState.phauThuatLog.length > 0) {
+                    const latestPT = window.checklistState.phauThuatLog[0]; // Latest is first
                     const dateTime = latestPT.date && latestPT.time ? 
                         `${latestPT.date} ${latestPT.time}` : 
                         (latestPT.date || '');
@@ -1274,25 +1223,12 @@ function showDashboardBenhNhanIfNeeded() {
                         <div class="dr-value"><span class="dr-label">PPPT:</span> ${latestPT.method || ''}</div>
                         <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
                     `;
-                    console.log('Generated ptInfo HTML:', ptInfo);
-                } else {
-                    console.log('No surgery data found for patient:', patient.mabn);
-                    console.log('checklistState details:', {
-                        exists: !!checklistState,
-                        hasPhauThuatLog: checklistState && !!checklistState.phauThuatLog,
-                        logLength: checklistState && checklistState.phauThuatLog ? checklistState.phauThuatLog.length : 'N/A'
-                    });
                 }
 
                 // Find existing surgery info container and update
                 const existingPTContainer = card.querySelector('.dr-pt-info');
                 if (existingPTContainer) {
-                    console.log('PT container found, current content:', existingPTContainer.innerHTML);
                     existingPTContainer.innerHTML = ptInfo;
-                    console.log('Updated PT container with new content:', ptInfo);
-                    console.log('PT container content after update:', existingPTContainer.innerHTML);
-                } else {
-                    console.log('PT container not found for patient:', patient.mabn);
                 }
                 break;
             }

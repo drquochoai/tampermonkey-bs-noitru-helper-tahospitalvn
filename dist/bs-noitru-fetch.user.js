@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.4.100
+// @version      1.4.101
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -515,6 +515,90 @@ const LoginHandler = require('./components/loginHandler');
 function showDashboardBenhNhanIfNeeded() {
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
+    // Inject CSS styles for quick actions and tags
+    if (!document.getElementById('dr-ylenh-styles')) {
+        const style = document.createElement('style');
+        style.id = 'dr-ylenh-styles';
+        style.textContent = `
+            /* Quick action buttons container */
+            .quick-ylenh-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 10px 0;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                border: 1px solid #e9ecef;
+            }
+
+            .quick-ylenh-btn {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 12px;
+                border: none;
+                border-radius: 6px;
+                background-color: white;
+                color: #333;
+                font-size: 12px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                border: 2px solid transparent;
+                white-space: nowrap;
+            }
+
+            .quick-ylenh-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                border-color: currentColor;
+            }
+
+            .quick-ylenh-btn:active {
+                transform: translateY(0);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            .quick-ylenh-btn .icon {
+                font-size: 14px;
+            }
+
+            /* Y lệnh tags on patient cards */
+            .ylenh-tags {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+                margin: 8px 0 4px 0;
+            }
+
+            .ylenh-tag {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 3px 8px;
+                background-color: rgba(76, 175, 80, 0.1);
+                color: #2e7d32;
+                border: 1px solid rgba(76, 175, 80, 0.3);
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 500;
+                white-space: nowrap;
+            }
+
+            .ylenh-tag.completed {
+                background-color: rgba(76, 175, 80, 0.2);
+                color: #1b5e20;
+                border-color: rgba(76, 175, 80, 0.5);
+            }
+
+            .ylenh-tag .icon {
+                font-size: 10px;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     // Checklist items
     const checklistItems = [
         
@@ -524,14 +608,24 @@ function showDashboardBenhNhanIfNeeded() {
         'Tạo Biên bản Hội chẩn duyệt mổ (web)',
         'Phiếu khai thác tiền sử dị ứng (hsoft)',
         '57. Cam kết phẫu thuật thủ thuật (hsoft)',
-        'Phiếu cung cấp thông tin, chẩn đoán và điều trị. (hsoft)',
+        'Phiếu cung cấp thông tin, chẩn đoán và điều trị (hsoft)',
         'Đánh giá nguy cơ huyết khối (web)',
         `Chuyển xét nghiệm vào khoa (hsoft) và ✅ ký số`,
         `Đánh dấu vết mổ`,
         `ĐÃ khám tiền mê CHƯA?`,
         `ĐÃ đặt lịch mổ CHƯA?`,
+        `ĐÃ ghi y lệnh chuyển mổ`,  
         'Phiếu kiểm tra HIV test (hsoft)',
         
+    ];
+
+    // Quick action y lệnh buttons - có thể dễ dàng thêm/sửa
+    const quickYLenhActions = [
+        { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
+        { label: 'Thay băng', icon: '👗', color: '#310994ff' },
+        { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
+        { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
+        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' }
     ];
 
     // Helper function to create patient info section
@@ -556,6 +650,17 @@ function showDashboardBenhNhanIfNeeded() {
             
             <div style="margin-top:20px;">
                 <h3 style="margin-bottom:10px;">Log y lệnh</h3>
+                
+                <!-- Quick Action Buttons -->
+                <div class="quick-ylenh-actions">
+                    ${quickYLenhActions.map(action => `
+                        <button class="quick-ylenh-btn" data-action="${action.label}" style="color: ${action.color}; border-color: ${action.color};">
+                            <span class="icon">${action.icon}</span>
+                            <span>${action.label}</span>
+                        </button>
+                    `).join('')}
+                </div>
+                
                 <div style="display:flex;gap:8px;margin-bottom:12px;">
                     <input type="text" id="dr-y-lenh-input" placeholder="Nhập y lệnh (VD: rút sonde tiểu)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;">
                     <button id="dr-add-y-lenh" style="padding:8px 16px;background:#1976d2;color:#fff;border:none;border-radius:4px;cursor:pointer;">Thêm</button>
@@ -628,10 +733,10 @@ function showDashboardBenhNhanIfNeeded() {
             }, 10);
         }
 
-        // Add y lệnh
-        function addYLenh() {
-            const content = input.value.trim();
-            if (!content) return;
+        // Add y lệnh (enhanced với support cho quick actions)
+        function addYLenh(content = null) {
+            const inputContent = content || input.value.trim();
+            if (!inputContent) return;
 
             // Initialize yLenhLog if not exists
             if (!window.checklistState.yLenhLog) {
@@ -645,7 +750,7 @@ function showDashboardBenhNhanIfNeeded() {
 
             const newEntry = {
                 timestamp: `${timestamp} - ${doctorName}`,
-                content: content,
+                content: inputContent,
                 id: Date.now() // Unique ID for easier removal
             };
 
@@ -656,8 +761,23 @@ function showDashboardBenhNhanIfNeeded() {
             saveYLenhLog();
 
             // Clear input and re-render
-            input.value = '';
+            if (!content) input.value = ''; // Only clear if not from quick action
             renderYLenhLog(window.checklistState.yLenhLog);
+
+            // Update patient object in window.dr_data with new checklistState
+            if (window.dr_data && patient.mabn) {
+                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                if (patientInData) {
+                    patientInData.checklistState = { ...window.checklistState };
+                    console.log('Updated checklistState in window.dr_data for patient:', patient.mabn);
+                }
+            }
+
+            // Trigger patient card update to show new tag
+            if (window.updatePatientCardTags) {
+                console.log('Calling updatePatientCardTags for patient:', patient.mabn);
+                window.updatePatientCardTags(patient.mabn);
+            }
         }
 
         // Remove y lệnh
@@ -666,6 +786,21 @@ function showDashboardBenhNhanIfNeeded() {
                 window.checklistState.yLenhLog.splice(index, 1);
                 saveYLenhLog();
                 renderYLenhLog(window.checklistState.yLenhLog);
+                
+                // Update patient object in window.dr_data with new checklistState
+                if (window.dr_data && patient.mabn) {
+                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) {
+                        patientInData.checklistState = { ...window.checklistState };
+                        console.log('Updated checklistState in window.dr_data after removal for patient:', patient.mabn);
+                    }
+                }
+
+                // Trigger patient card update to refresh tags
+                if (window.updatePatientCardTags) {
+                    console.log('Calling updatePatientCardTags after removal for patient:', patient.mabn);
+                    window.updatePatientCardTags(patient.mabn);
+                }
             }
         }
 
@@ -680,11 +815,25 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         // Event listeners
-        addBtn.addEventListener('click', addYLenh);
+        addBtn.addEventListener('click', () => addYLenh());
         input.addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 addYLenh();
             }
+        });
+
+        // Quick action buttons event listeners
+        infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const actionText = this.getAttribute('data-action');
+                addYLenh(actionText);
+                
+                // Visual feedback
+                this.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
         });
 
         // Load existing data after a short delay to ensure checklist is loaded
@@ -1621,26 +1770,180 @@ function showDashboardBenhNhanIfNeeded() {
             // Update existing cards instead of full re-render to avoid interrupting user
             sortedNewData.forEach((item, index) => {
                 const card = container.children[index];
-                if (card && item.phauThuatInfo) {
-                    // Find and update surgery info container
-                    const ptInfoContainer = card.querySelector('.dr-pt-info');
-                    if (ptInfoContainer) {
-                        const ptData = item.phauThuatInfo;
-                        const dateTime = ptData.ngayPhauThuat && ptData.gioPhauThuat ? 
-                            `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}` : 
-                            (ptData.ngayPhauThuat || '');
+                if (card) {
+                    // Update surgery info if available
+                    if (item.phauThuatInfo) {
+                        const ptInfoContainer = card.querySelector('.dr-pt-info');
+                        if (ptInfoContainer) {
+                            const ptData = item.phauThuatInfo;
+                            const dateTime = ptData.ngayPhauThuat && ptData.gioPhauThuat ? 
+                                `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}` : 
+                                (ptData.ngayPhauThuat || '');
+                            
+                            ptInfoContainer.innerHTML = `
+                                <div class="dr-value"><span class="dr-label">PPPT:</span> ${ptData.pppt || ''}</div>
+                                <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
+                            `;
+                            
+                            console.log('Updated surgery info for card:', item.mabn);
+                        }
+                    }
+                    
+                    // Update y lệnh tags if checklistState is available
+                    if (item.checklistState) {
+                        // Remove existing tags
+                        const existingTags = card.querySelector('.ylenh-tags');
+                        if (existingTags) {
+                            existingTags.remove();
+                        }
                         
-                        ptInfoContainer.innerHTML = `
-                            <div class="dr-value"><span class="dr-label">PPPT:</span> ${ptData.pppt || ''}</div>
-                            <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-                        `;
-                        
-                        console.log('Updated surgery info for card:', item.mabn);
+                        // Add new tags if any
+                        const tagsHtml = createYLenhTags(item);
+                        if (tagsHtml) {
+                            const btnGroup = card.querySelector('.dr-action-buttons');
+                            if (btnGroup) {
+                                btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
+                                console.log('Updated y lệnh tags for card:', item.mabn);
+                            }
+                        }
                     }
                 }
             });
         };
     }
+
+    // Helper function to create y lệnh tags
+    function createYLenhTags(patient) {
+        console.log('DEBUG createYLenhTags - patient:', patient.mabn, 'checklistState:', !!patient.checklistState);
+        
+        if (!patient.checklistState) {
+            console.log('DEBUG createYLenhTags - No checklistState for patient:', patient.mabn);
+            return '';
+        }
+        
+        console.log('DEBUG createYLenhTags - checklistState keys:', Object.keys(patient.checklistState));
+        console.log('DEBUG createYLenhTags - yLenhLog exists:', !!patient.checklistState.yLenhLog);
+        console.log('DEBUG createYLenhTags - yLenhLog type:', typeof patient.checklistState.yLenhLog);
+        console.log('DEBUG createYLenhTags - yLenhLog isArray:', Array.isArray(patient.checklistState.yLenhLog));
+        
+        if (patient.checklistState.yLenhLog) {
+            console.log('DEBUG createYLenhTags - yLenhLog content:', patient.checklistState.yLenhLog);
+        }
+        
+        if (!patient.checklistState.yLenhLog || !Array.isArray(patient.checklistState.yLenhLog)) {
+            console.log('DEBUG createYLenhTags - No valid y lệnh data for patient:', patient.mabn);
+            return '';
+        }
+
+        console.log('DEBUG createYLenhTags - yLenhLog entries:', patient.checklistState.yLenhLog.length);
+
+        // Get today's y lệnh entries
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        
+        console.log('DEBUG createYLenhTags - Looking for today:', todayStr);
+        
+        const todayEntries = patient.checklistState.yLenhLog.filter(entry => 
+            entry.timestamp && entry.timestamp.includes(todayStr)
+        );
+
+        console.log('DEBUG createYLenhTags - Today entries found:', todayEntries.length);
+
+        if (todayEntries.length === 0) {
+            return '';
+        }
+
+        // Create tags for today's entries (limit to 3 most recent)
+        const recentEntries = todayEntries.slice(0, 3);
+        const tagsHtml = recentEntries.map(entry => {
+            // Find matching quick action for icon
+            const quickAction = quickYLenhActions.find(action => 
+                entry.content.toLowerCase().includes(action.label.toLowerCase())
+            );
+            
+            const icon = quickAction ? quickAction.icon : '📋';
+            const color = quickAction ? quickAction.color : '#1976d2';
+            
+            return `<span class="ylenh-tag" style="border-color: ${color}; color: ${color};">
+                <span class="icon">${icon}</span>
+                ${entry.content}
+            </span>`;
+        }).join('');
+
+        console.log('DEBUG createYLenhTags - Generated tags HTML:', tagsHtml);
+        return `<div class="ylenh-tags">${tagsHtml}</div>`;
+    }
+
+    // Global function to update patient card tags
+    window.updatePatientCardTags = function(mabn) {
+        const cards = document.querySelectorAll('.dr-card');
+        cards.forEach(card => {
+            const maBnMatch = card.textContent.match(/- (\d+) -/);
+            if (maBnMatch && maBnMatch[1] === mabn) {
+                // Find patient data from window.dr_data
+                const patient = window.dr_data?.find(p => p.mabn === mabn);
+                if (patient) {
+                    // Remove existing tags
+                    const existingTags = card.querySelector('.ylenh-tags');
+                    if (existingTags) {
+                        existingTags.remove();
+                    }
+                    
+                    // Add new tags before action buttons
+                    const btnGroup = card.querySelector('.dr-action-buttons');
+                    if (btnGroup) {
+                        const tagsHtml = createYLenhTags(patient);
+                        if (tagsHtml) {
+                            btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
+                        }
+                    }
+                } else {
+                    console.log('Patient not found in window.dr_data for mabn:', mabn);
+                }
+            }
+        });
+    };
+
+    // DEBUG function to manually test y lệnh tags
+    window.testYLenhTags = function(mabn = null) {
+        const testMabn = mabn || '2510149440'; // Use provided or default
+        const patient = window.dr_data?.find(p => p.mabn === testMabn);
+        
+        if (!patient) {
+            console.log('TEST: Patient not found for mabn:', testMabn);
+            return;
+        }
+        
+        console.log('TEST: Found patient:', patient.mabn);
+        console.log('TEST: checklistState exists:', !!patient.checklistState);
+        
+        if (!patient.checklistState) {
+            // Create mock checklistState for testing
+            patient.checklistState = {
+                yLenhLog: [
+                    {
+                        timestamp: "28/07/2025 14:30 - BS",
+                        content: "Xuất viện",
+                        id: Date.now()
+                    },
+                    {
+                        timestamp: "28/07/2025 10:15 - BS", 
+                        content: "Rút ODL vết mổ",
+                        id: Date.now() + 1
+                    }
+                ]
+            };
+            console.log('TEST: Created mock checklistState with y lệnh data');
+        }
+        
+        // Test createYLenhTags
+        const tagsHtml = createYLenhTags(patient);
+        console.log('TEST: Generated tags HTML:', tagsHtml);
+        
+        // Update the card
+        window.updatePatientCardTags(testMabn);
+        console.log('TEST: Updated patient card tags');
+    };
 
     // Helper function to create patient card
     function createPatientCard(item) {
@@ -1684,6 +1987,7 @@ function showDashboardBenhNhanIfNeeded() {
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
             <div class="dr-value"><span class="dr-label">Chẩn đoán:</span> ${item.chandoanvk || ''}</div>
             ${ptInfo}
+            ${createYLenhTags(item)}
         `;
         
         // Add action buttons
@@ -1733,6 +2037,7 @@ function showDashboardBenhNhanIfNeeded() {
         const btnHsba2 = createHsbaButton(item);
         
         const btnGroup = document.createElement('div');
+        btnGroup.className = 'dr-action-buttons';
         btnGroup.style.display = 'flex';
         btnGroup.style.gap = '8px';
         btnGroup.style.justifyContent = 'flex-end';
@@ -2595,6 +2900,9 @@ const PatientService = {
                     const checklistState = await ChecklistService.loadChecklistState(checklistObj);
                     if (checklistState) {
                         console.log('Checklist state loaded for patient:', patient.mabn, checklistState);
+                        
+                        // Store checklist state for y lệnh tags
+                        enrichedPatients[actualIndex].checklistState = checklistState;
                         
                         // Map surgery data from checklist
                         const surgeryData = PatientDataMapper.mapPhauThuatData(checklistState);

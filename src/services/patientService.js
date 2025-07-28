@@ -78,6 +78,9 @@ const PatientService = {
                     if (checklistState) {
                         console.log('Checklist state loaded for patient:', patient.mabn, checklistState);
                         
+                        // Store checklist state for y lệnh tags
+                        enrichedPatients[actualIndex].checklistState = checklistState;
+                        
                         // Map surgery data from checklist
                         const surgeryData = PatientDataMapper.mapPhauThuatData(checklistState);
                         if (surgeryData) {

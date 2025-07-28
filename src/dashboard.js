@@ -20,74 +20,6 @@ const LoginHandler = require('./components/loginHandler');
 const { createPatientInfoSection } = require('./components/patientInfoSection');
 const { createYLenhTags, updatePatientCardTags } = require('./utils/tagUtils');
 
-// Make test function available globally immediately
-window.testYLenhTags = function(mabn = null) {
-    const testMabn = mabn || '2510149440'; // Use provided or default
-    const patient = window.dr_data?.find(p => p.mabn === testMabn);
-    
-    if (!patient) {
-        console.log('TEST: Patient not found for mabn:', testMabn);
-        console.log('Available patients:', window.dr_data?.map(p => p.mabn) || 'No dr_data');
-        return;
-    }
-    
-    console.log('TEST: Found patient:', patient.mabn);
-    console.log('TEST: checklistState exists:', !!patient.checklistState);
-    
-    if (!patient.checklistState) {
-        // Create mock checklistState for testing
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-        
-        patient.checklistState = {
-            yLenhLog: [
-                {
-                    timestamp: "28/07/2025 14:30 - BS",
-                    date: todayStr, // Add proper date field
-                    content: "Xuất viện",
-                    id: Date.now()
-                },
-                {
-                    timestamp: "28/07/2025 10:15 - BS",
-                    date: todayStr, // Add proper date field
-                    content: "Rút ODL vết mổ",
-                    id: Date.now() + 1
-                }
-            ]
-        };
-        console.log('TEST: Created mock checklistState with y lệnh data for date:', todayStr);
-    }
-    
-    // Test createYLenhTags
-    const tagsHtml = createYLenhTags(patient);
-    console.log('TEST: Generated tags HTML:', tagsHtml);
-    
-    // Update the card
-    window.updatePatientCardTags(testMabn);
-    console.log('TEST: Updated patient card tags');
-    
-    // Check if celebration class was added
-    setTimeout(() => {
-        const cards = document.querySelectorAll('.dr-card');
-        cards.forEach((card, index) => {
-            const cardText = card.textContent || '';
-            if (cardText.includes(testMabn)) {
-                console.log('TEST: Found card for patient, classes:', card.className);
-                console.log('TEST: Card has xuatvienanimation class:', card.classList.contains('xuatvienanimation'));
-                if (card.classList.contains('xuatvienanimation')) {
-                    console.log('🎉 SUCCESS: Card has xuất viện animation!');
-                } else {
-                    console.log('❌ ISSUE: Card does not have xuatvienanimation class');
-                }
-            }
-        });
-    }, 100);
-};
-
-// Make utilities available globally
-window.updatePatientCardTags = updatePatientCardTags;
-window.createYLenhTags = createYLenhTags;
-
 function showDashboardBenhNhanIfNeeded() {
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
@@ -203,18 +135,9 @@ function showDashboardBenhNhanIfNeeded() {
         document.head.appendChild(style);
     }
 
-    // Checklist items (moved to BS_CAI_DAT_GIAO_DIEN.js)
     const checklistItems = BS_CAI_DAT.checklistItems;
-
-    // Quick action y lệnh buttons (moved to BS_CAI_DAT_GIAO_DIEN.js)
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
 
-    // Helper function to create patient info section (now delegated to module)
-    // The actual implementation is in components/patientInfoSection.js
-
-    // Note: setupYLenhHandlers is now in components/yLenhHandlers.js
-
-    // Helper function to create doctor checkboxes
     function createDoctorCheckboxes(className) {
         return BS_CAI_DAT.danhSachBacSi.map(doctor => 
             `<label><input type="checkbox" class="${className}" value="${doctor}"> ${doctor}</label>`
@@ -384,7 +307,6 @@ function showDashboardBenhNhanIfNeeded() {
                     
                     if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
                         time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                        console.log('Add save - Combined time:', time);
                     } else {
                         alert('Thời gian không hợp lệ. Giờ: 0-23, Phút: 0-59');
                         return;
@@ -678,7 +600,6 @@ function showDashboardBenhNhanIfNeeded() {
                     
                     if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
                         time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-                        console.log('Edit save - Combined time:', time);
                     } else {
                         alert('Thời gian không hợp lệ. Giờ: 0-23, Phút: 0-59');
                         return;
@@ -818,8 +739,6 @@ function showDashboardBenhNhanIfNeeded() {
     // Helper function to load checklist data
     async function loadChecklist(patient, checklistUl, retryCount = 0) {
         try {
-            console.log('DEBUG - dashboard.js loadChecklist called with patient:', JSON.stringify(patient, null, 2));
-            
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
             
             const res = await ChecklistService.loadChecklistData(patient);
@@ -1015,7 +934,6 @@ function showDashboardBenhNhanIfNeeded() {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
                 cb.addEventListener('change', async function () {
                     window.checklistState[this.parentNode.textContent.trim()] = this.checked;
-                    console.log('Checklist state updated:', window.checklistState, window.checklistObj);
                     
                     const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
                     if (!success) {
@@ -1053,11 +971,7 @@ function showDashboardBenhNhanIfNeeded() {
         ModalManager.showModal(sidebar, backdrop);
     }
     function renderCards(data) {
-        console.log('Rendering patient cards with data:', data);
-        
-        // Sort patients before rendering
         const sortedData = PatientDataMapper.sortPatients([...data]);
-        console.log('Sorted patient data:', sortedData);
         
         document.body.innerHTML = '';
         const container = document.createElement('div');
@@ -1072,13 +986,8 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Add bottom bar
         createBottomBar(sortedData.length);
-        
-        // Note: Celebration animations will be checked after enrichment completes
-        // via window.checkAllCelebrationAnimations function
 
-        // Store refresh function globally for background enrichment
         window.refreshPatientCards = function(newData) {
-            console.log('Refreshing patient cards with new data');
             const sortedNewData = PatientDataMapper.sortPatients([...newData]);
             
             // Update existing cards instead of full re-render to avoid interrupting user
@@ -1090,9 +999,7 @@ function showDashboardBenhNhanIfNeeded() {
                         const ptInfoContainer = card.querySelector('.dr-pt-info');
                         if (ptInfoContainer) {
                             const ptData = item.phauThuatInfo;
-                            console.log('Surgery data for refresh:', ptData);
                             
-                            // Handle both old format (ngayPhauThuat/gioPhauThuat) and new format (date/time)
                             let dateTime = '';
                             if (ptData.date && ptData.time) {
                                 // New format from phauThuatHandlers
@@ -1112,8 +1019,6 @@ function showDashboardBenhNhanIfNeeded() {
                                 <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}</div>
                                 <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
                             `;
-                            
-                            console.log('Updated surgery info for card:', item.mabn, 'with dateTime:', dateTime, 'method:', method);
                         }
                     }
                     
@@ -1140,9 +1045,6 @@ function showDashboardBenhNhanIfNeeded() {
         };
     }
 
-    // Note: createYLenhTags and updatePatientCardTags functions are now in utils/tagUtils.js
-
-    // Helper function to create patient card
     function createPatientCard(item) {
         const room = item.teN_PHONG || '';
         const isWhite = PatientDataMapper.isWhiteCard(room);
@@ -1157,10 +1059,6 @@ function showDashboardBenhNhanIfNeeded() {
             item.teN_TOANHA
         );
 
-        // Debug logging
-        console.log('Creating card for patient:', item.mabn, 'phauThuatInfo:', item.phauThuatInfo);
-
-        // Get latest phẫu thuật info if available
         let ptInfo = '';
         if (item.phauThuatInfo) {
             const ptData = item.phauThuatInfo;
@@ -1175,7 +1073,6 @@ function showDashboardBenhNhanIfNeeded() {
                 <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
             </div>`;
         } else {
-            console.log('No surgery info for patient:', item.mabn);
             ptInfo = '<div class="dr-pt-info"></div>';
         }
         
@@ -1191,10 +1088,6 @@ function showDashboardBenhNhanIfNeeded() {
         const btnGroup = createActionButtons(item);
         card.appendChild(btnGroup);
         
-        // Note: Celebration animation will be checked after enrichment completes
-        // Animation check removed from here to avoid checking before data is enriched
-        
-        // Add click handler to show sidebar
         card.onclick = () => showSidebar(item);
         
         return card;
@@ -1214,7 +1107,6 @@ function showDashboardBenhNhanIfNeeded() {
 
         if (dischargeEntries.length > 0) {
             card.classList.add('xuatvienanimation');
-            console.log('🎉 Added xuatvienanimation class to card for patient:', patient.mabn);
         } else {
             card.classList.remove('xuatvienanimation');
         }
@@ -1222,7 +1114,6 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Global function to check celebration animations for all cards
     window.checkAllCelebrationAnimations = function(enrichedPatients) {
-        console.log('🌟 Checking celebration animations for all cards after enrichment...');
         const cards = document.querySelectorAll('.dr-card');
         
         cards.forEach((card) => {
@@ -1246,20 +1137,11 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to update patient card surgery info
     function updatePatientCardPhauThuat(patient, customChecklistState = null) {
-        console.log('updatePatientCardPhauThuat called for patient:', patient.mabn);
-        console.log('customChecklistState provided:', !!customChecklistState);
-        console.log('window.checklistState available:', !!window.checklistState);
-        
-        // Find patient card in DOM
         const cards = document.querySelectorAll('.dr-card');
         for (let card of cards) {
             const cardTitle = card.querySelector('h2');
             if (cardTitle && cardTitle.textContent.includes(patient.mabn)) {
-                console.log('Found card for patient:', patient.mabn);
-                
-                // Use custom checklistState if provided, otherwise fall back to global
                 const checklistState = customChecklistState || window.checklistState;
-                console.log('Using checklistState:', checklistState);
                 
                 // Get latest surgery info from checklistState
                 let ptInfo = '';

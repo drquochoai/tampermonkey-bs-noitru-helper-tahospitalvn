@@ -13,9 +13,19 @@ const PatientDataMapper = require('./utils/patientDataMapper');
 const ModalManager = require('./components/modalManager');
 const LoginHandler = require('./components/loginHandler');
 
+// Import newly refactored components
+const { createPatientInfoSection } = require('./components/patientInfoSection');
+const { createYLenhTags, updatePatientCardTags } = require('./utils/tagUtils');
+
 function showDashboardBenhNhanIfNeeded() {
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
+    
+    // Ensure tagUtils is available globally
+    if (typeof window.updatePatientCardTags === 'undefined') {
+        window.updatePatientCardTags = updatePatientCardTags;
+    }
+    
     // Inject CSS styles for quick actions and tags
     if (!document.getElementById('dr-ylenh-styles')) {
         const style = document.createElement('style');
@@ -129,220 +139,10 @@ function showDashboardBenhNhanIfNeeded() {
         { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' }
     ];
 
-    // Helper function to create patient info section
-    function createPatientInfoSection(patient) {
-        const info = document.createElement('div');
-        info.innerHTML = `
-            <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
-            <div><b>Tuổi:</b> ${Utils.calculateAge(patient.ngaysinh)}</div>
-            <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
-            <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
-            <div><b>Kế hoạch điều trị:</b><br><textarea id="dr-treatment" style="width:95%;min-height:60px;resize:vertical;">${patient.kehoach || ''}</textarea></div>
-            
-            <div style="margin-top:20px;">
-                <h3 style="margin-bottom:10px;">Thông tin phẫu thuật</h3>
-                <div style="margin-bottom:12px;">
-                    <button id="dr-show-pt-form" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;font-size:0.9em;">Thêm phẫu thuật</button>
-                </div>
-                <div id="dr-pt-log" style="max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;border-radius:4px;background:#f9f9f9;">
-                    <div style="color:#888;font-style:italic;">Chưa có phẫu thuật nào...</div>
-                </div>
-            </div>
-            
-            <div style="margin-top:20px;">
-                <h3 style="margin-bottom:10px;">Log y lệnh</h3>
-                
-                <!-- Quick Action Buttons -->
-                <div class="quick-ylenh-actions">
-                    ${quickYLenhActions.map(action => `
-                        <button class="quick-ylenh-btn" data-action="${action.label}" style="color: ${action.color}; border-color: ${action.color};">
-                            <span class="icon">${action.icon}</span>
-                            <span>${action.label}</span>
-                        </button>
-                    `).join('')}
-                </div>
-                
-                <div style="display:flex;gap:8px;margin-bottom:12px;">
-                    <input type="text" id="dr-y-lenh-input" placeholder="Nhập y lệnh (VD: rút sonde tiểu)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;">
-                    <button id="dr-add-y-lenh" style="padding:8px 16px;background:#1976d2;color:#fff;border:none;border-radius:4px;cursor:pointer;">Thêm</button>
-                </div>
-                <div id="dr-y-lenh-log" style="max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;border-radius:4px;background:#f9f9f9;">
-                    <div style="color:#888;font-style:italic;">Chưa có y lệnh nào...</div>
-                </div>
-            </div>
-        `;
+    // Helper function to create patient info section (now delegated to module)
+    // The actual implementation is in components/patientInfoSection.js
 
-        // Setup treatment plan auto-save
-        const drTreatment = info.querySelector('#dr-treatment');
-        if (drTreatment) {
-            drTreatment.addEventListener('blur', async function () {
-                if (window.checklistObj) {
-                    window.checklistState.kehoach = drTreatment.value;
-                    const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                    if (!success) {
-                        console.error('Lưu kế hoạch điều trị thất bại!');
-                    }
-                }
-            });
-        }
-
-        // Setup y lệnh functionality
-        setupYLenhHandlers(info, patient);
-
-        // Setup phẫu thuật functionality
-        setupPhauThuatHandlers(info, patient);
-
-        return info;
-    }
-
-    // Helper function to setup y lệnh handlers
-    function setupYLenhHandlers(infoElement, patient) {
-        const input = infoElement.querySelector('#dr-y-lenh-input');
-        const addBtn = infoElement.querySelector('#dr-add-y-lenh');
-        const logContainer = infoElement.querySelector('#dr-y-lenh-log');
-
-        // Load existing y lệnh when checklist is loaded
-        function loadYLenhLog() {
-            if (window.checklistState && window.checklistState.yLenhLog) {
-                renderYLenhLog(window.checklistState.yLenhLog);
-            }
-        }
-
-        // Render y lệnh log
-        function renderYLenhLog(yLenhArray) {
-            if (!Array.isArray(yLenhArray) || yLenhArray.length === 0) {
-                logContainer.innerHTML = '<div style="color:#888;font-style:italic;">Chưa có y lệnh nào...</div>';
-                return;
-            }
-
-            logContainer.innerHTML = yLenhArray.map((entry, index) => `
-                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;">
-                    <button class="remove-y-lenh-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
-                    <div style="font-size:0.9em;color:#666;margin-bottom:4px;">${entry.timestamp}</div>
-                    <div style="font-weight:bold;color:#333;">${entry.content}</div>
-                </div>
-            `).join('');
-
-            // Add event listeners for remove buttons
-            setTimeout(() => {
-                logContainer.querySelectorAll('.remove-y-lenh-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
-                        const index = parseInt(this.getAttribute('data-index'));
-                        removeYLenh(index);
-                    });
-                });
-            }, 10);
-        }
-
-        // Add y lệnh (enhanced với support cho quick actions)
-        function addYLenh(content = null) {
-            const inputContent = content || input.value.trim();
-            if (!inputContent) return;
-
-            // Initialize yLenhLog if not exists
-            if (!window.checklistState.yLenhLog) {
-                window.checklistState.yLenhLog = [];
-            }
-
-            // Create new entry
-            const now = new Date();
-            const timestamp = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-            const doctorName = 'BS'; // You can customize this to get actual doctor name
-
-            const newEntry = {
-                timestamp: `${timestamp} - ${doctorName}`,
-                content: inputContent,
-                id: Date.now() // Unique ID for easier removal
-            };
-
-            // Add to array
-            window.checklistState.yLenhLog.unshift(newEntry); // Add to beginning for newest first
-
-            // Save to server
-            saveYLenhLog();
-
-            // Clear input and re-render
-            if (!content) input.value = ''; // Only clear if not from quick action
-            renderYLenhLog(window.checklistState.yLenhLog);
-
-            // Update patient object in window.dr_data with new checklistState
-            if (window.dr_data && patient.mabn) {
-                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                if (patientInData) {
-                    patientInData.checklistState = { ...window.checklistState };
-                    console.log('Updated checklistState in window.dr_data for patient:', patient.mabn);
-                }
-            }
-
-            // Trigger patient card update to show new tag
-            if (window.updatePatientCardTags) {
-                console.log('Calling updatePatientCardTags for patient:', patient.mabn);
-                window.updatePatientCardTags(patient.mabn);
-            }
-        }
-
-        // Remove y lệnh
-        function removeYLenh(index) {
-            if (window.checklistState.yLenhLog && Array.isArray(window.checklistState.yLenhLog)) {
-                window.checklistState.yLenhLog.splice(index, 1);
-                saveYLenhLog();
-                renderYLenhLog(window.checklistState.yLenhLog);
-                
-                // Update patient object in window.dr_data with new checklistState
-                if (window.dr_data && patient.mabn) {
-                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                    if (patientInData) {
-                        patientInData.checklistState = { ...window.checklistState };
-                        console.log('Updated checklistState in window.dr_data after removal for patient:', patient.mabn);
-                    }
-                }
-
-                // Trigger patient card update to refresh tags
-                if (window.updatePatientCardTags) {
-                    console.log('Calling updatePatientCardTags after removal for patient:', patient.mabn);
-                    window.updatePatientCardTags(patient.mabn);
-                }
-            }
-        }
-
-        // Save y lệnh log to server
-        async function saveYLenhLog() {
-            if (window.checklistObj) {
-                const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                if (!success) {
-                    console.error('Lưu log y lệnh thất bại!');
-                }
-            }
-        }
-
-        // Event listeners
-        addBtn.addEventListener('click', () => addYLenh());
-        input.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                addYLenh();
-            }
-        });
-
-        // Quick action buttons event listeners
-        infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const actionText = this.getAttribute('data-action');
-                addYLenh(actionText);
-                
-                // Visual feedback
-                this.style.transform = 'scale(0.95)';
-                setTimeout(() => {
-                    this.style.transform = '';
-                }, 150);
-            });
-        });
-
-        // Load existing data after a short delay to ensure checklist is loaded
-        setTimeout(loadYLenhLog, 100);
-
-        // Store reference to removeYLenh for use in loadYLenhLogFromState
-        window.currentRemoveYLenh = removeYLenh;
-    }
+    // Note: setupYLenhHandlers is now in components/yLenhHandlers.js
 
     // Helper function to setup phẫu thuật handlers
     function setupPhauThuatHandlers(infoElement, patient) {
@@ -1227,8 +1027,8 @@ function showDashboardBenhNhanIfNeeded() {
         sidebar.innerHTML = '';
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
         
-        // Patient info form
-        const info = createPatientInfoSection(patient);
+        // Patient info form (using refactored module)
+        const info = createPatientInfoSection(patient, quickYLenhActions);
         sidebar.appendChild(info);
         
         // Checklist section
@@ -1313,97 +1113,7 @@ function showDashboardBenhNhanIfNeeded() {
         };
     }
 
-    // Helper function to create y lệnh tags
-    function createYLenhTags(patient) {
-        console.log('DEBUG createYLenhTags - patient:', patient.mabn, 'checklistState:', !!patient.checklistState);
-        
-        if (!patient.checklistState) {
-            console.log('DEBUG createYLenhTags - No checklistState for patient:', patient.mabn);
-            return '';
-        }
-        
-        console.log('DEBUG createYLenhTags - checklistState keys:', Object.keys(patient.checklistState));
-        console.log('DEBUG createYLenhTags - yLenhLog exists:', !!patient.checklistState.yLenhLog);
-        console.log('DEBUG createYLenhTags - yLenhLog type:', typeof patient.checklistState.yLenhLog);
-        console.log('DEBUG createYLenhTags - yLenhLog isArray:', Array.isArray(patient.checklistState.yLenhLog));
-        
-        if (patient.checklistState.yLenhLog) {
-            console.log('DEBUG createYLenhTags - yLenhLog content:', patient.checklistState.yLenhLog);
-        }
-        
-        if (!patient.checklistState.yLenhLog || !Array.isArray(patient.checklistState.yLenhLog)) {
-            console.log('DEBUG createYLenhTags - No valid y lệnh data for patient:', patient.mabn);
-            return '';
-        }
-
-        console.log('DEBUG createYLenhTags - yLenhLog entries:', patient.checklistState.yLenhLog.length);
-
-        // Get today's y lệnh entries
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-        
-        console.log('DEBUG createYLenhTags - Looking for today:', todayStr);
-        
-        const todayEntries = patient.checklistState.yLenhLog.filter(entry => 
-            entry.timestamp && entry.timestamp.includes(todayStr)
-        );
-
-        console.log('DEBUG createYLenhTags - Today entries found:', todayEntries.length);
-
-        if (todayEntries.length === 0) {
-            return '';
-        }
-
-        // Create tags for today's entries (limit to 3 most recent)
-        const recentEntries = todayEntries.slice(0, 3);
-        const tagsHtml = recentEntries.map(entry => {
-            // Find matching quick action for icon
-            const quickAction = quickYLenhActions.find(action => 
-                entry.content.toLowerCase().includes(action.label.toLowerCase())
-            );
-            
-            const icon = quickAction ? quickAction.icon : '📋';
-            const color = quickAction ? quickAction.color : '#1976d2';
-            
-            return `<span class="ylenh-tag" style="border-color: ${color}; color: ${color};">
-                <span class="icon">${icon}</span>
-                ${entry.content}
-            </span>`;
-        }).join('');
-
-        console.log('DEBUG createYLenhTags - Generated tags HTML:', tagsHtml);
-        return `<div class="ylenh-tags">${tagsHtml}</div>`;
-    }
-
-    // Global function to update patient card tags
-    window.updatePatientCardTags = function(mabn) {
-        const cards = document.querySelectorAll('.dr-card');
-        cards.forEach(card => {
-            const maBnMatch = card.textContent.match(/- (\d+) -/);
-            if (maBnMatch && maBnMatch[1] === mabn) {
-                // Find patient data from window.dr_data
-                const patient = window.dr_data?.find(p => p.mabn === mabn);
-                if (patient) {
-                    // Remove existing tags
-                    const existingTags = card.querySelector('.ylenh-tags');
-                    if (existingTags) {
-                        existingTags.remove();
-                    }
-                    
-                    // Add new tags before action buttons
-                    const btnGroup = card.querySelector('.dr-action-buttons');
-                    if (btnGroup) {
-                        const tagsHtml = createYLenhTags(patient);
-                        if (tagsHtml) {
-                            btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
-                        }
-                    }
-                } else {
-                    console.log('Patient not found in window.dr_data for mabn:', mabn);
-                }
-            }
-        });
-    };
+    // Note: createYLenhTags and updatePatientCardTags functions are now in utils/tagUtils.js
 
     // DEBUG function to manually test y lệnh tags
     window.testYLenhTags = function(mabn = null) {

@@ -10,16 +10,17 @@ echo Current branch: %CURRENT_BRANCH%
 echo.
 
 :: Check if working directory is clean
-git status --porcelain > temp_status.txt
-for %%A in (temp_status.txt) do if %%~zA gtr 0 (
+git status --porcelain > nul
+for /f %%i in ('git status --porcelain ^| find /c /v ""') do set dirty_count=%%i
+if %dirty_count% gtr 0 (
     echo ERROR: Working directory is not clean!
     echo Please commit or stash your changes first.
-    type temp_status.txt
-    del temp_status.txt
+    echo.
+    echo Uncommitted changes:
+    git status --porcelain
     pause
     exit /b 1
 )
-del temp_status.txt
 
 echo Working directory is clean. Proceeding with merge...
 echo.

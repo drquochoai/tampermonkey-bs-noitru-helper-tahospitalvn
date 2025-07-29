@@ -11,10 +11,10 @@ echo.
 
 :: Check if working directory is clean
 git status --porcelain > temp_status.txt
-for %%A in (temp_status.txt) do set size=%%~zA
-if %size% gtr 0 (
+for %%A in (temp_status.txt) do if %%~zA gtr 0 (
     echo ERROR: Working directory is not clean!
     echo Please commit or stash your changes first.
+    type temp_status.txt
     del temp_status.txt
     pause
     exit /b 1

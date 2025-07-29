@@ -1951,20 +1951,73 @@ function showDashboardBenhNhanIfNeeded() {
         const backdrop = ModalManager.getOrCreateBackdrop();
         const sidebar = ModalManager.getOrCreateSidebar();
         
-        // Clear and setup sidebar
+        // Clear and setup sidebar with responsive layout
         sidebar.innerHTML = '';
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
         
-        // Patient info form (using refactored module)
+        // Create responsive container
+        const container = document.createElement('div');
+        container.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        `;
+        
+        // Add media query styles for desktop layout
+        const desktopStyles = document.createElement('style');
+        desktopStyles.textContent = `
+            @media (min-width: 1024px) {
+                .dr-sidebar-container {
+                    flex-direction: row !important;
+                    gap: 24px !important;
+                }
+                .dr-sidebar-left {
+                    flex: 0 0 40% !important;
+                }
+                .dr-sidebar-right {
+                    flex: 1 !important;
+                }
+            }
+        `;
+        if (!document.getElementById('dr-responsive-styles')) {
+            desktopStyles.id = 'dr-responsive-styles';
+            document.head.appendChild(desktopStyles);
+        }
+        
+        container.className = 'dr-sidebar-container';
+        
+        // Left column: Patient info with surgery and y lệnh
+        const leftColumn = document.createElement('div');
+        leftColumn.className = 'dr-sidebar-left';
+        leftColumn.style.cssText = `
+            flex: 1;
+            min-width: 0;
+        `;
+        
         const info = createPatientInfoSection(patient, quickYLenhActions);
-        sidebar.appendChild(info);
+        leftColumn.appendChild(info);
         
         // Setup phẫu thuật handlers for the info section
         setupPhauThuatHandlers(info, patient);
         
-        // Checklist section
+        // Right column: Checklist section
+        const rightColumn = document.createElement('div');
+        rightColumn.className = 'dr-sidebar-right';
+        rightColumn.style.cssText = `
+            flex: 1;
+            min-width: 0;
+        `;
+        
         const checklistDiv = createChecklistSection(patient);
-        sidebar.appendChild(checklistDiv);
+        rightColumn.appendChild(checklistDiv);
+        
+        // Add columns to container
+        container.appendChild(leftColumn);
+        container.appendChild(rightColumn);
+        
+        // Add container to sidebar
+        sidebar.appendChild(container);
         
         // Close button
         const closeBtn = ModalManager.setupCloseHandlers(sidebar, backdrop);

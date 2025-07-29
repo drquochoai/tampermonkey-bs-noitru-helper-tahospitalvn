@@ -247,14 +247,6 @@ function showDashboardBenhNhanIfNeeded() {
             window.checklistObj = checklistObj;
             window.checklistState = ChecklistService.parseChecklistState(checklistObj);
             
-            // Update treatment plan if saved in checklist
-            if (window.checklistState && window.checklistState.kehoach) {
-                const treatmentField = document.getElementById('dr-treatment');
-                if (treatmentField) {
-                    treatmentField.value = window.checklistState.kehoach;
-                }
-            }
-
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
             if (yLenhLogContainer && window.checklistState && window.checklistState.yLenhLog) {

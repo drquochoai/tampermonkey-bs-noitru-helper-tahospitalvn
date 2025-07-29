@@ -11,7 +11,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <div><b>Tuổi:</b> ${Utils.calculateAge(patient.ngaysinh)}</div>
         <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
-        <div><b>Kế hoạch điều trị:</b><br><textarea id="dr-treatment" style="width:95%;min-height:60px;resize:vertical;">${patient.kehoach || ''}</textarea></div>
         
         <div style="margin-top:20px;">
             <h3 style="margin-bottom:10px;">Thông tin phẫu thuật</h3>
@@ -46,20 +45,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
             </div>
         </div>
     `;
-
-    // Setup treatment plan auto-save
-    const drTreatment = info.querySelector('#dr-treatment');
-    if (drTreatment) {
-        drTreatment.addEventListener('blur', async function () {
-            if (window.checklistObj) {
-                window.checklistState.kehoach = drTreatment.value;
-                const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                if (!success) {
-                    console.error('Lưu kế hoạch điều trị thất bại!');
-                }
-            }
-        });
-    }
 
     // Setup y lệnh functionality
     setupYLenhHandlers(info, patient);

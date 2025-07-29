@@ -103,13 +103,16 @@ function setupPhauThuatHandlers(infoElement, patient) {
             let value = parseInt(this.value);
             if (value > 59) this.value = 59;
             if (value < 0) this.value = 0;
-            if (this.value && this.value.length === 1) {
-                this.value = '0' + this.value;
-            }
         });
 
         minuteInput.addEventListener('focus', function() {
             this.select();
+        });
+
+        minuteInput.addEventListener('blur', function() {
+            if (this.value && this.value.length === 1) {
+                this.value = '0' + this.value;
+            }
         });
 
         hourInput.addEventListener('blur', function() {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.4.101
+// @version      1.4.11
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -852,13 +852,16 @@ function setupPhauThuatHandlers(infoElement, patient) {
             let value = parseInt(this.value);
             if (value > 59) this.value = 59;
             if (value < 0) this.value = 0;
-            if (this.value && this.value.length === 1) {
-                this.value = '0' + this.value;
-            }
         });
 
         minuteInput.addEventListener('focus', function() {
             this.select();
+        });
+
+        minuteInput.addEventListener('blur', function() {
+            if (this.value && this.value.length === 1) {
+                this.value = '0' + this.value;
+            }
         });
 
         hourInput.addEventListener('blur', function() {

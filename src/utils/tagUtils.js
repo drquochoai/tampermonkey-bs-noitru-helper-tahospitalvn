@@ -179,8 +179,20 @@ if (typeof window !== 'undefined') {
     window.updatePatientCardTags = updatePatientCardTags;
 }
 
+// Helper function to check if patient has discharge tag
+function hasDischargeTag(patient) {
+    if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
+        return false;
+    }
+    
+    return patient.checklistState.yLenhLog.some(entry => {
+        return entry.content && entry.content.toLowerCase().includes('xuất viện');
+    });
+}
+
 module.exports = { 
     createYLenhTags, 
     updatePatientCardTags,
-    hexToRgb 
+    hexToRgb,
+    hasDischargeTag 
 };

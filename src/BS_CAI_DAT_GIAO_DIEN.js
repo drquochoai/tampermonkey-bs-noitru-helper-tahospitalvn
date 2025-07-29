@@ -21,6 +21,28 @@ const BS_CAI_DAT = {
         'Phiếu kiểm tra HIV test (hsoft)',
     ],
 
+    // ================== CÀI ĐẶT CHECKLIST XUẤT VIỆN ==================
+    checklistXuatVien: [
+        'Mở HSBA v2',
+        'Nhập khoa (chỉnh chẩn đoán, ICD)',
+        'Mở trang dặn dò',
+        'Giấy ra viện',
+        'Tóm tắt bệnh án',
+        // Tờ điều trị sẽ có checklist con
+        {
+            label: 'Tờ điều trị',
+            children: [
+                'Thực hiện y lệnh thuốc đã dự trù',
+                'Trả thuốc cử chiều & tối',
+                'Toa thuốc ra viện',
+                'Chuyển dược, In toa',
+                'Tổng kết bệnh án trong tờ điều trị',
+                'Tổng kết bệnh án điện tử',
+                'Ký số các CLS tồn'
+            ]
+        }
+    ],
+
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
         { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },

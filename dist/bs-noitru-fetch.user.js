@@ -42,6 +42,28 @@ const BS_CAI_DAT = {
         'Phiếu kiểm tra HIV test (hsoft)',
     ],
 
+    // ================== CÀI ĐẶT CHECKLIST XUẤT VIỆN ==================
+    checklistXuatVien: [
+        'Mở HSBA v2',
+        'Nhập khoa (chỉnh chẩn đoán, ICD)',
+        'Mở trang dặn dò',
+        'Giấy ra viện',
+        'Tóm tắt bệnh án',
+        // Tờ điều trị sẽ có checklist con
+        {
+            label: 'Tờ điều trị',
+            children: [
+                'Thực hiện y lệnh thuốc đã dự trù',
+                'Trả thuốc cử chiều tối',
+                'Toa thuốc ra viện',
+                'Chuyển dược, In toa',
+                'Tổng kết bệnh án trong tờ điều trị',
+                'Tổng kết bệnh án điện tử',
+                'Ký số các CLS tồn'
+            ]
+        }
+    ],
+
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
         { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
@@ -1418,7 +1440,7 @@ const LoginHandler = require('./components/loginHandler');
 
 // Import newly refactored components
 const { createPatientInfoSection } = require('./components/patientInfoSection');
-const { createYLenhTags, updatePatientCardTags } = require('./utils/tagUtils');
+const { createYLenhTags, updatePatientCardTags, hasDischargeTag } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
 function showDashboardBenhNhanIfNeeded() {
@@ -1541,21 +1563,80 @@ function showDashboardBenhNhanIfNeeded() {
 
     function createChecklistSection(patient) {
         const checklistDiv = document.createElement('div');
-        checklistDiv.innerHTML = `<h3 style="margin-top:0">Checklist bộ mổ</h3>`;
         
-        const checklistUl = document.createElement('ul');
-        checklistUl.style = 'overflow-y:auto;padding-left:0;list-style:none;margin:0 0 16px 0;';
+        // Determine if patient has discharge tag
+        const hasDischarge = hasDischargeTag(patient);
+        const defaultTab = hasDischarge ? 'xuatvien' : 'bomo';
         
-        checklistDiv.appendChild(checklistUl);
+        checklistDiv.innerHTML = `
+            <h3 style="margin-top:0">Checklist</h3>
+            <div class="checklist-tabs" style="display:flex;margin-bottom:16px;border-bottom:2px solid #e0e0e0;">
+                <button class="tab-btn ${defaultTab === 'bomo' ? 'active' : ''}" data-tab="bomo" style="padding:8px 16px;border:none;background:${defaultTab === 'bomo' ? '#1976d2' : 'transparent'};color:${defaultTab === 'bomo' ? 'white' : '#666'};border-radius:4px 4px 0 0;cursor:pointer;font-weight:${defaultTab === 'bomo' ? 'bold' : 'normal'};">Bộ mổ</button>
+                <button class="tab-btn ${defaultTab === 'xuatvien' ? 'active' : ''}" data-tab="xuatvien" style="padding:8px 16px;border:none;background:${defaultTab === 'xuatvien' ? '#4caf50' : 'transparent'};color:${defaultTab === 'xuatvien' ? 'white' : '#666'};border-radius:4px 4px 0 0;cursor:pointer;margin-left:4px;font-weight:${defaultTab === 'xuatvien' ? 'bold' : 'normal'};">Xuất viện</button>
+            </div>
+            <div class="tab-content">
+                <div class="tab-pane ${defaultTab === 'bomo' ? 'active' : ''}" data-tab="bomo" style="display:${defaultTab === 'bomo' ? 'block' : 'none'};">
+                    <ul id="checklist-bomo" style="overflow-y:auto;padding-left:0;list-style:none;margin:0 0 16px 0;"></ul>
+                </div>
+                <div class="tab-pane ${defaultTab === 'xuatvien' ? 'active' : ''}" data-tab="xuatvien" style="display:${defaultTab === 'xuatvien' ? 'block' : 'none'};">
+                    <ul id="checklist-xuatvien" style="overflow-y:auto;padding-left:0;list-style:none;margin:0 0 16px 0;"></ul>
+                </div>
+            </div>
+        `;
         
-        // Load checklist data
-        loadChecklist(patient, checklistUl);
+        // Setup tab switching
+        setTimeout(() => {
+            const tabBtns = checklistDiv.querySelectorAll('.tab-btn');
+            const tabPanes = checklistDiv.querySelectorAll('.tab-pane');
+            
+            tabBtns.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const targetTab = this.getAttribute('data-tab');
+                    
+                    // Update buttons
+                    tabBtns.forEach(b => {
+                        b.classList.remove('active');
+                        b.style.background = 'transparent';
+                        b.style.color = '#666';
+                        b.style.fontWeight = 'normal';
+                    });
+                    
+                    this.classList.add('active');
+                    this.style.background = targetTab === 'bomo' ? '#1976d2' : '#4caf50';
+                    this.style.color = 'white';
+                    this.style.fontWeight = 'bold';
+                    
+                    // Update panes
+                    tabPanes.forEach(pane => {
+                        pane.classList.remove('active');
+                        pane.style.display = 'none';
+                    });
+                    
+                    const targetPane = checklistDiv.querySelector(`.tab-pane[data-tab="${targetTab}"]`);
+                    if (targetPane) {
+                        targetPane.classList.add('active');
+                        targetPane.style.display = 'block';
+                    }
+                });
+            });
+        }, 10);
+        
+        // Load both checklists
+        const bomoList = checklistDiv.querySelector('#checklist-bomo');
+        const xuatvienList = checklistDiv.querySelector('#checklist-xuatvien');
+        
+        if (bomoList) {
+            loadChecklist(patient, bomoList, 'bomo');
+        }
+        if (xuatvienList) {
+            loadChecklistXuatVien(patient, xuatvienList);
+        }
         
         return checklistDiv;
     }
 
     // Helper function to load checklist data
-    async function loadChecklist(patient, checklistUl, retryCount = 0) {
+    async function loadChecklist(patient, checklistUl, checklistType = 'bomo', retryCount = 0) {
         try {
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
             
@@ -1568,7 +1649,7 @@ function showDashboardBenhNhanIfNeeded() {
                 checklistUl.innerHTML = '<li>Không có dữ liệu</li>';
                 const created = await ChecklistService.createNewChecklist(patient);
                 if (created) {
-                    loadChecklist(patient, checklistUl, retryCount + 1);
+                    loadChecklist(patient, checklistUl, checklistType, retryCount + 1);
                 } else {
                     checklistUl.innerHTML = '<li>Lỗi tạo mới checklist phiếu!</li>';
                     if (retryCount < 1) {
@@ -1608,14 +1689,141 @@ function showDashboardBenhNhanIfNeeded() {
                 loadPhauThuatLogFromState();
             }
 
-            // Render checklist items
-            renderChecklistItems(checklistUl);
+            // Render checklist items for bộ mổ
+            if (checklistType === 'bomo') {
+                renderChecklistItems(checklistUl);
+            }
             
         } catch (error) {
             console.error('Error loading checklist:', error);
             checklistUl.innerHTML = '<li>Lỗi tải checklist</li>';
         }
     }
+
+    // Helper function to load checklist xuất viện
+    function loadChecklistXuatVien(patient, checklistUl) {
+        try {
+            checklistUl.innerHTML = '<li>Đang tải checklist xuất viện...</li>';
+            
+            setTimeout(() => {
+                renderChecklistXuatVien(checklistUl, patient);
+            }, 100);
+            
+        } catch (error) {
+            console.error('Error loading xuất viện checklist:', error);
+            checklistUl.innerHTML = '<li>Lỗi tải checklist xuất viện</li>';
+        }
+    }
+
+    // Helper function to render checklist xuất viện
+    function renderChecklistXuatVien(checklistUl, patient) {
+        checklistUl.innerHTML = '';
+        
+        BS_CAI_DAT.checklistXuatVien.forEach((item, idx) => {
+            const li = document.createElement('li');
+            li.style = 'margin-bottom:8px;';
+            
+            if (typeof item === 'string') {
+                // Simple checklist item
+                const id = 'dr-checklist-xv-' + idx;
+                const isChecked = window.checklistState && window.checklistState[`xuatvien_${item}`] || false;
+                
+                li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
+            } else if (item.children) {
+                // Parent item with children
+                const parentId = 'dr-checklist-xv-parent-' + idx;
+                const isParentChecked = window.checklistState && window.checklistState[`xuatvien_${item.label}`] || false;
+                
+                li.innerHTML = `
+                    <div style="margin-bottom:8px;">
+                        <label style="display:flex;align-items:center;gap:8px;font-weight:bold;">
+                            <input type="checkbox" id="${parentId}" ${isParentChecked ? 'checked' : ''}>${item.label}
+                        </label>
+                        <ul style="margin-left:24px;margin-top:8px;list-style:none;padding:0;">
+                            ${item.children.map((child, childIdx) => {
+                                const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
+                                const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
+                                return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
+                            }).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            checklistUl.appendChild(li);
+        });
+
+        // Setup checkbox change handlers for xuất viện
+        setTimeout(() => {
+            checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+                cb.addEventListener('change', async function () {
+                    const label = this.parentNode.textContent.trim();
+                    const key = `xuatvien_${label}`;
+                    
+                    if (!window.checklistState) {
+                        window.checklistState = {};
+                    }
+                    
+                    window.checklistState[key] = this.checked;
+                    
+                    const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+                    if (!success) {
+                        console.error('Lưu checklist xuất viện thất bại!');
+                    }
+                });
+            });
+        }, 10);
+    }
+
+    // Helper function to create checklist item HTML with special actions
+    function createChecklistItemHTML(itemText, id, isChecked, patient) {
+        const baseHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${isChecked ? 'checked' : ''}>${itemText}</label>`;
+        
+        // Add special buttons for certain items
+        if (itemText === 'Mở HSBA v2') {
+            return `
+                <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+                    ${baseHTML}
+                    <button onclick="openHSBAV2('${patient.mabn}')" style="background:#2196f3;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:0.8em;cursor:pointer;">Mở</button>
+                </div>
+            `;
+        } else if (itemText === 'Mở trang dặn dò') {
+            return `
+                <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+                    ${baseHTML}
+                    <button onclick="window.open('https://www.notion.so/hoaiump/D-N-D-RA-VI-N-21025280dcee804c971bea55557264b9', '_blank')" style="background:#ff9800;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:0.8em;cursor:pointer;">Mở</button>
+                </div>
+            `;
+        }
+        
+        return baseHTML;
+    }
+
+    // Global function to open HSBA V2
+    window.openHSBAV2 = async function(mabn) {
+        try {
+            const response = await fetch('/ToDieuTri/LoadLinkHsba', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'include',
+                body: 'code=' + encodeURIComponent(mabn)
+            });
+            
+            const result = await response.json();
+            if (result && result.data && result.data.link) {
+                window.open(result.data.link, '_blank');
+            } else {
+                console.error('Không lấy được link HSBA V2');
+                alert('Không lấy được link HSBA V2');
+            }
+        } catch (error) {
+            console.error('Lỗi khi load link HSBA V2:', error);
+            alert('Lỗi khi load link HSBA V2');
+        }
+    };
 
     // Helper function to load y lệnh log from state
     function loadYLenhLogFromState() {
@@ -3849,10 +4057,22 @@ if (typeof window !== 'undefined') {
     window.updatePatientCardTags = updatePatientCardTags;
 }
 
+// Helper function to check if patient has discharge tag
+function hasDischargeTag(patient) {
+    if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
+        return false;
+    }
+    
+    return patient.checklistState.yLenhLog.some(entry => {
+        return entry.content && entry.content.toLowerCase().includes('xuất viện');
+    });
+}
+
 module.exports = { 
     createYLenhTags, 
     updatePatientCardTags,
-    hexToRgb 
+    hexToRgb,
+    hasDischargeTag 
 };
 
 },{"../BS_CAI_DAT_GIAO_DIEN":1}]},{},[3]);

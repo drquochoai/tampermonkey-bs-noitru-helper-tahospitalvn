@@ -21,6 +21,32 @@ const { createPatientInfoSection } = require('./components/patientInfoSection');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
+// Global function to open HSBA V2 - Define at module level so it's available immediately
+window.openHSBAV2 = async function(mabn) {
+    try {
+        const response = await fetch('/ToDieuTri/LoadLinkHsba', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'include',
+            body: 'code=' + encodeURIComponent(mabn)
+        });
+        
+        const result = await response.json();
+        if (result && result.data && result.data.link) {
+            window.open(result.data.link, '_blank');
+        } else {
+            console.error('Không lấy được link HSBA V2');
+            alert('Không lấy được link HSBA V2');
+        }
+    } catch (error) {
+        console.error('Lỗi khi load link HSBA V2:', error);
+        alert('Lỗi khi load link HSBA V2');
+    }
+};
+
 function showDashboardBenhNhanIfNeeded() {
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
@@ -361,39 +387,13 @@ function showDashboardBenhNhanIfNeeded() {
             return `
                 <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
                     ${baseHTML}
-                    <button onclick="window.open('https://www.notion.so/hoaiump/D-N-D-RA-VI-N-21025280dcee804c971bea55557264b9', '_blank')" style="background:#ff9800;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:0.8em;cursor:pointer;">Mở</button>
+                    <button onclick="window.open('https://hoaiump.notion.site/D-N-D-RA-VI-N-21025280dcee804c971bea55557264b9', '_blank')" style="background:#ff9800;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:0.8em;cursor:pointer;">Mở</button>
                 </div>
             `;
         }
         
         return baseHTML;
     }
-
-    // Global function to open HSBA V2
-    window.openHSBAV2 = async function(mabn) {
-        try {
-            const response = await fetch('/ToDieuTri/LoadLinkHsba', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'include',
-                body: 'code=' + encodeURIComponent(mabn)
-            });
-            
-            const result = await response.json();
-            if (result && result.data && result.data.link) {
-                window.open(result.data.link, '_blank');
-            } else {
-                console.error('Không lấy được link HSBA V2');
-                alert('Không lấy được link HSBA V2');
-            }
-        } catch (error) {
-            console.error('Lỗi khi load link HSBA V2:', error);
-            alert('Lỗi khi load link HSBA V2');
-        }
-    };
 
     // Helper function to load y lệnh log from state
     function loadYLenhLogFromState() {
@@ -619,6 +619,124 @@ function showDashboardBenhNhanIfNeeded() {
         // Show modal
         ModalManager.showModal(sidebar, backdrop);
     }
+
+    // Helper function to parse surgery date and get detailed info
+    function getSurgeryDateInfo(surgeryDateStr) {
+        if (!surgeryDateStr) return null;
+        
+        // Extract date from surgery date string (format: dd/mm/yyyy or yyyy-mm-dd)
+        let surgeryDate;
+        if (surgeryDateStr.includes('/')) {
+            // Format: dd/mm/yyyy
+            const [day, month, year] = surgeryDateStr.split('/');
+            surgeryDate = new Date(year, month - 1, day);
+        } else if (surgeryDateStr.includes('-')) {
+            // Format: yyyy-mm-dd
+            surgeryDate = new Date(surgeryDateStr);
+        } else {
+            return null;
+        }
+        
+        // Get today's date (without time)
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Set surgery date to start of day
+        surgeryDate.setHours(0, 0, 0, 0);
+        
+        // Calculate days difference
+        const timeDiff = today.getTime() - surgeryDate.getTime();
+        const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+        
+        // Determine status
+        let status;
+        if (daysDiff > 0) {
+            status = 'past'; // Before today
+        } else if (daysDiff === 0) {
+            status = 'today'; // Today
+        } else {
+            status = 'future'; // Tomorrow or later
+        }
+        
+        return {
+            status: status,
+            daysDiff: daysDiff,
+            postOpDay: daysDiff >= 0 ? daysDiff : null // Only calculate for past/today surgeries
+        };
+    }
+
+    // Helper function to parse surgery date and compare with today (backward compatibility)
+    function getSurgeryDateStatus(surgeryDateStr) {
+        const info = getSurgeryDateInfo(surgeryDateStr);
+        return info ? info.status : null;
+    }
+
+    // Helper function to add surgery status icon to card
+    function addSurgeryStatusIcon(card, item) {
+        // Remove existing status icon if any
+        const existingIcon = card.querySelector('.dr-surgery-status-icon');
+        if (existingIcon) {
+            existingIcon.remove();
+        }
+        
+        // Get surgery date from item
+        let surgeryDate = null;
+        if (item.phauThuatInfo) {
+            // From new format
+            surgeryDate = item.phauThuatInfo.date || item.phauThuatInfo.ngayPhauThuat;
+        } else if (item.checklistState && item.checklistState.phauThuatLog && item.checklistState.phauThuatLog.length > 0) {
+            // From checklist log (latest surgery)
+            surgeryDate = item.checklistState.phauThuatLog[0].date;
+        }
+        
+        const surgeryInfo = getSurgeryDateInfo(surgeryDate);
+        if (!surgeryInfo) return;
+        
+        // Create icon element
+        const iconDiv = document.createElement('div');
+        iconDiv.className = 'dr-surgery-status-icon';
+        iconDiv.style.cssText = `
+            position: absolute;
+            top: -4px;
+            left: -4px;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            z-index: 10;
+            pointer-events: none;
+        `;
+        
+        // Set icon and title based on status
+        switch (surgeryInfo.status) {
+            case 'past':
+                iconDiv.textContent = '⬅️';
+                iconDiv.title = `Phẫu thuật đã qua - HPN${surgeryInfo.postOpDay}`;
+                break;
+            case 'today':
+                iconDiv.textContent = '⏸️';
+                iconDiv.title = 'Hôm nay PT';
+                break;
+            case 'future':
+                const daysUntil = Math.abs(surgeryInfo.daysDiff);
+                iconDiv.textContent = '➡️';
+                if (daysUntil === 1) {
+                    iconDiv.title = 'Ngày mai';
+                } else if (daysUntil === 2) {
+                    iconDiv.title = 'Ngày mốt PT';
+                } else {
+                    iconDiv.title = `Còn ${daysUntil} ngày nữa PT`;
+                }
+                break;
+        }
+        
+        // Add to card
+        card.style.position = 'relative';
+        card.appendChild(iconDiv);
+    }
+
     function renderCards(data) {
         const sortedData = PatientDataMapper.sortPatients([...data]);
         
@@ -643,31 +761,16 @@ function showDashboardBenhNhanIfNeeded() {
             sortedNewData.forEach((item, index) => {
                 const card = container.children[index];
                 if (card) {
-                    // Update surgery info if available
-                    if (item.phauThuatInfo) {
-                        const ptInfoContainer = card.querySelector('.dr-pt-info');
-                        if (ptInfoContainer) {
-                            const ptData = item.phauThuatInfo;
-                            
-                            let dateTime = '';
-                            if (ptData.date && ptData.time) {
-                                // New format from phauThuatHandlers
-                                dateTime = `${ptData.date} ${ptData.time}`;
-                            } else if (ptData.ngayPhauThuat && ptData.gioPhauThuat) {
-                                // Old format
-                                dateTime = `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}`;
-                            } else if (ptData.date) {
-                                dateTime = ptData.date;
-                            } else if (ptData.ngayPhauThuat) {
-                                dateTime = ptData.ngayPhauThuat;
-                            }
-                            
-                            const method = ptData.method || ptData.pppt || '';
-                            
-                            ptInfoContainer.innerHTML = `
-                                <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}</div>
-                                <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-                            `;
+                    // Update surgery info with post-op days using formatSurgeryInfo
+                    const ptInfoContainer = card.querySelector('.dr-pt-info');
+                    if (ptInfoContainer) {
+                        const formattedPtInfo = formatSurgeryInfo(item);
+                        // Extract just the inner content from the formatted HTML
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = formattedPtInfo;
+                        const innerContent = tempDiv.querySelector('.dr-pt-info');
+                        if (innerContent) {
+                            ptInfoContainer.innerHTML = innerContent.innerHTML;
                         }
                     }
                     
@@ -689,9 +792,76 @@ function showDashboardBenhNhanIfNeeded() {
                             }
                         }
                     }
+                    
+                    // Update surgery status icon
+                    addSurgeryStatusIcon(card, item);
                 }
             });
         };
+    }
+
+    // Helper function to format surgery info with post-op days
+    function formatSurgeryInfo(item) {
+        let ptInfo = '';
+        let surgeryDate = null;
+        let ptData = null;
+        
+        if (item.phauThuatInfo) {
+            ptData = item.phauThuatInfo;
+            surgeryDate = ptData.date || ptData.ngayPhauThuat;
+        } else if (item.checklistState && item.checklistState.phauThuatLog && item.checklistState.phauThuatLog.length > 0) {
+            // Get latest surgery from checklist log
+            ptData = item.checklistState.phauThuatLog[0];
+            surgeryDate = ptData.date;
+        }
+        
+        if (ptData) {
+            let dateTime = '';
+            if (ptData.date && ptData.time) {
+                // New format from phauThuatHandlers
+                dateTime = `${ptData.date} ${ptData.time}`;
+            } else if (ptData.ngayPhauThuat && ptData.gioPhauThuat) {
+                // Old format
+                dateTime = `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}`;
+            } else if (ptData.date) {
+                dateTime = ptData.date;
+            } else if (ptData.ngayPhauThuat) {
+                dateTime = ptData.ngayPhauThuat;
+            }
+            
+            const method = ptData.method || ptData.pppt || '';
+            
+            // Calculate post-op days
+            const surgeryInfo = getSurgeryDateInfo(surgeryDate);
+            let postOpDisplay = '';
+            if (surgeryInfo && surgeryInfo.postOpDay !== null) {
+                if (surgeryInfo.status === 'today') {
+                    postOpDisplay = ` <strong>(Hôm nay PT)</strong>`;
+                } else {
+                    postOpDisplay = ` <strong>(HPN${surgeryInfo.postOpDay})</strong>`;
+                }
+            } else if (surgeryInfo && surgeryInfo.status === 'future') {
+                const daysUntil = Math.abs(surgeryInfo.daysDiff);
+                if (daysUntil === 1) {
+                    postOpDisplay = ` <strong>(Ngày mai phẫu thuật)</strong>`;
+                } else if (daysUntil === 2) {
+                    postOpDisplay = ` <strong>(Ngày mốt PT)</strong>`;
+                } else {
+                    postOpDisplay = ` <strong>(Còn ${daysUntil} ngày nữa PT)</strong>`;
+                }
+            }
+            
+            console.log('Surgery info found for patient:', item.mabn, 'PPPT:', method, 'DateTime:', dateTime, 'PostOp:', postOpDisplay);
+            
+            ptInfo = `<div class="dr-pt-info">
+                <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}${postOpDisplay}</div>
+                <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
+            </div>`;
+        } else {
+            ptInfo = '<div class="dr-pt-info"></div>';
+        }
+        
+        return ptInfo;
     }
 
     function createPatientCard(item) {
@@ -708,22 +878,7 @@ function showDashboardBenhNhanIfNeeded() {
             item.teN_TOANHA
         );
 
-        let ptInfo = '';
-        if (item.phauThuatInfo) {
-            const ptData = item.phauThuatInfo;
-            const dateTime = ptData.ngayPhauThuat && ptData.gioPhauThuat ? 
-                `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}` : 
-                (ptData.ngayPhauThuat || '');
-            
-            console.log('Surgery info found for patient:', item.mabn, 'PPPT:', ptData.pppt, 'DateTime:', dateTime);
-            
-            ptInfo = `<div class="dr-pt-info">
-                <div class="dr-value"><span class="dr-label">PPPT:</span> ${ptData.pppt || ''}</div>
-                <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-            </div>`;
-        } else {
-            ptInfo = '<div class="dr-pt-info"></div>';
-        }
+        const ptInfo = formatSurgeryInfo(item);
         
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
@@ -736,6 +891,9 @@ function showDashboardBenhNhanIfNeeded() {
         // Add action buttons
         const btnGroup = createActionButtons(item);
         card.appendChild(btnGroup);
+        
+        // Add surgery status icon
+        addSurgeryStatusIcon(card, item);
         
         card.onclick = () => showSidebar(item);
         
@@ -792,39 +950,50 @@ function showDashboardBenhNhanIfNeeded() {
             if (cardTitle && cardTitle.textContent.includes(patient.mabn)) {
                 const checklistState = customChecklistState || window.checklistState;
                 
-                // Get latest surgery info from checklistState
-                let ptInfo = '';
+                // Create patient object with updated checklist state for formatSurgeryInfo
+                // Also ensure any existing phauThuatInfo is preserved/updated
+                const patientWithState = {
+                    ...patient,
+                    checklistState: checklistState
+                };
+                
+                // If checklistState has phauThuatLog, update patient's phauThuatInfo with latest entry
                 if (checklistState && checklistState.phauThuatLog && checklistState.phauThuatLog.length > 0) {
                     const latestPT = checklistState.phauThuatLog[0]; // Latest is first
-                    console.log('Latest surgery found:', latestPT);
-                    const dateTime = latestPT.date && latestPT.time ? 
-                        `${latestPT.date} ${latestPT.time}` : 
-                        (latestPT.date || '');
-                    
-                    ptInfo = `
-                        <div class="dr-value"><span class="dr-label">PPPT:</span> ${latestPT.method || ''}</div>
-                        <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-                    `;
-                    console.log('Generated ptInfo HTML:', ptInfo);
-                } else {
-                    console.log('No surgery data found for patient:', patient.mabn);
-                    console.log('checklistState details:', {
-                        exists: !!checklistState,
-                        hasPhauThuatLog: checklistState && !!checklistState.phauThuatLog,
-                        logLength: checklistState && checklistState.phauThuatLog ? checklistState.phauThuatLog.length : 'N/A'
-                    });
+                    patientWithState.phauThuatInfo = {
+                        date: latestPT.date,
+                        time: latestPT.time,
+                        method: latestPT.method,
+                        doctors: latestPT.doctors,
+                        // Keep backward compatibility
+                        ngayPhauThuat: latestPT.date,
+                        gioPhauThuat: latestPT.time,
+                        pppt: latestPT.method
+                    };
                 }
-
+                
+                // Use formatSurgeryInfo to get formatted surgery info with post-op days
+                const formattedPtInfo = formatSurgeryInfo(patientWithState);
+                
                 // Find existing surgery info container and update
                 const existingPTContainer = card.querySelector('.dr-pt-info');
                 if (existingPTContainer) {
-                    console.log('PT container found, current content:', existingPTContainer.innerHTML);
-                    existingPTContainer.innerHTML = ptInfo;
-                    console.log('Updated PT container with new content:', ptInfo);
-                    console.log('PT container content after update:', existingPTContainer.innerHTML);
+                    console.log('PT container found, updating with formatted info');
+                    // Extract just the inner content from the formatted HTML
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = formattedPtInfo;
+                    const innerContent = tempDiv.querySelector('.dr-pt-info');
+                    if (innerContent) {
+                        existingPTContainer.innerHTML = innerContent.innerHTML;
+                    }
+                    console.log('Updated PT container with post-op days and latest surgery info');
                 } else {
                     console.log('PT container not found for patient:', patient.mabn);
                 }
+                
+                // Update surgery status icon with the latest info
+                addSurgeryStatusIcon(card, patientWithState);
+                
                 break;
             }
         }

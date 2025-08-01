@@ -1,6 +1,7 @@
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
+const { updatePatientCardPhauThuat } = require('../utils/surgeryUtils');
 
 function createDoctorCheckboxes(className) {
     return BS_CAI_DAT.danhSachBacSi.map(doctor => 
@@ -255,7 +256,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
             savePhauThuatLog();
             renderPhauThuatLog(window.checklistState.phauThuatLog);
-            updatePatientCardPhauThuat(patient);
+            updatePatientCardPhauThuatLocal(patient);
             closePopup();
         }
 
@@ -318,7 +319,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
             window.checklistState.phauThuatLog.splice(index, 1);
             savePhauThuatLog();
             renderPhauThuatLog(window.checklistState.phauThuatLog);
-            updatePatientCardPhauThuat(patient);
+            updatePatientCardPhauThuatLocal(patient);
         }
     }
 
@@ -331,9 +332,17 @@ function setupPhauThuatHandlers(infoElement, patient) {
         }
     }
 
-    function updatePatientCardPhauThuat(patient) {
-        // This would need to be imported from dashboard or made global
-        if (window.updatePatientCardPhauThuat) {
+    function updatePatientCardPhauThuatLocal(patient) {
+        updatePatientCardPhauThuat(patient);
+        
+        // Also try global access as fallback
+        if (typeof unsafeWindow !== 'undefined' && unsafeWindow.updatePatientCardPhauThuat) {
+            unsafeWindow.updatePatientCardPhauThuat(patient);
+        } else if (typeof this !== 'undefined' && this.updatePatientCardPhauThuat) {
+            this.updatePatientCardPhauThuat(patient);
+        } else if (globalThis.updatePatientCardPhauThuat) {
+            globalThis.updatePatientCardPhauThuat(patient);
+        } else if (window.updatePatientCardPhauThuat) {
             window.updatePatientCardPhauThuat(patient);
         }
     }

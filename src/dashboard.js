@@ -21,9 +21,34 @@ const { createPatientInfoSection } = require('./components/patientInfoSection');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
+// Import utility functions
+const { showToast, copyToClipboard } = require('./utils/uiUtils');
+const { getSurgeryDateInfo, getSurgeryDateStatus, addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('./utils/surgeryUtils');
+const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('./utils/checklistUtils');
+
 function showDashboardBenhNhanIfNeeded() {
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
+
+    // Make utility functions globally available for onclick handlers
+    // Không sử dụng window để tránh lỗi undefined - sử dụng global assignment trực tiếp
+    if (typeof unsafeWindow !== 'undefined') {
+        unsafeWindow.showToast = showToast;
+        unsafeWindow.copyToClipboard = copyToClipboard;
+        unsafeWindow.copyYLenhText = copyYLenhText;
+        unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    } else if (typeof this !== 'undefined') {
+        this.showToast = showToast;
+        this.copyToClipboard = copyToClipboard;
+        this.copyYLenhText = copyYLenhText;
+        this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    } else {
+        // Fallback - tạo global functions không qua window
+        globalThis.showToast = showToast;
+        globalThis.copyToClipboard = copyToClipboard;
+        globalThis.copyYLenhText = copyYLenhText;
+        globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    }
     
     // Inject CSS styles for quick actions and tags
     if (!document.getElementById('dr-ylenh-styles')) {
@@ -300,24 +325,41 @@ function showDashboardBenhNhanIfNeeded() {
                 
                 li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
             } else if (item.children) {
-                // Parent item with children
-                const parentId = 'dr-checklist-xv-parent-' + idx;
-                const isParentChecked = window.checklistState && window.checklistState[`xuatvien_${item.label}`] || false;
-                
-                li.innerHTML = `
-                    <div style="margin-bottom:8px;">
-                        <label style="display:flex;align-items:center;gap:8px;font-weight:bold;">
-                            <input type="checkbox" id="${parentId}" ${isParentChecked ? 'checked' : ''}>${item.label}
-                        </label>
-                        <ul style="margin-left:24px;margin-top:8px;list-style:none;padding:0;">
-                            ${item.children.map((child, childIdx) => {
-                                const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
-                                const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
-                                return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
-                            }).join('')}
-                        </ul>
-                    </div>
-                `;
+                // Parent item with children - Special handling for "Tờ điều trị"
+                if (item.label === 'Tờ điều trị') {
+                    // Render as header without checkbox
+                    li.innerHTML = `
+                        <div style="margin-bottom:12px;">
+                            <h4 style="margin:0 0 8px 0;color:#1976d2;font-weight:bold;border-bottom:2px solid #e3f2fd;padding-bottom:4px;">📋 ${item.label}</h4>
+                            <ul style="margin-left:0;margin-top:8px;list-style:none;padding:0;">
+                                ${item.children.map((child, childIdx) => {
+                                    const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
+                                    const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
+                                    return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
+                                }).join('')}
+                            </ul>
+                        </div>
+                    `;
+                } else {
+                    // Normal parent item with checkbox
+                    const parentId = 'dr-checklist-xv-parent-' + idx;
+                    const isParentChecked = window.checklistState && window.checklistState[`xuatvien_${item.label}`] || false;
+                    
+                    li.innerHTML = `
+                        <div style="margin-bottom:8px;">
+                            <label style="display:flex;align-items:center;gap:8px;font-weight:bold;">
+                                <input type="checkbox" id="${parentId}" ${isParentChecked ? 'checked' : ''}>${item.label}
+                            </label>
+                            <ul style="margin-left:24px;margin-top:8px;list-style:none;padding:0;">
+                                ${item.children.map((child, childIdx) => {
+                                    const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
+                                    const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
+                                    return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
+                                }).join('')}
+                            </ul>
+                        </div>
+                    `;
+                }
             }
             
             checklistUl.appendChild(li);
@@ -343,57 +385,12 @@ function showDashboardBenhNhanIfNeeded() {
                 });
             });
         }, 10);
+        
+        // Make function available for reuse
+        window.renderChecklistXuatVien = renderChecklistXuatVien;
     }
 
-    // Helper function to create checklist item HTML with special actions
-    function createChecklistItemHTML(itemText, id, isChecked, patient) {
-        const baseHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${isChecked ? 'checked' : ''}>${itemText}</label>`;
-        
-        // Add special buttons for certain items
-        if (itemText === 'Mở HSBA v2') {
-            return `
-                <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
-                    ${baseHTML}
-                    <button onclick="openHSBAV2('${patient.mabn}')" style="background:#2196f3;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:0.8em;cursor:pointer;">Mở</button>
-                </div>
-            `;
-        } else if (itemText === 'Mở trang dặn dò') {
-            return `
-                <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
-                    ${baseHTML}
-                    <button onclick="window.open('https://www.notion.so/hoaiump/D-N-D-RA-VI-N-21025280dcee804c971bea55557264b9', '_blank')" style="background:#ff9800;color:white;border:none;border-radius:4px;padding:4px 8px;font-size:0.8em;cursor:pointer;">Mở</button>
-                </div>
-            `;
-        }
-        
-        return baseHTML;
-    }
 
-    // Global function to open HSBA V2
-    window.openHSBAV2 = async function(mabn) {
-        try {
-            const response = await fetch('/ToDieuTri/LoadLinkHsba', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'include',
-                body: 'code=' + encodeURIComponent(mabn)
-            });
-            
-            const result = await response.json();
-            if (result && result.data && result.data.link) {
-                window.open(result.data.link, '_blank');
-            } else {
-                console.error('Không lấy được link HSBA V2');
-                alert('Không lấy được link HSBA V2');
-            }
-        } catch (error) {
-            console.error('Lỗi khi load link HSBA V2:', error);
-            alert('Lỗi khi load link HSBA V2');
-        }
-    };
 
     // Helper function to load y lệnh log from state
     function loadYLenhLogFromState() {
@@ -544,20 +541,73 @@ function showDashboardBenhNhanIfNeeded() {
         const backdrop = ModalManager.getOrCreateBackdrop();
         const sidebar = ModalManager.getOrCreateSidebar();
         
-        // Clear and setup sidebar
+        // Clear and setup sidebar with responsive layout
         sidebar.innerHTML = '';
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
         
-        // Patient info form (using refactored module)
+        // Create responsive container
+        const container = document.createElement('div');
+        container.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            height: 100%;
+        `;
+        
+        // Add media query styles for desktop layout
+        const desktopStyles = document.createElement('style');
+        desktopStyles.textContent = `
+            @media (min-width: 1024px) {
+                .dr-sidebar-container {
+                    flex-direction: row !important;
+                    gap: 24px !important;
+                }
+                .dr-sidebar-left {
+                    flex: 0 0 40% !important;
+                }
+                .dr-sidebar-right {
+                    flex: 1 !important;
+                }
+            }
+        `;
+        if (!document.getElementById('dr-responsive-styles')) {
+            desktopStyles.id = 'dr-responsive-styles';
+            document.head.appendChild(desktopStyles);
+        }
+        
+        container.className = 'dr-sidebar-container';
+        
+        // Left column: Patient info with surgery and y lệnh
+        const leftColumn = document.createElement('div');
+        leftColumn.className = 'dr-sidebar-left';
+        leftColumn.style.cssText = `
+            flex: 1;
+            min-width: 0;
+        `;
+        
         const info = createPatientInfoSection(patient, quickYLenhActions);
-        sidebar.appendChild(info);
+        leftColumn.appendChild(info);
         
         // Setup phẫu thuật handlers for the info section
         setupPhauThuatHandlers(info, patient);
         
-        // Checklist section
+        // Right column: Checklist section
+        const rightColumn = document.createElement('div');
+        rightColumn.className = 'dr-sidebar-right';
+        rightColumn.style.cssText = `
+            flex: 1;
+            min-width: 0;
+        `;
+        
         const checklistDiv = createChecklistSection(patient);
-        sidebar.appendChild(checklistDiv);
+        rightColumn.appendChild(checklistDiv);
+        
+        // Add columns to container
+        container.appendChild(leftColumn);
+        container.appendChild(rightColumn);
+        
+        // Add container to sidebar
+        sidebar.appendChild(container);
         
         // Close button
         const closeBtn = ModalManager.setupCloseHandlers(sidebar, backdrop);
@@ -566,6 +616,9 @@ function showDashboardBenhNhanIfNeeded() {
         // Show modal
         ModalManager.showModal(sidebar, backdrop);
     }
+
+
+
     function renderCards(data) {
         const sortedData = PatientDataMapper.sortPatients([...data]);
         
@@ -583,38 +636,23 @@ function showDashboardBenhNhanIfNeeded() {
         // Add bottom bar
         createBottomBar(sortedData.length);
 
-        window.refreshPatientCards = function(newData) {
+        const refreshPatientCards = function(newData) {
             const sortedNewData = PatientDataMapper.sortPatients([...newData]);
             
             // Update existing cards instead of full re-render to avoid interrupting user
             sortedNewData.forEach((item, index) => {
                 const card = container.children[index];
                 if (card) {
-                    // Update surgery info if available
-                    if (item.phauThuatInfo) {
-                        const ptInfoContainer = card.querySelector('.dr-pt-info');
-                        if (ptInfoContainer) {
-                            const ptData = item.phauThuatInfo;
-                            
-                            let dateTime = '';
-                            if (ptData.date && ptData.time) {
-                                // New format from phauThuatHandlers
-                                dateTime = `${ptData.date} ${ptData.time}`;
-                            } else if (ptData.ngayPhauThuat && ptData.gioPhauThuat) {
-                                // Old format
-                                dateTime = `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}`;
-                            } else if (ptData.date) {
-                                dateTime = ptData.date;
-                            } else if (ptData.ngayPhauThuat) {
-                                dateTime = ptData.ngayPhauThuat;
-                            }
-                            
-                            const method = ptData.method || ptData.pppt || '';
-                            
-                            ptInfoContainer.innerHTML = `
-                                <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}</div>
-                                <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-                            `;
+                    // Update surgery info with post-op days using formatSurgeryInfo
+                    const ptInfoContainer = card.querySelector('.dr-pt-info');
+                    if (ptInfoContainer) {
+                        const formattedPtInfo = formatSurgeryInfo(item);
+                        // Extract just the inner content from the formatted HTML
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = formattedPtInfo;
+                        const innerContent = tempDiv.querySelector('.dr-pt-info');
+                        if (innerContent) {
+                            ptInfoContainer.innerHTML = innerContent.innerHTML;
                         }
                     }
                     
@@ -636,10 +674,27 @@ function showDashboardBenhNhanIfNeeded() {
                             }
                         }
                     }
+                    
+                    // Update surgery status icon
+                    addSurgeryStatusIcon(card, item);
                 }
             });
         };
+
+        // Make functions available for global use
+        if (typeof unsafeWindow !== 'undefined') {
+            unsafeWindow.refreshPatientCards = refreshPatientCards;
+            unsafeWindow.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
+        } else if (typeof this !== 'undefined') {
+            this.refreshPatientCards = refreshPatientCards;
+            this.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
+        } else {
+            globalThis.refreshPatientCards = refreshPatientCards;
+            globalThis.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
+        }
     }
+
+
 
     function createPatientCard(item) {
         const room = item.teN_PHONG || '';
@@ -655,22 +710,7 @@ function showDashboardBenhNhanIfNeeded() {
             item.teN_TOANHA
         );
 
-        let ptInfo = '';
-        if (item.phauThuatInfo) {
-            const ptData = item.phauThuatInfo;
-            const dateTime = ptData.ngayPhauThuat && ptData.gioPhauThuat ? 
-                `${ptData.ngayPhauThuat} ${ptData.gioPhauThuat}` : 
-                (ptData.ngayPhauThuat || '');
-            
-            console.log('Surgery info found for patient:', item.mabn, 'PPPT:', ptData.pppt, 'DateTime:', dateTime);
-            
-            ptInfo = `<div class="dr-pt-info">
-                <div class="dr-value"><span class="dr-label">PPPT:</span> ${ptData.pppt || ''}</div>
-                <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-            </div>`;
-        } else {
-            ptInfo = '<div class="dr-pt-info"></div>';
-        }
+        const ptInfo = formatSurgeryInfo(item);
         
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
@@ -684,101 +724,19 @@ function showDashboardBenhNhanIfNeeded() {
         const btnGroup = createActionButtons(item);
         card.appendChild(btnGroup);
         
+        // Add surgery status icon
+        addSurgeryStatusIcon(card, item);
+        
         card.onclick = () => showSidebar(item);
         
         return card;
     }
 
-    // Helper function to check celebration for card
-    function checkCelebrationForCard(card, patient) {
-        if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
-            card.classList.remove('xuatvienanimation');
-            return;
-        }
 
-        // Check if any entries contain "xuất viện"
-        const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
-            return entry.content && entry.content.toLowerCase().includes('xuất viện');
-        });
 
-        if (dischargeEntries.length > 0) {
-            card.classList.add('xuatvienanimation');
-        } else {
-            card.classList.remove('xuatvienanimation');
-        }
-    }
 
-    // Global function to check celebration animations for all cards
-    window.checkAllCelebrationAnimations = function(enrichedPatients) {
-        const cards = document.querySelectorAll('.dr-card');
-        
-        cards.forEach((card) => {
-            // Get patient MABN from card
-            const cardTitle = card.querySelector('h2');
-            if (!cardTitle) return;
-            
-            const cardText = cardTitle.textContent;
-            const mabnMatch = cardText.match(/(\d{8,})/); // Find MABN pattern
-            if (!mabnMatch) return;
-            
-            const mabn = mabnMatch[1];
-            
-            // Find corresponding patient in enriched data
-            const patient = enrichedPatients.find(p => p.mabn === mabn);
-            if (patient) {
-                checkCelebrationForCard(card, patient);
-            }
-        });
-    };
 
-    // Helper function to update patient card surgery info
-    function updatePatientCardPhauThuat(patient, customChecklistState = null) {
-        const cards = document.querySelectorAll('.dr-card');
-        for (let card of cards) {
-            const cardTitle = card.querySelector('h2');
-            if (cardTitle && cardTitle.textContent.includes(patient.mabn)) {
-                const checklistState = customChecklistState || window.checklistState;
-                
-                // Get latest surgery info from checklistState
-                let ptInfo = '';
-                if (checklistState && checklistState.phauThuatLog && checklistState.phauThuatLog.length > 0) {
-                    const latestPT = checklistState.phauThuatLog[0]; // Latest is first
-                    console.log('Latest surgery found:', latestPT);
-                    const dateTime = latestPT.date && latestPT.time ? 
-                        `${latestPT.date} ${latestPT.time}` : 
-                        (latestPT.date || '');
-                    
-                    ptInfo = `
-                        <div class="dr-value"><span class="dr-label">PPPT:</span> ${latestPT.method || ''}</div>
-                        <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
-                    `;
-                    console.log('Generated ptInfo HTML:', ptInfo);
-                } else {
-                    console.log('No surgery data found for patient:', patient.mabn);
-                    console.log('checklistState details:', {
-                        exists: !!checklistState,
-                        hasPhauThuatLog: checklistState && !!checklistState.phauThuatLog,
-                        logLength: checklistState && checklistState.phauThuatLog ? checklistState.phauThuatLog.length : 'N/A'
-                    });
-                }
 
-                // Find existing surgery info container and update
-                const existingPTContainer = card.querySelector('.dr-pt-info');
-                if (existingPTContainer) {
-                    console.log('PT container found, current content:', existingPTContainer.innerHTML);
-                    existingPTContainer.innerHTML = ptInfo;
-                    console.log('Updated PT container with new content:', ptInfo);
-                    console.log('PT container content after update:', existingPTContainer.innerHTML);
-                } else {
-                    console.log('PT container not found for patient:', patient.mabn);
-                }
-                break;
-            }
-        }
-    }
-
-    // Make updatePatientCardPhauThuat available globally for modules
-    window.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
 
     // Helper function to create action buttons
     function createActionButtons(item) {

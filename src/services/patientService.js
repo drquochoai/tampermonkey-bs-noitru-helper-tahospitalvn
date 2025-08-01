@@ -158,7 +158,13 @@ const PatientService = {
             window.dr_data = enrichedData;
             
             // Trigger re-render of cards with updated data
-            if (typeof window.refreshPatientCards === 'function') {
+            if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.refreshPatientCards === 'function') {
+                unsafeWindow.refreshPatientCards(enrichedData);
+            } else if (typeof this !== 'undefined' && typeof this.refreshPatientCards === 'function') {
+                this.refreshPatientCards(enrichedData);
+            } else if (typeof globalThis.refreshPatientCards === 'function') {
+                globalThis.refreshPatientCards(enrichedData);
+            } else if (typeof window.refreshPatientCards === 'function') {
                 window.refreshPatientCards(enrichedData);
             }
             
@@ -166,7 +172,13 @@ const PatientService = {
             
             // Check for celebration animations after background enrichment
             setTimeout(() => {
-                if (typeof window.checkAllCelebrationAnimations === 'function') {
+                if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.checkAllCelebrationAnimations === 'function') {
+                    unsafeWindow.checkAllCelebrationAnimations(enrichedData);
+                } else if (typeof this !== 'undefined' && typeof this.checkAllCelebrationAnimations === 'function') {
+                    this.checkAllCelebrationAnimations(enrichedData);
+                } else if (typeof globalThis.checkAllCelebrationAnimations === 'function') {
+                    globalThis.checkAllCelebrationAnimations(enrichedData);
+                } else if (typeof window.checkAllCelebrationAnimations === 'function') {
                     window.checkAllCelebrationAnimations(enrichedData);
                 }
             }, 200);

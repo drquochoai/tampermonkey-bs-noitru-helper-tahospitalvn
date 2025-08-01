@@ -1,3 +1,40 @@
+// Global function to open HSBA V2 - Define at top level for global access
+// This needs to be outside any function to be truly global
+// Don't use window.openHSBAV2 as it may not work in Tampermonkey
+async function openHSBAV2(mabn) {
+    try {
+        const response = await fetch('/ToDieuTri/LoadLinkHsba', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'include',
+            body: 'code=' + encodeURIComponent(mabn)
+        });
+        
+        const result = await response.json();
+        if (result && result.data && result.data.link) {
+            window.open(result.data.link, '_blank');
+        } else {
+            console.error('Không lấy được link HSBA V2');
+            alert('Không lấy được link HSBA V2');
+        }
+    } catch (error) {
+        console.error('Lỗi khi load link HSBA V2:', error);
+        alert('Lỗi khi load link HSBA V2');
+    }
+}
+
+// Also assign to window as fallback but the function declaration above should work
+if (typeof window !== 'undefined') {
+    window.openHSBAV2 = openHSBAV2;
+}
+
+// Make it available in global scope for Tampermonkey
+this.openHSBAV2 = openHSBAV2;
+unsafeWindow.openHSBAV2 = openHSBAV2;
+
 (function () {
     'use strict';
 

@@ -33,7 +33,7 @@ function setupYLenhHandlers(infoElement, patient) {
             return;
         }
 
-        logContainer.innerHTML = manualEntries.map((entry, index) => {
+    logContainer.innerHTML = manualEntries.map((entry, index) => {
             // Find original index in full array for correct removal
             const originalIndex = yLenhArray.findIndex(originalEntry => 
                 originalEntry.id === entry.id || 
@@ -41,7 +41,7 @@ function setupYLenhHandlers(infoElement, patient) {
             );
             
             return `
-                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;">
+        <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;word-break: break-word; overflow-wrap: anywhere;">
                     <button class="remove-y-lenh-btn" data-index="${originalIndex}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
                     <div style="font-size:0.9em;color:#666;margin-bottom:4px;">${entry.timestamp}</div>
                     <div style="font-weight:bold;color:#333;">${entry.content}</div>

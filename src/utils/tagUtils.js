@@ -45,7 +45,7 @@ function createYLenhTags(patient) {
         
         return `<span class="ylenh-tag${dischargeClass}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
             <span class="icon">📋</span>
-            ${entry.content}
+            <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}</span>
         </span>`;
     }).join('');
 

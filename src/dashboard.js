@@ -124,6 +124,8 @@ function showDashboardBenhNhanIfNeeded() {
                 flex-wrap: wrap;
                 gap: 4px;
                 margin: 8px 0 4px 0;
+                overflow-wrap: anywhere;
+                word-break: break-word;
             }
 
             .ylenh-tag {
@@ -137,7 +139,11 @@ function showDashboardBenhNhanIfNeeded() {
                 border-radius: 12px;
                 font-size: 11px;
                 font-weight: 500;
-                white-space: nowrap;
+                white-space: normal; /* allow wrapping */
+                overflow-wrap: anywhere;
+                word-break: break-word;
+                max-width: 100%;
+                flex-wrap: wrap;
             }
 
             /* Hiệu ứng cho tag Xuất viện - giữ đơn giản */
@@ -404,7 +410,7 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             logContainer.innerHTML = yLenhArray.map((entry, index) => `
-                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;">
+                <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;word-break: break-word; overflow-wrap: anywhere;">
                     <button class="remove-y-lenh-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
                     <div style="font-size:0.9em;color:#666;margin-bottom:4px;">${entry.timestamp}</div>
                     <div style="font-weight:bold;color:#333;">${entry.content}</div>
@@ -585,6 +591,17 @@ function showDashboardBenhNhanIfNeeded() {
             min-width: 0;
         `;
         
+        // Sidebar action buttons (reuse card actions behavior)
+        const sidebarActions = document.createElement('div');
+        sidebarActions.className = 'dr-sidebar-actions';
+        sidebarActions.style.cssText = `
+            display: flex; justify-content: flex-end; gap: 8px; 
+            margin-bottom: 12px; flex-wrap: wrap;
+        `;
+        sidebarActions.appendChild(createToDieuTriButton(patient));
+        sidebarActions.appendChild(createHsbaButton(patient));
+        leftColumn.appendChild(sidebarActions);
+
         const info = createPatientInfoSection(patient, quickYLenhActions);
         leftColumn.appendChild(info);
         
@@ -623,18 +640,97 @@ function showDashboardBenhNhanIfNeeded() {
         const sortedData = PatientDataMapper.sortPatients([...data]);
         
         document.body.innerHTML = '';
+
+        // Create top filter/search bar
+        const topBar = document.createElement('div');
+        topBar.className = 'dr-top-filter-bar';
+        topBar.style.cssText = `
+            position: sticky; top: 0; z-index: 1000;
+            display: flex; align-items: center; gap: 12px; 
+            padding: 12px 16px; margin: 0 0 8px 0;
+            background: #fff; border-bottom: 1px solid #e0e0e0;
+        `;
+        topBar.innerHTML = `
+            <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
+                style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
+            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <input id="dr-filter-xuatvien" type="checkbox"> Chỉ 'Xuất viện' hôm nay
+            </label>
+            <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
+        `;
+
         const container = document.createElement('div');
         container.className = 'dr-card-list';
         
         sortedData.forEach(item => {
             const card = createPatientCard(item);
+            // mark useful attributes for filtering
+            if (item && item.mabn) card.setAttribute('data-mabn', item.mabn);
+            if (item && item.hoten) card.setAttribute('data-name', (item.hoten || '').toLowerCase());
+            if (item && item.chandoanvk) card.setAttribute('data-cd', (item.chandoanvk || '').toLowerCase());
+            if (item && (item.teN_PHONG || item.teN_GIUONG)) {
+                const loc = PatientDataMapper.formatRoomLocation(
+                    item.teN_PHONG,
+                    item.teN_GIUONG,
+                    item.teN_TANG,
+                    item.teN_TOANHA
+                );
+                card.setAttribute('data-loc', (loc || '').toLowerCase());
+            }
             container.appendChild(card);
         });
         
+        // Append top bar then container
+        document.body.appendChild(topBar);
         document.body.appendChild(container);
         
         // Add bottom bar
         createBottomBar(sortedData.length);
+
+        // Filter logic
+        const searchInput = topBar.querySelector('#dr-search-input');
+        const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
+        const filterCount = topBar.querySelector('#dr-filter-count');
+
+        function applyFilter() {
+            const q = (searchInput.value || '').trim().toLowerCase();
+            const onlyXV = !!chkXuatVien.checked;
+            let visible = 0;
+
+            const cards = container.querySelectorAll('.dr-card');
+            cards.forEach(card => {
+                const txt = card.textContent.toLowerCase();
+                const matchesText = q === '' || txt.includes(q) ||
+                    card.getAttribute('data-mabn')?.toLowerCase().includes(q) ||
+                    card.getAttribute('data-name')?.includes(q) ||
+                    card.getAttribute('data-cd')?.includes(q) ||
+                    card.getAttribute('data-loc')?.includes(q);
+                const matchesXV = !onlyXV || card.classList.contains('xuatvienanimation');
+                const show = matchesText && matchesXV;
+                card.style.display = show ? '' : 'none';
+                if (show) visible++;
+            });
+
+            // Update counts in top bar and bottom bar
+            filterCount.textContent = q || onlyXV ? `Hiển thị: ${visible}/${sortedData.length}` : '';
+            const bottomLeft = document.querySelector('.dr-bottom-bar-left');
+            if (bottomLeft) {
+                bottomLeft.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (q || onlyXV ? ` (lọc: ${visible})` : '');
+            }
+        }
+
+        searchInput.addEventListener('input', applyFilter);
+        chkXuatVien.addEventListener('change', applyFilter);
+
+        // Prefill from query param ?q=
+        try {
+            const u = new URL(window.location.href);
+            const qParam = u.searchParams.get('q');
+            if (qParam) {
+                searchInput.value = qParam;
+                applyFilter();
+            }
+        } catch (_) {}
 
         const refreshPatientCards = function(newData) {
             const sortedNewData = PatientDataMapper.sortPatients([...newData]);
@@ -677,6 +773,12 @@ function showDashboardBenhNhanIfNeeded() {
                     
                     // Update surgery status icon
                     addSurgeryStatusIcon(card, item);
+
+                    // Re-evaluate filter visibility after updates (e.g., xuatvienanimation class changes)
+                    // Delay to allow DOM/class updates done elsewhere
+                    setTimeout(() => {
+                        applyFilter();
+                    }, 0);
                 }
             });
         };

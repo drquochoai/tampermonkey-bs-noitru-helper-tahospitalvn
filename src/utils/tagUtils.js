@@ -52,10 +52,12 @@ function createYLenhTags(patient) {
 
         const dischargeClass = isDischarge ? ' discharge' : '';
         const classes = `ylenh-tag${dischargeClass}${stateClass}`;
+        // Append discharge time if available and is Xuất viện
+        const timeText = (isDischarge && entry.dischargeTime) ? ` (${entry.dischargeTime})` : '';
 
         return `<span class="${classes}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
             <span class="icon">${stateIcon}</span>
-            <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}</span>
+            <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}${timeText}</span>
         </span>`;
     }).join('');
 
@@ -91,9 +93,9 @@ function checkAndAddCelebrationClass(card, patient) {
     const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
         const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
         const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
-        // If quick action, prefer done status to count as celebration
+        // If quick action, count both active and done for celebration
         if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
-            return entry.status === 'done';
+            return entry.status === 'active' || entry.status === 'done';
         }
         
         console.log('DEBUG entry:', entry.content, 'timestamp:', entry.timestamp, 'hasDischarge:', hasDischarge, 'isToday:', isToday);

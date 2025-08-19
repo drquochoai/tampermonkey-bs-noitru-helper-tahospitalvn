@@ -171,6 +171,146 @@ function setupYLenhHandlers(infoElement, patient) {
         }
     });
 
+    // Helper: find today's quick entry by action
+    function findTodayQuickEntryByAction(actionText) {
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        if (!window.checklistState || !Array.isArray(window.checklistState.yLenhLog)) return { entry: null, index: -1 };
+        const index = window.checklistState.yLenhLog.findIndex(e => {
+            const entryDate = e.timestamp ? e.timestamp.split(' ')[0] : '';
+            const sameAction = e.action ? e.action === actionText : e.content === actionText;
+            return entryDate === todayStr && sameAction && (e.q === true || e.content === actionText);
+        });
+        return { entry: index >= 0 ? window.checklistState.yLenhLog[index] : null, index };
+    }
+
+    // UI: Discharge time editor (appears when 'Xuất viện' quick action is present today)
+    function ensureDischargeTimeEditor() {
+        const hostAfter = infoElement.querySelector('.quick-ylenh-actions');
+        if (!hostAfter) return;
+        const { entry } = findTodayQuickEntryByAction('Xuất viện');
+        let editor = infoElement.querySelector('.xv-time-editor');
+        if (!entry) {
+            if (editor) editor.remove();
+            return;
+        }
+        // ensure editor exists
+        if (!editor) {
+            editor = document.createElement('div');
+            editor.className = 'xv-time-editor';
+            editor.innerHTML = `
+              <label class="xv-label">Xuất viện lúc:</label>
+              <input class="xv-time xv-hour" type="number" min="0" max="23" placeholder="HH" style="width:56px;text-align:center;" />
+              <span>:</span>
+              <input class="xv-time xv-min" type="number" min="0" max="59" placeholder="mm" style="width:56px;text-align:center;" />
+                            <div class="xv-presets" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                                <button type="button" class="xv-chip" data-time="11:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">11:00</button>
+                                <button type="button" class="xv-chip" data-time="12:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">12:00</button>
+                                <button type="button" class="xv-chip" data-time="13:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">13:00</button>
+                                <button type="button" class="xv-chip" data-time="14:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">14:00</button>
+                                <button type="button" class="xv-chip" data-time="15:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">15:00</button>
+                            </div>
+              <span class="xv-saved" style="display:none;">Đã lưu</span>
+            `;
+            hostAfter.insertAdjacentElement('afterend', editor);
+        }
+        const hourInput = editor.querySelector('.xv-hour');
+        const minInput = editor.querySelector('.xv-min');
+                const presets = editor.querySelector('.xv-presets');
+        const saved = editor.querySelector('.xv-saved');
+        // default to 12:00 if missing
+        if (!entry.dischargeTime) entry.dischargeTime = '12:00';
+        const [hh = '12', mm = '00'] = (entry.dischargeTime || '12:00').split(':');
+        if (hourInput.value !== hh) hourInput.value = hh;
+        if (minInput.value !== mm) minInput.value = mm;
+        // Bind change handlers once
+        const commit = async () => {
+            const { entry: current, index } = findTodayQuickEntryByAction('Xuất viện');
+            if (current && index >= 0) {
+                let h = parseInt(hourInput.value, 10);
+                let m = parseInt(minInput.value, 10);
+                if (isNaN(h)) h = 12; if (isNaN(m)) m = 0;
+                h = Math.max(0, Math.min(23, h));
+                m = Math.max(0, Math.min(59, m));
+                const hh2 = String(h).padStart(2, '0');
+                const mm2 = String(m).padStart(2, '0');
+                current.dischargeTime = `${hh2}:${mm2}`;
+                // Update dr_data patient state for tag refresh
+                if (window.dr_data && patient.mabn) {
+                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) patientInData.checklistState = { ...window.checklistState };
+                }
+                await saveYLenhLog();
+                if (typeof window.updatePatientCardTags === 'function') {
+                    window.updatePatientCardTags(patient.mabn);
+                }
+                if (saved) {
+                    saved.style.display = 'inline';
+                    setTimeout(() => { saved.style.display = 'none'; }, 1000);
+                }
+            }
+        };
+        if (!hourInput._bound) {
+            hourInput.addEventListener('change', commit);
+            hourInput.addEventListener('blur', commit);
+            hourInput._bound = true;
+        }
+        // UX: select all text in hour field when user clicks/focuses it
+        if (!hourInput._selectAllBound) {
+            const selectAll = (e) => {
+                try {
+                    // Attempt twice to handle timing quirks
+                    e.target.select && e.target.select();
+                    setTimeout(() => {
+                        try { e.target.select && e.target.select(); } catch (_) {}
+                    }, 0);
+                } catch (_) { /* noop */ }
+            };
+            hourInput.addEventListener('focus', selectAll);
+            hourInput.addEventListener('click', selectAll);
+            // Prevent mouseup from clearing the selection in some browsers
+            hourInput.addEventListener('mouseup', (ev) => ev.preventDefault());
+            hourInput._selectAllBound = true;
+        }
+        if (!minInput._bound) {
+            minInput.addEventListener('change', commit);
+            minInput.addEventListener('blur', commit);
+            minInput._bound = true;
+        }
+        // UX: select all text in minute field when user clicks/focuses it
+        if (!minInput._selectAllBound) {
+            const selectAllMin = (e) => {
+                try {
+                    e.target.select && e.target.select();
+                    setTimeout(() => {
+                        try { e.target.select && e.target.select(); } catch (_) {}
+                    }, 0);
+                } catch (_) { /* noop */ }
+            };
+            minInput.addEventListener('focus', selectAllMin);
+            minInput.addEventListener('click', selectAllMin);
+            minInput.addEventListener('mouseup', (ev) => ev.preventDefault());
+            minInput._selectAllBound = true;
+        }
+
+        // Preset chips: quick one-tap set and save
+        if (presets && !presets._bound) {
+            presets.querySelectorAll('.xv-chip').forEach(chip => {
+                chip.addEventListener('click', async () => {
+                    const tm = chip.getAttribute('data-time') || '12:00';
+                    const [hh3, mm3] = tm.split(':');
+                    hourInput.value = hh3.padStart(2, '0');
+                    minInput.value = mm3.padStart(2, '0');
+                    await commit();
+                    // brief visual press feedback
+                    chip.style.transform = 'scale(0.98)';
+                    setTimeout(() => { chip.style.transform = ''; }, 120);
+                });
+            });
+            presets._bound = true;
+        }
+    }
+
     // Quick action buttons event listeners - Toggle logic (3-state: off -> active -> done -> off)
     infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -212,6 +352,10 @@ function setupYLenhHandlers(infoElement, patient) {
                 action: actionText,
                 status: 'active'
             };
+            // If this is 'Xuất viện', set default discharge time
+            if (actionText === 'Xuất viện') {
+                newEntry.dischargeTime = '12:00';
+            }
             window.checklistState.yLenhLog.unshift(newEntry);
             buttonElement.classList.add('active');
             buttonElement.classList.remove('done');
@@ -238,8 +382,8 @@ function setupYLenhHandlers(infoElement, patient) {
             }
         }
 
-        // Save changes
-        saveYLenhLog();
+    // Save changes
+    saveYLenhLog();
         renderYLenhLog(window.checklistState.yLenhLog);
 
         // Update patient object in window.dr_data
@@ -255,8 +399,10 @@ function setupYLenhHandlers(infoElement, patient) {
             window.updatePatientCardTags(patient.mabn);
         }
 
-        // Check celebration animation for "Xuất viện"
+        // Discharge time editor + celebration animation for 'Xuất viện'
         if (actionText === 'Xuất viện') {
+            // ensure time editor is visible/hidden appropriately
+            ensureDischargeTimeEditor();
             setTimeout(() => {
                 if (typeof window.checkAllCelebrationAnimations === 'function') {
                     const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
@@ -302,6 +448,8 @@ function setupYLenhHandlers(infoElement, patient) {
     setTimeout(() => {
         loadYLenhLog();
         updateQuickActionButtonStates();
+        // Ensure discharge editor appears if needed on load
+        ensureDischargeTimeEditor();
     }, 100);
 
     // Store reference to removeYLenh for use in loadYLenhLogFromState
@@ -313,7 +461,7 @@ function setupYLenhHandlers(infoElement, patient) {
         renderYLenhLog,
         addYLenh,
         removeYLenh,
-        updateQuickActionButtonStates
+    updateQuickActionButtonStates
     };
 }
 

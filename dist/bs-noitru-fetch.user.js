@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.5.7
+// @version      1.6.0
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -759,6 +759,12 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         </div>
         
         <div style="margin-top:20px;">
+            <h3 style="margin-bottom:10px;">Kế hoạch điều trị / Hướng xử trí</h3>
+            <textarea id="dr-hxt-textarea" rows="3" placeholder="VD: Kháng sinh 7 ngày, dự kiến xuất viện 22/08, tái khám sau 1 tuần..." style="width:100%;padding:10px;border:1px solid #eee;border-radius:6px;resize:vertical;"></textarea>
+            <div id="dr-hxt-saved" style="display:none;color:#2e7d32;font-weight:600;margin-top:4px;">Đã lưu</div>
+        </div>
+        
+        <div style="margin-top:20px;">
             <h3 style="margin-bottom:10px;">Log y lệnh</h3>
             
             <!-- Quick Action Buttons -->
@@ -771,9 +777,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                 `).join('')}
             </div>
             
-            <div style="display:flex;gap:8px;margin-bottom:12px;">
-                <input type="text" id="dr-y-lenh-input" placeholder="Nhập y lệnh (VD: rút sonde tiểu)" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:4px;">
-                <button id="dr-add-y-lenh" style="padding:8px 16px;background:#1976d2;color:#fff;border:none;border-radius:4px;cursor:pointer;">Thêm</button>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+                <input type="text" id="dr-y-lenh-input" placeholder="Nhập y lệnh (VD: rút sonde tiểu)" style="padding:10px;border:1px solid #ddd;border-radius:4px;">
+                <button id="dr-add-y-lenh" style="padding:12px 16px;background:#1976d2;color:#fff;border:none;border-radius:4px;cursor:pointer;width:100%;">Thêm</button>
             </div>
             <div id="dr-y-lenh-log" style="max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;border-radius:4px;background:#f9f9f9;word-break: break-word; overflow-wrap: anywhere;">
                 <div style="color:#888;font-style:italic;">Chưa có y lệnh nào...</div>
@@ -786,6 +792,112 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
     // Setup phẫu thuật functionality
     setupPhauThuatHandlers(info, patient);
+
+    // Setup HXT (kế hoạch điều trị) auto-save and live update
+    const hxtTextarea = info.querySelector('#dr-hxt-textarea');
+    const hxtSaved = info.querySelector('#dr-hxt-saved');
+    let hxtSaveTimer = null;
+
+    // Initial load if state already available
+    setTimeout(() => {
+        if (window.checklistState && typeof window.checklistState.huongXuTri === 'string') {
+            hxtTextarea.value = window.checklistState.huongXuTri;
+        }
+    }, 50);
+
+    function invokeUpdatePatientCardHXT(p) {
+        try {
+            if (typeof updatePatientCardHXT === 'function') {
+                updatePatientCardHXT(p);
+                return true;
+            }
+            if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardHXT === 'function') {
+                unsafeWindow.updatePatientCardHXT(p);
+                return true;
+            }
+            if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardHXT === 'function') {
+                globalThis.updatePatientCardHXT(p);
+                return true;
+            }
+            if (typeof this !== 'undefined' && typeof this.updatePatientCardHXT === 'function') {
+                this.updatePatientCardHXT(p);
+                return true;
+            }
+            if (typeof window !== 'undefined' && typeof window.updatePatientCardHXT === 'function') {
+                window.updatePatientCardHXT(p);
+                return true;
+            }
+        } catch (e) {
+            console.warn('invokeUpdatePatientCardHXT error', e);
+        }
+        return false;
+    }
+
+    function softUpdateHXT() {
+        const newVal = hxtTextarea.value.trim();
+        if (!window.checklistState) window.checklistState = {};
+        window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
+        patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
+        if (window.dr_data && patient.mabn) {
+            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+            if (patientInData) {
+                patientInData.checklistState = { ...(patientInData.checklistState || {}), huongXuTri: newVal };
+            }
+        }
+        invokeUpdatePatientCardHXT(patient);
+    }
+
+    async function saveHXT() {
+        // Normalize and update global checklist state
+        const newVal = hxtTextarea.value.trim();
+        if (!window.checklistState) window.checklistState = {};
+        window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
+
+        // Ensure the local patient object also carries the latest state
+        patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
+
+        // Update patient object in global dr_data (merge to avoid losing other fields)
+        if (window.dr_data && patient.mabn) {
+            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+            if (patientInData) {
+                patientInData.checklistState = { ...(patientInData.checklistState || {}), huongXuTri: newVal };
+            }
+        }
+
+        // Persist (non-blocking UI-wise)
+        if (window.checklistObj) {
+            const ok = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+            if (!ok) {
+                console.warn('Lưu HXT thất bại');
+            }
+        }
+
+        // Update card view immediately with the updated patient object
+    invokeUpdatePatientCardHXT(patient);
+
+        // Flash saved indicator
+        if (hxtSaved) {
+            hxtSaved.style.display = 'block';
+            setTimeout(() => hxtSaved.style.display = 'none', 1000);
+        }
+    }
+
+    hxtTextarea.addEventListener('input', () => {
+        softUpdateHXT();
+        if (hxtSaveTimer) clearTimeout(hxtSaveTimer);
+        hxtSaveTimer = setTimeout(() => {
+            saveHXT();
+        }, 700);
+    });
+
+    hxtTextarea.addEventListener('blur', () => {
+        if (hxtSaveTimer) {
+            clearTimeout(hxtSaveTimer);
+            hxtSaveTimer = null;
+        }
+        saveHXT();
+    });
+    hxtTextarea.addEventListener('change', saveHXT);
 
     return info;
 }
@@ -1326,6 +1438,146 @@ function setupYLenhHandlers(infoElement, patient) {
         }
     });
 
+    // Helper: find today's quick entry by action
+    function findTodayQuickEntryByAction(actionText) {
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        if (!window.checklistState || !Array.isArray(window.checklistState.yLenhLog)) return { entry: null, index: -1 };
+        const index = window.checklistState.yLenhLog.findIndex(e => {
+            const entryDate = e.timestamp ? e.timestamp.split(' ')[0] : '';
+            const sameAction = e.action ? e.action === actionText : e.content === actionText;
+            return entryDate === todayStr && sameAction && (e.q === true || e.content === actionText);
+        });
+        return { entry: index >= 0 ? window.checklistState.yLenhLog[index] : null, index };
+    }
+
+    // UI: Discharge time editor (appears when 'Xuất viện' quick action is present today)
+    function ensureDischargeTimeEditor() {
+        const hostAfter = infoElement.querySelector('.quick-ylenh-actions');
+        if (!hostAfter) return;
+        const { entry } = findTodayQuickEntryByAction('Xuất viện');
+        let editor = infoElement.querySelector('.xv-time-editor');
+        if (!entry) {
+            if (editor) editor.remove();
+            return;
+        }
+        // ensure editor exists
+        if (!editor) {
+            editor = document.createElement('div');
+            editor.className = 'xv-time-editor';
+            editor.innerHTML = `
+              <label class="xv-label">Xuất viện lúc:</label>
+              <input class="xv-time xv-hour" type="number" min="0" max="23" placeholder="HH" style="width:56px;text-align:center;" />
+              <span>:</span>
+              <input class="xv-time xv-min" type="number" min="0" max="59" placeholder="mm" style="width:56px;text-align:center;" />
+                            <div class="xv-presets" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+                                <button type="button" class="xv-chip" data-time="11:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">11:00</button>
+                                <button type="button" class="xv-chip" data-time="12:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">12:00</button>
+                                <button type="button" class="xv-chip" data-time="13:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">13:00</button>
+                                <button type="button" class="xv-chip" data-time="14:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">14:00</button>
+                                <button type="button" class="xv-chip" data-time="15:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">15:00</button>
+                            </div>
+              <span class="xv-saved" style="display:none;">Đã lưu</span>
+            `;
+            hostAfter.insertAdjacentElement('afterend', editor);
+        }
+        const hourInput = editor.querySelector('.xv-hour');
+        const minInput = editor.querySelector('.xv-min');
+                const presets = editor.querySelector('.xv-presets');
+        const saved = editor.querySelector('.xv-saved');
+        // default to 12:00 if missing
+        if (!entry.dischargeTime) entry.dischargeTime = '12:00';
+        const [hh = '12', mm = '00'] = (entry.dischargeTime || '12:00').split(':');
+        if (hourInput.value !== hh) hourInput.value = hh;
+        if (minInput.value !== mm) minInput.value = mm;
+        // Bind change handlers once
+        const commit = async () => {
+            const { entry: current, index } = findTodayQuickEntryByAction('Xuất viện');
+            if (current && index >= 0) {
+                let h = parseInt(hourInput.value, 10);
+                let m = parseInt(minInput.value, 10);
+                if (isNaN(h)) h = 12; if (isNaN(m)) m = 0;
+                h = Math.max(0, Math.min(23, h));
+                m = Math.max(0, Math.min(59, m));
+                const hh2 = String(h).padStart(2, '0');
+                const mm2 = String(m).padStart(2, '0');
+                current.dischargeTime = `${hh2}:${mm2}`;
+                // Update dr_data patient state for tag refresh
+                if (window.dr_data && patient.mabn) {
+                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) patientInData.checklistState = { ...window.checklistState };
+                }
+                await saveYLenhLog();
+                if (typeof window.updatePatientCardTags === 'function') {
+                    window.updatePatientCardTags(patient.mabn);
+                }
+                if (saved) {
+                    saved.style.display = 'inline';
+                    setTimeout(() => { saved.style.display = 'none'; }, 1000);
+                }
+            }
+        };
+        if (!hourInput._bound) {
+            hourInput.addEventListener('change', commit);
+            hourInput.addEventListener('blur', commit);
+            hourInput._bound = true;
+        }
+        // UX: select all text in hour field when user clicks/focuses it
+        if (!hourInput._selectAllBound) {
+            const selectAll = (e) => {
+                try {
+                    // Attempt twice to handle timing quirks
+                    e.target.select && e.target.select();
+                    setTimeout(() => {
+                        try { e.target.select && e.target.select(); } catch (_) {}
+                    }, 0);
+                } catch (_) { /* noop */ }
+            };
+            hourInput.addEventListener('focus', selectAll);
+            hourInput.addEventListener('click', selectAll);
+            // Prevent mouseup from clearing the selection in some browsers
+            hourInput.addEventListener('mouseup', (ev) => ev.preventDefault());
+            hourInput._selectAllBound = true;
+        }
+        if (!minInput._bound) {
+            minInput.addEventListener('change', commit);
+            minInput.addEventListener('blur', commit);
+            minInput._bound = true;
+        }
+        // UX: select all text in minute field when user clicks/focuses it
+        if (!minInput._selectAllBound) {
+            const selectAllMin = (e) => {
+                try {
+                    e.target.select && e.target.select();
+                    setTimeout(() => {
+                        try { e.target.select && e.target.select(); } catch (_) {}
+                    }, 0);
+                } catch (_) { /* noop */ }
+            };
+            minInput.addEventListener('focus', selectAllMin);
+            minInput.addEventListener('click', selectAllMin);
+            minInput.addEventListener('mouseup', (ev) => ev.preventDefault());
+            minInput._selectAllBound = true;
+        }
+
+        // Preset chips: quick one-tap set and save
+        if (presets && !presets._bound) {
+            presets.querySelectorAll('.xv-chip').forEach(chip => {
+                chip.addEventListener('click', async () => {
+                    const tm = chip.getAttribute('data-time') || '12:00';
+                    const [hh3, mm3] = tm.split(':');
+                    hourInput.value = hh3.padStart(2, '0');
+                    minInput.value = mm3.padStart(2, '0');
+                    await commit();
+                    // brief visual press feedback
+                    chip.style.transform = 'scale(0.98)';
+                    setTimeout(() => { chip.style.transform = ''; }, 120);
+                });
+            });
+            presets._bound = true;
+        }
+    }
+
     // Quick action buttons event listeners - Toggle logic (3-state: off -> active -> done -> off)
     infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
         btn.addEventListener('click', function() {
@@ -1367,6 +1619,10 @@ function setupYLenhHandlers(infoElement, patient) {
                 action: actionText,
                 status: 'active'
             };
+            // If this is 'Xuất viện', set default discharge time
+            if (actionText === 'Xuất viện') {
+                newEntry.dischargeTime = '12:00';
+            }
             window.checklistState.yLenhLog.unshift(newEntry);
             buttonElement.classList.add('active');
             buttonElement.classList.remove('done');
@@ -1393,8 +1649,8 @@ function setupYLenhHandlers(infoElement, patient) {
             }
         }
 
-        // Save changes
-        saveYLenhLog();
+    // Save changes
+    saveYLenhLog();
         renderYLenhLog(window.checklistState.yLenhLog);
 
         // Update patient object in window.dr_data
@@ -1410,8 +1666,10 @@ function setupYLenhHandlers(infoElement, patient) {
             window.updatePatientCardTags(patient.mabn);
         }
 
-        // Check celebration animation for "Xuất viện"
+        // Discharge time editor + celebration animation for 'Xuất viện'
         if (actionText === 'Xuất viện') {
+            // ensure time editor is visible/hidden appropriately
+            ensureDischargeTimeEditor();
             setTimeout(() => {
                 if (typeof window.checkAllCelebrationAnimations === 'function') {
                     const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
@@ -1457,6 +1715,8 @@ function setupYLenhHandlers(infoElement, patient) {
     setTimeout(() => {
         loadYLenhLog();
         updateQuickActionButtonStates();
+        // Ensure discharge editor appears if needed on load
+        ensureDischargeTimeEditor();
     }, 100);
 
     // Store reference to removeYLenh for use in loadYLenhLogFromState
@@ -1468,7 +1728,7 @@ function setupYLenhHandlers(infoElement, patient) {
         renderYLenhLog,
         addYLenh,
         removeYLenh,
-        updateQuickActionButtonStates
+    updateQuickActionButtonStates
     };
 }
 
@@ -1513,18 +1773,21 @@ function showDashboardBenhNhanIfNeeded() {
         unsafeWindow.showToast = showToast;
         unsafeWindow.copyToClipboard = copyToClipboard;
         unsafeWindow.copyYLenhText = copyYLenhText;
-        unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    unsafeWindow.updatePatientCardHXT = updatePatientCardHXT;
     } else if (typeof this !== 'undefined') {
         this.showToast = showToast;
         this.copyToClipboard = copyToClipboard;
         this.copyYLenhText = copyYLenhText;
-        this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    this.updatePatientCardHXT = updatePatientCardHXT;
     } else {
         // Fallback - tạo global functions không qua window
         globalThis.showToast = showToast;
         globalThis.copyToClipboard = copyToClipboard;
         globalThis.copyYLenhText = copyYLenhText;
-        globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    globalThis.updatePatientCardHXT = updatePatientCardHXT;
     }
     
     // Inject CSS styles for quick actions and tags
@@ -1604,6 +1867,17 @@ function showDashboardBenhNhanIfNeeded() {
             .quick-ylenh-btn .icon {
                 font-size: 14px;
             }
+
+            /* Discharge time editor */
+            .xv-time-editor {
+                display:flex; align-items:center; gap:8px;
+                padding:8px 12px; margin:6px 0 0 0;
+                background:#f1f5f9; border:1px dashed #cbd5e1; border-radius:8px;
+                width:fit-content;
+            }
+            .xv-time-editor .xv-label { color:#0f172a; font-weight:600; }
+            .xv-time-editor .xv-time { padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; }
+            .xv-time-editor .xv-saved { color:#16a34a; font-weight:600; }
 
             /* Trạng thái DONE - hoàn tất */
             .quick-ylenh-btn.done {
@@ -2318,6 +2592,25 @@ function showDashboardBenhNhanIfNeeded() {
                         }
                     }
                     
+                    // Update HXT (Hướng xử trí) line in the card
+                    {
+                        const hxtText = (item.checklistState && typeof item.checklistState.huongXuTri === 'string')
+                            ? item.checklistState.huongXuTri.trim()
+                            : '';
+                        const oldHxt = card.querySelector('.dr-hxt-block');
+                        if (oldHxt) oldHxt.remove();
+                        if (hxtText) {
+                            const div = document.createElement('div');
+                            div.className = 'dr-value dr-hxt-block';
+                            div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
+                            const ptInfoEl = card.querySelector('.dr-pt-info');
+                            const cdEl = card.querySelector('.dr-value');
+                            if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                            else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                            else card.insertAdjacentElement('afterbegin', div);
+                        }
+                    }
+                    
                     // Update y lệnh tags if checklistState is available
                     if (item.checklistState) {
                         // Remove existing tags
@@ -2380,11 +2673,14 @@ function showDashboardBenhNhanIfNeeded() {
 
         const ptInfo = formatSurgeryInfo(item);
         
+    const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
+    const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
             <div class="dr-value"><span class="dr-label">Chẩn đoán:</span> ${item.chandoanvk || ''}</div>
             ${ptInfo}
+            ${hxtHtml}
             ${createYLenhTags(item)}
         `;
         
@@ -2396,8 +2692,87 @@ function showDashboardBenhNhanIfNeeded() {
         addSurgeryStatusIcon(card, item);
         
         card.onclick = () => showSidebar(item);
+        // Preload HXT from checklist state after rendering card (non-blocking)
+        setTimeout(() => {
+            preloadHXTForPatient(item);
+        }, 0);
         
         return card;
+    }
+
+    // Safely escape HTML for rendering user-entered HXT
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\n/g, '<br/>');
+    }
+
+    // Update HXT on a card when sidebar saves
+    function updatePatientCardHXT(patient) {
+        try {
+            if (!patient || !patient.mabn) return;
+            // Prefer matching by data attribute for accuracy
+            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`);
+            if (!targetCard) {
+                // Fallback: text search
+                const allCards = document.querySelectorAll('.dr-card');
+                allCards.forEach(card => {
+                    const txt = card.textContent || card.innerText || '';
+                    if (txt.includes(String(patient.mabn))) targetCard = card;
+                });
+            }
+            if (!targetCard) return;
+            const hxtText = (patient.checklistState && patient.checklistState.huongXuTri) ? String(patient.checklistState.huongXuTri).trim() : '';
+            // Remove previous HXT block if found by class marker
+            const oldBlock = targetCard.querySelector('.dr-hxt-block');
+            if (oldBlock) oldBlock.remove();
+            if (hxtText) {
+                const div = document.createElement('div');
+                div.className = 'dr-value dr-hxt-block';
+                div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
+                // Insert after ptInfo if present, else after diagnosis
+                const ptInfoEl = targetCard.querySelector('.dr-pt-info');
+                const cdEl = targetCard.querySelector('.dr-value');
+                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                else targetCard.insertAdjacentElement('afterbegin', div);
+            }
+        } catch (_) {}
+    }
+
+    // Preload HXT for a patient by fetching checklist state if not present
+    async function preloadHXTForPatient(item) {
+        try {
+            if (!item || !item.mabn) return;
+            const existing = item.checklistState && typeof item.checklistState.huongXuTri === 'string' ? item.checklistState.huongXuTri.trim() : '';
+            if (existing) {
+                updatePatientCardHXT(item);
+                return;
+            }
+            const res = await ChecklistService.loadChecklistData(item);
+            const obj = ChecklistService.findChecklistObject(res);
+            if (!obj) return;
+            const state = ChecklistService.parseChecklistState(obj) || {};
+            const hxt = typeof state.huongXuTri === 'string' ? state.huongXuTri.trim() : '';
+            if (!hxt) return;
+            // Update dr_data entry
+            if (window.dr_data && Array.isArray(window.dr_data)) {
+                const idx = window.dr_data.findIndex(p => p.mabn === item.mabn);
+                if (idx >= 0) {
+                    const oldState = window.dr_data[idx].checklistState || {};
+                    window.dr_data[idx].checklistState = { ...oldState, ...state };
+                }
+            }
+            // Update card view with merged state
+            const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
+            updatePatientCardHXT(updated);
+        } catch (e) {
+            console.warn('Preload HXT failed for', item?.mabn, e);
+        }
     }
 
 
@@ -4869,10 +5244,12 @@ function createYLenhTags(patient) {
 
         const dischargeClass = isDischarge ? ' discharge' : '';
         const classes = `ylenh-tag${dischargeClass}${stateClass}`;
+        // Append discharge time if available and is Xuất viện
+        const timeText = (isDischarge && entry.dischargeTime) ? ` (${entry.dischargeTime})` : '';
 
         return `<span class="${classes}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
             <span class="icon">${stateIcon}</span>
-            <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}</span>
+            <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}${timeText}</span>
         </span>`;
     }).join('');
 
@@ -4908,9 +5285,9 @@ function checkAndAddCelebrationClass(card, patient) {
     const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
         const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
         const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
-        // If quick action, prefer done status to count as celebration
+        // If quick action, count both active and done for celebration
         if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
-            return entry.status === 'done';
+            return entry.status === 'active' || entry.status === 'done';
         }
         
         console.log('DEBUG entry:', entry.content, 'timestamp:', entry.timestamp, 'hasDischarge:', hasDischarge, 'isToday:', isToday);

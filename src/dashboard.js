@@ -36,18 +36,21 @@ function showDashboardBenhNhanIfNeeded() {
         unsafeWindow.showToast = showToast;
         unsafeWindow.copyToClipboard = copyToClipboard;
         unsafeWindow.copyYLenhText = copyYLenhText;
-        unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    unsafeWindow.updatePatientCardHXT = updatePatientCardHXT;
     } else if (typeof this !== 'undefined') {
         this.showToast = showToast;
         this.copyToClipboard = copyToClipboard;
         this.copyYLenhText = copyYLenhText;
-        this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    this.updatePatientCardHXT = updatePatientCardHXT;
     } else {
         // Fallback - tạo global functions không qua window
         globalThis.showToast = showToast;
         globalThis.copyToClipboard = copyToClipboard;
         globalThis.copyYLenhText = copyYLenhText;
-        globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+    globalThis.updatePatientCardHXT = updatePatientCardHXT;
     }
     
     // Inject CSS styles for quick actions and tags
@@ -127,6 +130,17 @@ function showDashboardBenhNhanIfNeeded() {
             .quick-ylenh-btn .icon {
                 font-size: 14px;
             }
+
+            /* Discharge time editor */
+            .xv-time-editor {
+                display:flex; align-items:center; gap:8px;
+                padding:8px 12px; margin:6px 0 0 0;
+                background:#f1f5f9; border:1px dashed #cbd5e1; border-radius:8px;
+                width:fit-content;
+            }
+            .xv-time-editor .xv-label { color:#0f172a; font-weight:600; }
+            .xv-time-editor .xv-time { padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; }
+            .xv-time-editor .xv-saved { color:#16a34a; font-weight:600; }
 
             /* Trạng thái DONE - hoàn tất */
             .quick-ylenh-btn.done {
@@ -841,6 +855,25 @@ function showDashboardBenhNhanIfNeeded() {
                         }
                     }
                     
+                    // Update HXT (Hướng xử trí) line in the card
+                    {
+                        const hxtText = (item.checklistState && typeof item.checklistState.huongXuTri === 'string')
+                            ? item.checklistState.huongXuTri.trim()
+                            : '';
+                        const oldHxt = card.querySelector('.dr-hxt-block');
+                        if (oldHxt) oldHxt.remove();
+                        if (hxtText) {
+                            const div = document.createElement('div');
+                            div.className = 'dr-value dr-hxt-block';
+                            div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
+                            const ptInfoEl = card.querySelector('.dr-pt-info');
+                            const cdEl = card.querySelector('.dr-value');
+                            if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                            else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                            else card.insertAdjacentElement('afterbegin', div);
+                        }
+                    }
+                    
                     // Update y lệnh tags if checklistState is available
                     if (item.checklistState) {
                         // Remove existing tags
@@ -903,11 +936,14 @@ function showDashboardBenhNhanIfNeeded() {
 
         const ptInfo = formatSurgeryInfo(item);
         
+    const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
+    const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
             <div class="dr-value"><span class="dr-label">Chẩn đoán:</span> ${item.chandoanvk || ''}</div>
             ${ptInfo}
+            ${hxtHtml}
             ${createYLenhTags(item)}
         `;
         
@@ -919,8 +955,87 @@ function showDashboardBenhNhanIfNeeded() {
         addSurgeryStatusIcon(card, item);
         
         card.onclick = () => showSidebar(item);
+        // Preload HXT from checklist state after rendering card (non-blocking)
+        setTimeout(() => {
+            preloadHXTForPatient(item);
+        }, 0);
         
         return card;
+    }
+
+    // Safely escape HTML for rendering user-entered HXT
+    function escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/\n/g, '<br/>');
+    }
+
+    // Update HXT on a card when sidebar saves
+    function updatePatientCardHXT(patient) {
+        try {
+            if (!patient || !patient.mabn) return;
+            // Prefer matching by data attribute for accuracy
+            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`);
+            if (!targetCard) {
+                // Fallback: text search
+                const allCards = document.querySelectorAll('.dr-card');
+                allCards.forEach(card => {
+                    const txt = card.textContent || card.innerText || '';
+                    if (txt.includes(String(patient.mabn))) targetCard = card;
+                });
+            }
+            if (!targetCard) return;
+            const hxtText = (patient.checklistState && patient.checklistState.huongXuTri) ? String(patient.checklistState.huongXuTri).trim() : '';
+            // Remove previous HXT block if found by class marker
+            const oldBlock = targetCard.querySelector('.dr-hxt-block');
+            if (oldBlock) oldBlock.remove();
+            if (hxtText) {
+                const div = document.createElement('div');
+                div.className = 'dr-value dr-hxt-block';
+                div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
+                // Insert after ptInfo if present, else after diagnosis
+                const ptInfoEl = targetCard.querySelector('.dr-pt-info');
+                const cdEl = targetCard.querySelector('.dr-value');
+                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                else targetCard.insertAdjacentElement('afterbegin', div);
+            }
+        } catch (_) {}
+    }
+
+    // Preload HXT for a patient by fetching checklist state if not present
+    async function preloadHXTForPatient(item) {
+        try {
+            if (!item || !item.mabn) return;
+            const existing = item.checklistState && typeof item.checklistState.huongXuTri === 'string' ? item.checklistState.huongXuTri.trim() : '';
+            if (existing) {
+                updatePatientCardHXT(item);
+                return;
+            }
+            const res = await ChecklistService.loadChecklistData(item);
+            const obj = ChecklistService.findChecklistObject(res);
+            if (!obj) return;
+            const state = ChecklistService.parseChecklistState(obj) || {};
+            const hxt = typeof state.huongXuTri === 'string' ? state.huongXuTri.trim() : '';
+            if (!hxt) return;
+            // Update dr_data entry
+            if (window.dr_data && Array.isArray(window.dr_data)) {
+                const idx = window.dr_data.findIndex(p => p.mabn === item.mabn);
+                if (idx >= 0) {
+                    const oldState = window.dr_data[idx].checklistState || {};
+                    window.dr_data[idx].checklistState = { ...oldState, ...state };
+                }
+            }
+            // Update card view with merged state
+            const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
+            updatePatientCardHXT(updated);
+        } catch (e) {
+            console.warn('Preload HXT failed for', item?.mabn, e);
+        }
     }
 
 

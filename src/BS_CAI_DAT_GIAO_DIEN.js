@@ -46,6 +46,7 @@ const BS_CAI_DAT = {
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
         { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
+    { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
         { label: 'Thay băng', icon: '👗', color: '#310994ff' },
         { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
         { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.5.6
+// @version      1.5.7
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -67,6 +67,7 @@ const BS_CAI_DAT = {
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
         { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
+    { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
         { label: 'Thay băng', icon: '👗', color: '#310994ff' },
         { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
         { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
@@ -397,7 +398,9 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
+    const { showSettingsIfNeeded } = require('./settings');
     showDashboardBenhNhanIfNeeded();
+    showSettingsIfNeeded();
     // --- Khởi tạo class và gắn vào window để dễ test ---
     window.DanhSachBenhNhanManager = new DanhSachBenhNhan();
     window.DanhSachBenhNhanManager.startAutoFetch();
@@ -531,7 +534,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./dashboard":10,"./googleAppsScript":12,"./utils":17}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./dashboard":10,"./googleAppsScript":12,"./settings":18,"./utils":19}],4:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -764,7 +767,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                     <button class="quick-ylenh-btn" data-action="${action.label}" style="color: ${action.color}; border-color: ${action.color};">
                         <span class="icon">${action.icon}</span>
                         <span class="text">${action.label}</span>
-                        <span class="tick" style="display: none;">✅</span>
                     </button>
                 `).join('')}
             </div>
@@ -790,7 +792,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":14,"../utils":17,"./phauThuatHandlers":8,"./yLenhHandlers":9}],8:[function(require,module,exports){
+},{"../services/checklistService":14,"../utils":19,"./phauThuatHandlers":8,"./yLenhHandlers":9}],8:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1150,7 +1152,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":14,"../utils/surgeryUtils":21}],9:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":14,"../utils/surgeryUtils":23}],9:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1324,7 +1326,7 @@ function setupYLenhHandlers(infoElement, patient) {
         }
     });
 
-    // Quick action buttons event listeners - Toggle logic
+    // Quick action buttons event listeners - Toggle logic (3-state: off -> active -> done -> off)
     infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const actionText = this.getAttribute('data-action');
@@ -1332,9 +1334,9 @@ function setupYLenhHandlers(infoElement, patient) {
         });
     });
 
-    // Function to toggle quick y lệnh (ON/OFF state)
+    // Function to toggle quick y lệnh (three states)
     function toggleQuickYLenh(actionText, buttonElement) {
-        // Check if this action already exists today
+        // Today string
         const today = new Date();
         const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
         
@@ -1342,32 +1344,53 @@ function setupYLenhHandlers(infoElement, patient) {
             window.checklistState.yLenhLog = [];
         }
 
-        // Find existing entry for this action today
+        // Find existing quick entry for this action today
         const existingIndex = window.checklistState.yLenhLog.findIndex(entry => {
             const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
-            return entryDate === todayStr && entry.content === actionText;
+            const isToday = entryDate === todayStr;
+            const isQuick = entry.q === true || (entry.content === actionText && !entry.id?.toString().startsWith('manual'));
+            const sameAction = entry.action ? entry.action === actionText : entry.content === actionText;
+            return isToday && isQuick && sameAction;
         });
 
-        if (existingIndex !== -1) {
-            // Entry exists - REMOVE it (toggle OFF)
-            window.checklistState.yLenhLog.splice(existingIndex, 1);
-            buttonElement.classList.remove('active');
-            console.log('Removed quick action:', actionText);
-        } else {
-            // Entry doesn't exist - ADD it (toggle ON)
+        // Cycle states
+        if (existingIndex === -1) {
+            // OFF -> ACTIVE (create entry)
             const now = new Date();
             const timestamp = `${todayStr} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             const doctorName = 'BS';
-
             const newEntry = {
                 timestamp: `${timestamp} - ${doctorName}`,
                 content: actionText,
-                id: Date.now()
+                id: Date.now(),
+                q: true,
+                action: actionText,
+                status: 'active'
             };
-
             window.checklistState.yLenhLog.unshift(newEntry);
             buttonElement.classList.add('active');
-            console.log('Added quick action:', actionText);
+            buttonElement.classList.remove('done');
+            console.log('Quick action set to ACTIVE:', actionText);
+        } else {
+            const entry = window.checklistState.yLenhLog[existingIndex];
+            if (entry.status === 'active') {
+                // ACTIVE -> DONE
+                entry.status = 'done';
+                buttonElement.classList.remove('active');
+                buttonElement.classList.add('done');
+                console.log('Quick action set to DONE:', actionText);
+            } else if (entry.status === 'done') {
+                // DONE -> OFF (remove)
+                window.checklistState.yLenhLog.splice(existingIndex, 1);
+                buttonElement.classList.remove('active');
+                buttonElement.classList.remove('done');
+                console.log('Quick action reset to OFF:', actionText);
+            } else {
+                // Unknown status (fallback): set to ACTIVE
+                entry.status = 'active';
+                buttonElement.classList.add('active');
+                buttonElement.classList.remove('done');
+            }
         }
 
         // Save changes
@@ -1382,7 +1405,7 @@ function setupYLenhHandlers(infoElement, patient) {
             }
         }
 
-        // Update card tags (but these quick actions won't be displayed as tags)
+    // Update card tags (quick actions might render as tags; styles can reflect state)
         if (window.updatePatientCardTags) {
             window.updatePatientCardTags(patient.mabn);
         }
@@ -1415,17 +1438,18 @@ function setupYLenhHandlers(infoElement, patient) {
             const actionText = btn.getAttribute('data-action');
             
             // Check if this action exists today
-            const existsToday = window.checklistState && window.checklistState.yLenhLog && 
-                window.checklistState.yLenhLog.some(entry => {
+            let state = 'off';
+            if (window.checklistState && Array.isArray(window.checklistState.yLenhLog)) {
+                const found = window.checklistState.yLenhLog.find(entry => {
                     const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
-                    return entryDate === todayStr && entry.content === actionText;
+                    const isToday = entryDate === todayStr;
+                    const sameAction = entry.action ? entry.action === actionText : entry.content === actionText;
+                    return isToday && sameAction && (entry.q === true || entry.content === actionText);
                 });
-
-            if (existsToday) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
+                if (found) state = found.status || 'active';
             }
+            btn.classList.toggle('active', state === 'active');
+            btn.classList.toggle('done', state === 'done');
         });
     }
 
@@ -1507,7 +1531,7 @@ function showDashboardBenhNhanIfNeeded() {
     if (!document.getElementById('dr-ylenh-styles')) {
         const style = document.createElement('style');
         style.id = 'dr-ylenh-styles';
-        style.textContent = `
+    style.textContent = `
             /* Quick action buttons container */
             .quick-ylenh-actions {
                 display: flex;
@@ -1556,11 +1580,21 @@ function showDashboardBenhNhanIfNeeded() {
                 box-shadow: 0 0 10px rgba(211, 47, 47, 0.3);
             }
 
-            .quick-ylenh-btn.active .tick {
-                display: inline !important;
-                color: #4caf50;
-                font-weight: bold;
-                margin-left: 4px;
+            /* Active state shows a processing badge (no inline tick) */
+            .quick-ylenh-btn.active::after {
+                content: '⏳';
+                position: absolute;
+                top: -6px;
+                right: -6px;
+                background: #1d4ed8;
+                color: #fff;
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
             }
 
             .quick-ylenh-btn.active .text {
@@ -1569,6 +1603,30 @@ function showDashboardBenhNhanIfNeeded() {
 
             .quick-ylenh-btn .icon {
                 font-size: 14px;
+            }
+
+            /* Trạng thái DONE - hoàn tất */
+            .quick-ylenh-btn.done {
+                border: 3px solid #2e7d32 !important;
+                background-color: #e8f5e9;
+                color: #1b5e20 !important;
+                box-shadow: 0 0 10px rgba(27, 94, 32, 0.2);
+                position: relative;
+            }
+            .quick-ylenh-btn.done::after {
+                content: '✔';
+                position: absolute;
+                top: -6px;
+                right: -6px;
+                background: #2e7d32;
+                color: #fff;
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
             }
 
             /* Y lệnh tags on patient cards */
@@ -1615,6 +1673,19 @@ function showDashboardBenhNhanIfNeeded() {
 
             .ylenh-tag .icon {
                 font-size: 10px;
+            }
+
+            /* Tag states for quick actions */
+            .ylenh-tag.state-active {
+                background-color: rgba(37, 99, 235, 0.10);
+                color: #1d4ed8;
+                border-color: rgba(37, 99, 235, 0.35);
+            }
+            .ylenh-tag.state-done {
+                background-color: rgba(34, 197, 94, 0.12);
+                color: #15803d;
+                border-color: rgba(34, 197, 94, 0.45);
+                font-weight: 600;
             }
         `;
         document.head.appendChild(style);
@@ -2107,13 +2178,21 @@ function showDashboardBenhNhanIfNeeded() {
             <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
                 style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
             <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                <input id="dr-filter-xuatvien" type="checkbox"> Chỉ 'Xuất viện' hôm nay
+                <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <input id="dr-filter-rutodl" type="checkbox"> Rút ODL
             </label>
             <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
         `;
 
-        const container = document.createElement('div');
+    const container = document.createElement('div');
         container.className = 'dr-card-list';
+    // Safety padding in case styles load late
+    container.style.paddingBottom = '90px';
         
         sortedData.forEach(item => {
             const card = createPatientCard(item);
@@ -2130,6 +2209,31 @@ function showDashboardBenhNhanIfNeeded() {
                 );
                 card.setAttribute('data-loc', (loc || '').toLowerCase());
             }
+            // compute dataset flags from today's yLenhLog
+            try {
+                const today = new Date();
+                const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+                const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
+                let hasXV = false, hasCLS = false, hasODL = false;
+                for (const e of log) {
+                    if (!e.timestamp || !e.content) continue;
+                    if (!e.timestamp.startsWith(todayStr)) continue;
+                    const c = e.content.toLowerCase();
+                    if (c.includes('xuất viện')) {
+                        // if quick and has status, use done/active as presence
+                        if (e.q === true && e.action === 'Xuất viện') {
+                            if (e.status === 'active' || e.status === 'done') hasXV = true;
+                        } else {
+                            hasXV = true;
+                        }
+                    }
+                    if (c.includes('cận lâm sàng')) hasCLS = true;
+                    if (c.includes('rút odl')) hasODL = true;
+                }
+                card.dataset.hasxv = hasXV ? '1' : '0';
+                card.dataset.hascls = hasCLS ? '1' : '0';
+                card.dataset.hasodl = hasODL ? '1' : '0';
+            } catch (_) {}
             container.appendChild(card);
         });
         
@@ -2142,12 +2246,16 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
-        const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
+    const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
+    const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
+    const chkRutODL = topBar.querySelector('#dr-filter-rutodl');
         const filterCount = topBar.querySelector('#dr-filter-count');
 
         function applyFilter() {
             const q = (searchInput.value || '').trim().toLowerCase();
             const onlyXV = !!chkXuatVien.checked;
+            const onlyCLS = !!chkCanLamSang.checked;
+            const onlyODL = !!chkRutODL.checked;
             let visible = 0;
 
             const cards = container.querySelectorAll('.dr-card');
@@ -2158,14 +2266,17 @@ function showDashboardBenhNhanIfNeeded() {
                     card.getAttribute('data-name')?.includes(q) ||
                     card.getAttribute('data-cd')?.includes(q) ||
                     card.getAttribute('data-loc')?.includes(q);
-                const matchesXV = !onlyXV || card.classList.contains('xuatvienanimation');
-                const show = matchesText && matchesXV;
+                // dataset flags prepared on card creation
+                const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
+                const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
+                const matchesODL = !onlyODL || card.dataset.hasodl === '1';
+                const show = matchesText && matchesXV && matchesCLS && matchesODL;
                 card.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
 
             // Update counts in top bar and bottom bar
-            filterCount.textContent = q || onlyXV ? `Hiển thị: ${visible}/${sortedData.length}` : '';
+            filterCount.textContent = (q || onlyXV || onlyCLS || onlyODL) ? `Hiển thị: ${visible}/${sortedData.length}` : '';
             const bottomLeft = document.querySelector('.dr-bottom-bar-left');
             if (bottomLeft) {
                 bottomLeft.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (q || onlyXV ? ` (lọc: ${visible})` : '');
@@ -2173,7 +2284,9 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         searchInput.addEventListener('input', applyFilter);
-        chkXuatVien.addEventListener('change', applyFilter);
+    chkXuatVien.addEventListener('change', applyFilter);
+    chkCanLamSang.addEventListener('change', applyFilter);
+    chkRutODL.addEventListener('change', applyFilter);
 
         // Prefill from query param ?q=
         try {
@@ -2427,7 +2540,7 @@ module.exports = {
     showDashboardBenhNhanIfNeeded
 };
 
-},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":5,"./components/modalManager":6,"./components/patientInfoSection":7,"./components/phauThuatHandlers":8,"./dashboard.support":11,"./services/checklistService":14,"./services/patientService":15,"./utils":17,"./utils/checklistUtils":18,"./utils/patientDataMapper":20,"./utils/surgeryUtils":21,"./utils/tagUtils":22,"./utils/uiUtils":23}],11:[function(require,module,exports){
+},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":5,"./components/modalManager":6,"./components/patientInfoSection":7,"./components/phauThuatHandlers":8,"./dashboard.support":11,"./services/checklistService":14,"./services/patientService":15,"./utils":19,"./utils/checklistUtils":20,"./utils/patientDataMapper":22,"./utils/surgeryUtils":23,"./utils/tagUtils":24,"./utils/uiUtils":25}],11:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('./services/reportService');
@@ -2534,6 +2647,8 @@ function addGlobalStyles() {
             gap: 20px; 
             justify-content: center; 
             padding: 30px; 
+            /* Ensure content is not hidden behind fixed bottom bar */
+            padding-bottom: 90px; 
         }
         .dr-card { 
             background: #fff; 
@@ -3178,7 +3293,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":19,"./apiService":13}],15:[function(require,module,exports){
+},{"../utils/dateUtils":21,"./apiService":13}],15:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../dashboard.support');
@@ -3407,7 +3522,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":5,"../dashboard.support":11,"../utils/patientDataMapper":20,"./checklistService":14}],16:[function(require,module,exports){
+},{"../components/loginHandler":5,"../dashboard.support":11,"../utils/patientDataMapper":22,"./checklistService":14}],16:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -3558,7 +3673,307 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":19,"../utils/patientDataMapper":20}],17:[function(require,module,exports){
+},{"../utils/dateUtils":21,"../utils/patientDataMapper":22}],17:[function(require,module,exports){
+// settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
+
+const ApiService = require('./apiService');
+
+const SettingsService = {
+    async fetchDoctorName() {
+        try {
+            const body = new URLSearchParams();
+            body.set('FilterProperty', '');
+            body.set('FilterBy', '');
+            body.set('Page', '1');
+            body.set('PageSize', '20');
+            body.set('OrderProperty', '');
+            body.set('OrderBy', '');
+            body.set('id', '');
+            body.set('_key', 'change-pin-chung-thu-so');
+
+            const response = await fetch('/sp-admin/change-pin-chung-thu-so/Form', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'Accept': '*/*',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body
+            });
+
+            const htmlText = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, 'text/html');
+            const input = doc.querySelector('#HoTen');
+            let name = '';
+            if (input) {
+                name = (input.value || input.getAttribute('value') || '').trim();
+            }
+            return name;
+        } catch (e) {
+            console.error('Failed to fetch doctor name:', e);
+            return '';
+        }
+    },
+
+    async loadSettingsPhieu(doctorName) {
+        // Use DSPhieu API with doctorName as mabn
+        const formData = new FormData();
+        formData.append('mabn', doctorName);
+        // very wide range
+        formData.append('tungay', '01/01/1001 01:01');
+        formData.append('denngay', '01/01/3001 01:01');
+
+        const resp = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const result = await resp.json();
+        const data = (result && result.data) || [];
+        // Pick first item that looks like our settings (hoten endsWith % and mabn==doctorName)
+        const found = data.find(item => item && item.mabn === doctorName && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        return found;
+    },
+
+    parseSettingsState(checklistObj) {
+        if (!checklistObj || !checklistObj.chuky) return {};
+        try {
+            const parsed = JSON.parse(checklistObj.chuky);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch {
+            return {};
+        }
+    },
+
+    async createSettingsPhieu(doctorName) {
+        // Reuse CreateAjax endpoint with doctorName as mabn
+        const formData = new FormData();
+        formData.append('status', '1');
+        formData.append('thebaohiemyte', 'Không');
+        formData.append('chuky', '{}');
+        formData.append('khac', '--*--');
+        formData.append('khu', '1');
+        formData.append('mabn', doctorName);
+        formData.append('bieumauid', '027');
+        formData.append('makp', '551');
+        formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
+        formData.append('actiontype', '');
+        // Mark with name% so it can be identified and matched by endsWith('%')
+        formData.append('hoten', `${doctorName}%`);
+        formData.append('ngaysinh', '10/10/1999');
+        formData.append('gioitinh', 'Nam');
+
+        const response = await fetch('/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/CreateAjax', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        return response.json();
+    },
+
+    async updateSettingsState(oldData, settingsState) {
+        try {
+            const res = await ApiService.updateChecklistData(oldData, settingsState);
+            return res && (res.Status == 1 || res.isValid);
+        } catch (e) {
+            console.error('Failed to update settings state:', e);
+            return false;
+        }
+    },
+
+    getDefaultSettings() {
+        return {
+            danDoRaVien: [
+                'Uống thuốc đúng toa được dặn',
+                'Tái khám đúng hẹn',
+                'Liên hệ khi có dấu hiệu bất thường'
+            ]
+        };
+    },
+
+    async getOrCreateSettings() {
+        const doctorName = await this.fetchDoctorName();
+        if (!doctorName) {
+            return { doctorName: '', checklistObj: null, settings: this.getDefaultSettings() };
+        }
+        let checklistObj = await this.loadSettingsPhieu(doctorName);
+        if (!checklistObj) {
+            const created = await this.createSettingsPhieu(doctorName);
+            if (created && created.isValid && created.data) {
+                // Some CreateAjax returns full object, some just flags; re-read list to get object
+                checklistObj = await this.loadSettingsPhieu(doctorName);
+            }
+        }
+        const settings = checklistObj ? this.parseSettingsState(checklistObj) : this.getDefaultSettings();
+        if (!settings.danDoRaVien) settings.danDoRaVien = this.getDefaultSettings().danDoRaVien;
+        return { doctorName, checklistObj, settings };
+    }
+};
+
+module.exports = SettingsService;
+
+},{"./apiService":13}],18:[function(require,module,exports){
+// settings.js - Render a settings page similar to dashboard, triggered by ?caidat
+
+const SettingsService = require('./services/settingsService');
+
+async function showSettingsIfNeeded() {
+        if (!(/[?&](caidat)($|&)/.test(window.location.search))) return;
+
+        // Reset page and mount a two-column layout with tabs
+        document.body.innerHTML = '';
+
+        const styles = document.createElement('style');
+        styles.textContent = `
+            .dr-st-wrap{display:flex; min-height:100vh; color:#111827; background:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+            .dr-st-left{width:260px; border-right:1px solid #e5e7eb; background:#fafafa}
+            .dr-st-left h2{margin:16px; font-size:18px}
+            .dr-st-menu{display:flex; flex-direction:column; gap:8px; padding:0 12px 16px}
+            .dr-st-menu button{appearance:none; border:1px solid #e5e7eb; background:#fff; padding:10px 12px; border-radius:10px; text-align:left; cursor:pointer}
+            .dr-st-menu button.active{border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.15) inset}
+            .dr-st-right{flex:1; min-width:0;}
+            .dr-st-head{display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e5e7eb}
+            .dr-st-title{margin:0; font-size:18px}
+            .dr-st-content{padding:16px 20px}
+            .dr-st-row{display:flex; gap:8px; align-items:center; margin-bottom:8px}
+            .dr-st-input{flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px}
+            .dr-st-btn{appearance:none; border:1px solid #e5e7eb; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer}
+            .dr-st-btn.primary{border-color:#2563eb; background:#2563eb; color:#fff}
+            .dr-st-list{display:flex; flex-direction:column; gap:8px; margin:12px 0}
+            .dr-st-tab{display:none}
+            .dr-st-tab.active{display:block}
+            .dr-st-footer{padding:12px 20px; color:#6b7280; border-top:1px solid #e5e7eb}
+        `;
+        document.head.appendChild(styles);
+
+        const wrap = document.createElement('div');
+        wrap.className = 'dr-st-wrap';
+
+        // Left menu
+        const left = document.createElement('aside');
+        left.className = 'dr-st-left';
+        left.innerHTML = `
+            <h2>Cài đặt</h2>
+            <div class="dr-st-menu">
+                <button data-tab="discharge" class="active">Lời dặn dò ra viện</button>
+            </div>
+            <div class="dr-st-footer" id="dr-st-doctor"></div>
+        `;
+
+        // Right content with header and tabs
+        const right = document.createElement('section');
+        right.className = 'dr-st-right';
+        right.innerHTML = `
+            <div class="dr-st-head">
+                <h3 class="dr-st-title">Lời dặn dò ra viện</h3>
+                <div>
+                    <button class="dr-st-btn" id="reload-tab">Tải lại</button>
+                    <button class="dr-st-btn primary" id="save-tab">Lưu</button>
+                </div>
+            </div>
+            <div class="dr-st-content">
+                <div id="tab-discharge" class="dr-st-tab active">
+                    <p style="margin:0 0 8px; color:#6b7280">Danh sách các lời dặn dò ra viện. Bạn có thể thêm/xóa và chỉnh sửa.</p>
+                    <div id="discharge-list" class="dr-st-list"></div>
+                    <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
+                </div>
+            </div>
+        `;
+
+        wrap.appendChild(left);
+        wrap.appendChild(right);
+        document.body.appendChild(wrap);
+
+        // Load settings state
+        let { doctorName, checklistObj, settings } = await SettingsService.getOrCreateSettings();
+        const titleEl = right.querySelector('.dr-st-title');
+        const listEl = right.querySelector('#discharge-list');
+        const doctorEl = left.querySelector('#dr-st-doctor');
+        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+
+        const renderDischarge = (items) => {
+                listEl.innerHTML = '';
+                (items || []).forEach(text => {
+                        const row = document.createElement('div');
+                        row.className = 'dr-st-row';
+                        row.innerHTML = `
+                            <input class="dr-st-input" type="text" value="${(text || '').replace(/"/g,'&quot;')}" placeholder="Nhập lời dặn dò..." />
+                            <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
+                        `;
+                        listEl.appendChild(row);
+                });
+        };
+
+        renderDischarge(settings && settings.danDoRaVien ? settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien);
+
+        // Left menu switching (future tabs-ready)
+        left.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-tab]');
+                if (!btn) return;
+                left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tab = btn.dataset.tab;
+                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : btn.textContent.trim();
+                right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
+                const target = right.querySelector(`#tab-${tab}`);
+                if (target) target.classList.add('active');
+        });
+
+        // Right actions
+        right.addEventListener('click', async (e) => {
+                if (e.target.id === 'add-discharge') {
+                        const row = document.createElement('div');
+                        row.className = 'dr-st-row';
+                        row.innerHTML = `
+                            <input class="dr-st-input" type="text" placeholder="Nhập lời dặn dò..." />
+                            <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
+                        `;
+                        listEl.appendChild(row);
+                        return;
+                }
+                if (e.target.classList && e.target.classList.contains('remove-row')) {
+                        e.target.closest('.dr-st-row')?.remove();
+                        return;
+                }
+                if (e.target.id === 'reload-tab') {
+                        const data = await SettingsService.getOrCreateSettings();
+                        doctorName = data.doctorName;
+                        checklistObj = data.checklistObj;
+                        settings = data.settings || SettingsService.getDefaultSettings();
+                        renderDischarge(settings.danDoRaVien || []);
+                        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+                        return;
+                }
+                if (e.target.id === 'save-tab') {
+                        const values = Array.from(listEl.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean);
+                        const next = { ...(settings || {}), danDoRaVien: values };
+                        // Ensure checklist exists
+                        if (!checklistObj && doctorName) {
+                                const created = await SettingsService.createSettingsPhieu(doctorName);
+                                if (created && created.isValid) {
+                                        checklistObj = await SettingsService.loadSettingsPhieu(doctorName);
+                                }
+                        }
+                        if (!checklistObj) {
+                                alert('Không thể lưu: chưa có phiếu cài đặt.');
+                                return;
+                        }
+                        const ok = await SettingsService.updateSettingsState(checklistObj, next);
+                        if (ok) {
+                                settings = next;
+                                alert('Đã lưu cài đặt');
+                        } else {
+                                alert('Lưu thất bại');
+                        }
+                }
+        });
+}
+
+module.exports = { showSettingsIfNeeded };
+
+},{"./services/settingsService":17}],19:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -3653,7 +4068,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],18:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -3813,7 +4228,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":14,"./uiUtils":23}],19:[function(require,module,exports){
+},{"../services/checklistService":14,"./uiUtils":25}],21:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -3893,7 +4308,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],20:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -4130,7 +4545,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],21:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -4399,7 +4814,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -4432,9 +4847,9 @@ function createYLenhTags(patient) {
     const tagsHtml = displayEntries.map(entry => {
         // Determine tag color based on content
         let color = '#4caf50'; // default green
-        const content = entry.content.toLowerCase();
+        const content = (entry.content || '').toLowerCase();
         let isDischarge = false;
-        
+
         if (content.includes('xuất viện')) {
             color = '#4caf50';
             isDischarge = true;
@@ -4442,11 +4857,21 @@ function createYLenhTags(patient) {
         else if (content.includes('rút odl')) color = '#ff9800';
         else if (content.includes('sonde')) color = '#9c27b0';
         else if (content.includes('thay băng')) color = '#2196f3';
-        
+
+        // Quick-action state mapping
+        let stateClass = '';
+        let stateIcon = '📋';
+        if (entry.q === true) {
+            const st = entry.status || 'active';
+            if (st === 'active') { stateClass = ' state-active'; stateIcon = '⏳'; }
+            if (st === 'done')   { stateClass = ' state-done';   stateIcon = '✔'; }
+        }
+
         const dischargeClass = isDischarge ? ' discharge' : '';
-        
-        return `<span class="ylenh-tag${dischargeClass}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
-            <span class="icon">📋</span>
+        const classes = `ylenh-tag${dischargeClass}${stateClass}`;
+
+        return `<span class="${classes}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
+            <span class="icon">${stateIcon}</span>
             <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}</span>
         </span>`;
     }).join('');
@@ -4483,6 +4908,10 @@ function checkAndAddCelebrationClass(card, patient) {
     const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
         const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
         const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
+        // If quick action, prefer done status to count as celebration
+        if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
+            return entry.status === 'done';
+        }
         
         console.log('DEBUG entry:', entry.content, 'timestamp:', entry.timestamp, 'hasDischarge:', hasDischarge, 'isToday:', isToday);
         
@@ -4569,6 +4998,28 @@ function updatePatientCardTags(patientMabn) {
         
         // Check if there's a discharge tag and add celebration class to card
         checkAndAddCelebrationClass(targetCard, patient);
+        // Update dataset flags for filters (today only)
+        try {
+            const today = new Date();
+            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const log = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog) ? patient.checklistState.yLenhLog : [];
+            let hasXV = false, hasCLS = false, hasODL = false;
+            for (const e of log) {
+                if (!e.timestamp || !e.content) continue;
+                if (!e.timestamp.startsWith(todayStr)) continue;
+                const c = e.content.toLowerCase();
+                if (c.includes('xuất viện')) {
+                    if (e.q === true && e.action === 'Xuất viện') {
+                        if (e.status === 'active' || e.status === 'done') hasXV = true;
+                    } else { hasXV = true; }
+                }
+                if (c.includes('cận lâm sàng')) hasCLS = true;
+                if (c.includes('rút odl')) hasODL = true;
+            }
+            targetCard.dataset.hasxv = hasXV ? '1' : '0';
+            targetCard.dataset.hascls = hasCLS ? '1' : '0';
+            targetCard.dataset.hasodl = hasODL ? '1' : '0';
+        } catch (_) {}
     } else {
         console.log('No tags to display for patient:', patientMabn);
         // Remove xuatvienanimation class if no tags
@@ -4599,7 +5050,7 @@ module.exports = {
     hasDischargeTag 
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],23:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],25:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

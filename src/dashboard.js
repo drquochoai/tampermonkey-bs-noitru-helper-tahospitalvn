@@ -54,7 +54,7 @@ function showDashboardBenhNhanIfNeeded() {
     if (!document.getElementById('dr-ylenh-styles')) {
         const style = document.createElement('style');
         style.id = 'dr-ylenh-styles';
-        style.textContent = `
+    style.textContent = `
             /* Quick action buttons container */
             .quick-ylenh-actions {
                 display: flex;
@@ -103,11 +103,21 @@ function showDashboardBenhNhanIfNeeded() {
                 box-shadow: 0 0 10px rgba(211, 47, 47, 0.3);
             }
 
-            .quick-ylenh-btn.active .tick {
-                display: inline !important;
-                color: #4caf50;
-                font-weight: bold;
-                margin-left: 4px;
+            /* Active state shows a processing badge (no inline tick) */
+            .quick-ylenh-btn.active::after {
+                content: '⏳';
+                position: absolute;
+                top: -6px;
+                right: -6px;
+                background: #1d4ed8;
+                color: #fff;
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
             }
 
             .quick-ylenh-btn.active .text {
@@ -116,6 +126,30 @@ function showDashboardBenhNhanIfNeeded() {
 
             .quick-ylenh-btn .icon {
                 font-size: 14px;
+            }
+
+            /* Trạng thái DONE - hoàn tất */
+            .quick-ylenh-btn.done {
+                border: 3px solid #2e7d32 !important;
+                background-color: #e8f5e9;
+                color: #1b5e20 !important;
+                box-shadow: 0 0 10px rgba(27, 94, 32, 0.2);
+                position: relative;
+            }
+            .quick-ylenh-btn.done::after {
+                content: '✔';
+                position: absolute;
+                top: -6px;
+                right: -6px;
+                background: #2e7d32;
+                color: #fff;
+                width: 18px;
+                height: 18px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
             }
 
             /* Y lệnh tags on patient cards */
@@ -162,6 +196,19 @@ function showDashboardBenhNhanIfNeeded() {
 
             .ylenh-tag .icon {
                 font-size: 10px;
+            }
+
+            /* Tag states for quick actions */
+            .ylenh-tag.state-active {
+                background-color: rgba(37, 99, 235, 0.10);
+                color: #1d4ed8;
+                border-color: rgba(37, 99, 235, 0.35);
+            }
+            .ylenh-tag.state-done {
+                background-color: rgba(34, 197, 94, 0.12);
+                color: #15803d;
+                border-color: rgba(34, 197, 94, 0.45);
+                font-weight: 600;
             }
         `;
         document.head.appendChild(style);
@@ -654,13 +701,21 @@ function showDashboardBenhNhanIfNeeded() {
             <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
                 style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
             <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                <input id="dr-filter-xuatvien" type="checkbox"> Chỉ 'Xuất viện' hôm nay
+                <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <input id="dr-filter-rutodl" type="checkbox"> Rút ODL
             </label>
             <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
         `;
 
-        const container = document.createElement('div');
+    const container = document.createElement('div');
         container.className = 'dr-card-list';
+    // Safety padding in case styles load late
+    container.style.paddingBottom = '90px';
         
         sortedData.forEach(item => {
             const card = createPatientCard(item);
@@ -677,6 +732,31 @@ function showDashboardBenhNhanIfNeeded() {
                 );
                 card.setAttribute('data-loc', (loc || '').toLowerCase());
             }
+            // compute dataset flags from today's yLenhLog
+            try {
+                const today = new Date();
+                const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+                const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
+                let hasXV = false, hasCLS = false, hasODL = false;
+                for (const e of log) {
+                    if (!e.timestamp || !e.content) continue;
+                    if (!e.timestamp.startsWith(todayStr)) continue;
+                    const c = e.content.toLowerCase();
+                    if (c.includes('xuất viện')) {
+                        // if quick and has status, use done/active as presence
+                        if (e.q === true && e.action === 'Xuất viện') {
+                            if (e.status === 'active' || e.status === 'done') hasXV = true;
+                        } else {
+                            hasXV = true;
+                        }
+                    }
+                    if (c.includes('cận lâm sàng')) hasCLS = true;
+                    if (c.includes('rút odl')) hasODL = true;
+                }
+                card.dataset.hasxv = hasXV ? '1' : '0';
+                card.dataset.hascls = hasCLS ? '1' : '0';
+                card.dataset.hasodl = hasODL ? '1' : '0';
+            } catch (_) {}
             container.appendChild(card);
         });
         
@@ -689,12 +769,16 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
-        const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
+    const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
+    const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
+    const chkRutODL = topBar.querySelector('#dr-filter-rutodl');
         const filterCount = topBar.querySelector('#dr-filter-count');
 
         function applyFilter() {
             const q = (searchInput.value || '').trim().toLowerCase();
             const onlyXV = !!chkXuatVien.checked;
+            const onlyCLS = !!chkCanLamSang.checked;
+            const onlyODL = !!chkRutODL.checked;
             let visible = 0;
 
             const cards = container.querySelectorAll('.dr-card');
@@ -705,14 +789,17 @@ function showDashboardBenhNhanIfNeeded() {
                     card.getAttribute('data-name')?.includes(q) ||
                     card.getAttribute('data-cd')?.includes(q) ||
                     card.getAttribute('data-loc')?.includes(q);
-                const matchesXV = !onlyXV || card.classList.contains('xuatvienanimation');
-                const show = matchesText && matchesXV;
+                // dataset flags prepared on card creation
+                const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
+                const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
+                const matchesODL = !onlyODL || card.dataset.hasodl === '1';
+                const show = matchesText && matchesXV && matchesCLS && matchesODL;
                 card.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
 
             // Update counts in top bar and bottom bar
-            filterCount.textContent = q || onlyXV ? `Hiển thị: ${visible}/${sortedData.length}` : '';
+            filterCount.textContent = (q || onlyXV || onlyCLS || onlyODL) ? `Hiển thị: ${visible}/${sortedData.length}` : '';
             const bottomLeft = document.querySelector('.dr-bottom-bar-left');
             if (bottomLeft) {
                 bottomLeft.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (q || onlyXV ? ` (lọc: ${visible})` : '');
@@ -720,7 +807,9 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         searchInput.addEventListener('input', applyFilter);
-        chkXuatVien.addEventListener('change', applyFilter);
+    chkXuatVien.addEventListener('change', applyFilter);
+    chkCanLamSang.addEventListener('change', applyFilter);
+    chkRutODL.addEventListener('change', applyFilter);
 
         // Prefill from query param ?q=
         try {

@@ -30,9 +30,9 @@ function createYLenhTags(patient) {
     const tagsHtml = displayEntries.map(entry => {
         // Determine tag color based on content
         let color = '#4caf50'; // default green
-        const content = entry.content.toLowerCase();
+        const content = (entry.content || '').toLowerCase();
         let isDischarge = false;
-        
+
         if (content.includes('xuất viện')) {
             color = '#4caf50';
             isDischarge = true;
@@ -40,11 +40,21 @@ function createYLenhTags(patient) {
         else if (content.includes('rút odl')) color = '#ff9800';
         else if (content.includes('sonde')) color = '#9c27b0';
         else if (content.includes('thay băng')) color = '#2196f3';
-        
+
+        // Quick-action state mapping
+        let stateClass = '';
+        let stateIcon = '📋';
+        if (entry.q === true) {
+            const st = entry.status || 'active';
+            if (st === 'active') { stateClass = ' state-active'; stateIcon = '⏳'; }
+            if (st === 'done')   { stateClass = ' state-done';   stateIcon = '✔'; }
+        }
+
         const dischargeClass = isDischarge ? ' discharge' : '';
-        
-        return `<span class="ylenh-tag${dischargeClass}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
-            <span class="icon">📋</span>
+        const classes = `ylenh-tag${dischargeClass}${stateClass}`;
+
+        return `<span class="${classes}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
+            <span class="icon">${stateIcon}</span>
             <span style="overflow-wrap:anywhere; word-break:break-word;">${entry.content}</span>
         </span>`;
     }).join('');
@@ -81,6 +91,10 @@ function checkAndAddCelebrationClass(card, patient) {
     const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
         const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
         const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
+        // If quick action, prefer done status to count as celebration
+        if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
+            return entry.status === 'done';
+        }
         
         console.log('DEBUG entry:', entry.content, 'timestamp:', entry.timestamp, 'hasDischarge:', hasDischarge, 'isToday:', isToday);
         
@@ -167,6 +181,28 @@ function updatePatientCardTags(patientMabn) {
         
         // Check if there's a discharge tag and add celebration class to card
         checkAndAddCelebrationClass(targetCard, patient);
+        // Update dataset flags for filters (today only)
+        try {
+            const today = new Date();
+            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const log = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog) ? patient.checklistState.yLenhLog : [];
+            let hasXV = false, hasCLS = false, hasODL = false;
+            for (const e of log) {
+                if (!e.timestamp || !e.content) continue;
+                if (!e.timestamp.startsWith(todayStr)) continue;
+                const c = e.content.toLowerCase();
+                if (c.includes('xuất viện')) {
+                    if (e.q === true && e.action === 'Xuất viện') {
+                        if (e.status === 'active' || e.status === 'done') hasXV = true;
+                    } else { hasXV = true; }
+                }
+                if (c.includes('cận lâm sàng')) hasCLS = true;
+                if (c.includes('rút odl')) hasODL = true;
+            }
+            targetCard.dataset.hasxv = hasXV ? '1' : '0';
+            targetCard.dataset.hascls = hasCLS ? '1' : '0';
+            targetCard.dataset.hasodl = hasODL ? '1' : '0';
+        } catch (_) {}
     } else {
         console.log('No tags to display for patient:', patientMabn);
         // Remove xuatvienanimation class if no tags

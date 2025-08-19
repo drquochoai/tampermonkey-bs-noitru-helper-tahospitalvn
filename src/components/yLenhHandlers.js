@@ -171,7 +171,7 @@ function setupYLenhHandlers(infoElement, patient) {
         }
     });
 
-    // Quick action buttons event listeners - Toggle logic
+    // Quick action buttons event listeners - Toggle logic (3-state: off -> active -> done -> off)
     infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
         btn.addEventListener('click', function() {
             const actionText = this.getAttribute('data-action');
@@ -179,9 +179,9 @@ function setupYLenhHandlers(infoElement, patient) {
         });
     });
 
-    // Function to toggle quick y lệnh (ON/OFF state)
+    // Function to toggle quick y lệnh (three states)
     function toggleQuickYLenh(actionText, buttonElement) {
-        // Check if this action already exists today
+        // Today string
         const today = new Date();
         const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
         
@@ -189,32 +189,53 @@ function setupYLenhHandlers(infoElement, patient) {
             window.checklistState.yLenhLog = [];
         }
 
-        // Find existing entry for this action today
+        // Find existing quick entry for this action today
         const existingIndex = window.checklistState.yLenhLog.findIndex(entry => {
             const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
-            return entryDate === todayStr && entry.content === actionText;
+            const isToday = entryDate === todayStr;
+            const isQuick = entry.q === true || (entry.content === actionText && !entry.id?.toString().startsWith('manual'));
+            const sameAction = entry.action ? entry.action === actionText : entry.content === actionText;
+            return isToday && isQuick && sameAction;
         });
 
-        if (existingIndex !== -1) {
-            // Entry exists - REMOVE it (toggle OFF)
-            window.checklistState.yLenhLog.splice(existingIndex, 1);
-            buttonElement.classList.remove('active');
-            console.log('Removed quick action:', actionText);
-        } else {
-            // Entry doesn't exist - ADD it (toggle ON)
+        // Cycle states
+        if (existingIndex === -1) {
+            // OFF -> ACTIVE (create entry)
             const now = new Date();
             const timestamp = `${todayStr} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
             const doctorName = 'BS';
-
             const newEntry = {
                 timestamp: `${timestamp} - ${doctorName}`,
                 content: actionText,
-                id: Date.now()
+                id: Date.now(),
+                q: true,
+                action: actionText,
+                status: 'active'
             };
-
             window.checklistState.yLenhLog.unshift(newEntry);
             buttonElement.classList.add('active');
-            console.log('Added quick action:', actionText);
+            buttonElement.classList.remove('done');
+            console.log('Quick action set to ACTIVE:', actionText);
+        } else {
+            const entry = window.checklistState.yLenhLog[existingIndex];
+            if (entry.status === 'active') {
+                // ACTIVE -> DONE
+                entry.status = 'done';
+                buttonElement.classList.remove('active');
+                buttonElement.classList.add('done');
+                console.log('Quick action set to DONE:', actionText);
+            } else if (entry.status === 'done') {
+                // DONE -> OFF (remove)
+                window.checklistState.yLenhLog.splice(existingIndex, 1);
+                buttonElement.classList.remove('active');
+                buttonElement.classList.remove('done');
+                console.log('Quick action reset to OFF:', actionText);
+            } else {
+                // Unknown status (fallback): set to ACTIVE
+                entry.status = 'active';
+                buttonElement.classList.add('active');
+                buttonElement.classList.remove('done');
+            }
         }
 
         // Save changes
@@ -229,7 +250,7 @@ function setupYLenhHandlers(infoElement, patient) {
             }
         }
 
-        // Update card tags (but these quick actions won't be displayed as tags)
+    // Update card tags (quick actions might render as tags; styles can reflect state)
         if (window.updatePatientCardTags) {
             window.updatePatientCardTags(patient.mabn);
         }
@@ -262,17 +283,18 @@ function setupYLenhHandlers(infoElement, patient) {
             const actionText = btn.getAttribute('data-action');
             
             // Check if this action exists today
-            const existsToday = window.checklistState && window.checklistState.yLenhLog && 
-                window.checklistState.yLenhLog.some(entry => {
+            let state = 'off';
+            if (window.checklistState && Array.isArray(window.checklistState.yLenhLog)) {
+                const found = window.checklistState.yLenhLog.find(entry => {
                     const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
-                    return entryDate === todayStr && entry.content === actionText;
+                    const isToday = entryDate === todayStr;
+                    const sameAction = entry.action ? entry.action === actionText : entry.content === actionText;
+                    return isToday && sameAction && (entry.q === true || entry.content === actionText);
                 });
-
-            if (existsToday) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
+                if (found) state = found.status || 'active';
             }
+            btn.classList.toggle('active', state === 'active');
+            btn.classList.toggle('done', state === 'done');
         });
     }
 

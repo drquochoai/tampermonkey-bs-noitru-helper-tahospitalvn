@@ -42,7 +42,9 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
+    const { showSettingsIfNeeded } = require('./settings');
     showDashboardBenhNhanIfNeeded();
+    showSettingsIfNeeded();
     // --- Khởi tạo class và gắn vào window để dễ test ---
     window.DanhSachBenhNhanManager = new DanhSachBenhNhan();
     window.DanhSachBenhNhanManager.startAutoFetch();

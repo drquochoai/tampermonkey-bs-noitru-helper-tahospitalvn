@@ -104,6 +104,8 @@ function addGlobalStyles() {
             gap: 20px; 
             justify-content: center; 
             padding: 30px; 
+            /* Ensure content is not hidden behind fixed bottom bar */
+            padding-bottom: 90px; 
         }
         .dr-card { 
             background: #fff; 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.6.0
+// @version      1.6.1
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -68,6 +68,7 @@ const BS_CAI_DAT = {
     quickYLenhActions: [
         { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
     { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
+    { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a' },
         { label: 'Thay băng', icon: '👗', color: '#310994ff' },
         { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
         { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
@@ -567,6 +568,8 @@ const DialogManager = {
             padding: 32px 24px 24px 24px;
             max-width: ${options.maxWidth || '700px'};
             width: 98vw;
+            max-height: ${options.maxHeight || '85vh'};
+            overflow-y: auto;
             border-radius: 12px;
             box-shadow: 0 4px 32px rgba(0,0,0,0.18);
             position: relative;
@@ -749,9 +752,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
         
         <div style="margin-top:20px;">
-            <h3 style="margin-bottom:10px;">Thông tin phẫu thuật</h3>
-            <div style="margin-bottom:12px;">
-                <button id="dr-show-pt-form" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;font-size:0.9em;">Thêm phẫu thuật</button>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
+                <h3 style="margin:0;">Thông tin phẫu thuật</h3>
+                <button id="dr-show-pt-form" style="background:#1976d2;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:0.9em;white-space:nowrap;">Thêm phẫu thuật</button>
             </div>
             <div id="dr-pt-log" style="max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;border-radius:4px;background:#f9f9f9;">
                 <div style="color:#888;font-style:italic;">Chưa có phẫu thuật nào...</div>
@@ -798,10 +801,10 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     const hxtSaved = info.querySelector('#dr-hxt-saved');
     let hxtSaveTimer = null;
 
-    // Initial load if state already available
+    // Initial load from patient-scoped state only (avoid leaking previous patient's global state)
     setTimeout(() => {
-        if (window.checklistState && typeof window.checklistState.huongXuTri === 'string') {
-            hxtTextarea.value = window.checklistState.huongXuTri;
+        if (patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string') {
+            hxtTextarea.value = patient.checklistState.huongXuTri;
         }
     }, 50);
 
@@ -835,6 +838,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
     function softUpdateHXT() {
         const newVal = hxtTextarea.value.trim();
+    // If nothing typed and patient has no existing HXT, don't create/propagate empty or previous values
+    const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string' && patient.checklistState.huongXuTri.trim().length > 0);
+    if (!newVal && !hasExisting) return;
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
         patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
@@ -850,6 +856,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     async function saveHXT() {
         // Normalize and update global checklist state
         const newVal = hxtTextarea.value.trim();
+        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string' && patient.checklistState.huongXuTri.trim().length > 0);
+        // Avoid saving empty if there was no existing value
+        if (!newVal && !hasExisting) return;
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
 
@@ -1755,7 +1764,7 @@ const LoginHandler = require('./components/loginHandler');
 
 // Import newly refactored components
 const { createPatientInfoSection } = require('./components/patientInfoSection');
-const { createYLenhTags, updatePatientCardTags, hasDischargeTag } = require('./utils/tagUtils');
+const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
 // Import utility functions
@@ -1795,6 +1804,58 @@ function showDashboardBenhNhanIfNeeded() {
         const style = document.createElement('style');
         style.id = 'dr-ylenh-styles';
     style.textContent = `
+            /* Sidebar actions: modern look */
+            .dr-sidebar-actions {
+                gap: 10px !important;
+                padding: 6px 0 4px 0;
+            }
+            .dr-sidebar-actions .dr-detail-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 14px;
+                border-radius: 12px;
+                border: 1px solid #cbd5e1;
+                background: #ffffff;
+                color: #0f172a;
+                font-weight: 600;
+                line-height: 1;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+                transition: all 0.18s ease;
+            }
+            .dr-sidebar-actions .dr-detail-btn svg { width: 18px; height: 18px; }
+            .dr-sidebar-actions .dr-detail-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+                border-color: #94a3b8;
+            }
+            .dr-sidebar-actions .dr-detail-btn:active {
+                transform: translateY(0);
+                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.10);
+            }
+            .dr-sidebar-actions .dr-detail-btn:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
+            }
+            /* Primary variant for first button */
+            .dr-sidebar-actions .dr-detail-btn:first-child {
+                background: linear-gradient(180deg, #1e88e5, #1976d2);
+                color: #fff;
+                border-color: #1976d2;
+            }
+            .dr-sidebar-actions .dr-detail-btn:first-child:hover {
+                filter: brightness(1.03);
+                box-shadow: 0 6px 14px rgba(25, 118, 210, 0.25);
+            }
+            /* Subtle/secondary variant for last button */
+            .dr-sidebar-actions .dr-detail-btn:last-child {
+                background: #ffffff;
+                color: #0f172a;
+                border-color: #cbd5e1;
+            }
+            .dr-sidebar-actions .dr-detail-btn:last-child:hover {
+                background: #f8fafc;
+            }
             /* Quick action buttons container */
             .quick-ylenh-actions {
                 display: flex;
@@ -1917,13 +1978,14 @@ function showDashboardBenhNhanIfNeeded() {
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
-                padding: 3px 8px;
+                padding: 4px 10px;
                 background-color: rgba(76, 175, 80, 0.1);
                 color: #2e7d32;
                 border: 1px solid rgba(76, 175, 80, 0.3);
                 border-radius: 12px;
-                font-size: 11px;
-                font-weight: 500;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.2;
                 white-space: normal; /* allow wrapping */
                 overflow-wrap: anywhere;
                 word-break: break-word;
@@ -1936,7 +1998,9 @@ function showDashboardBenhNhanIfNeeded() {
                 background: linear-gradient(45deg, #4caf50, #66bb6a) !important;
                 color: white !important;
                 border: 2px solid #4caf50 !important;
-                font-weight: bold !important;
+                font-weight: 700 !important;
+                font-size: 12px; /* slightly larger for discharge tag */
+                text-shadow: 0 1px 1px rgba(0,0,0,0.25);
             }
 
             .ylenh-tag.completed {
@@ -1946,7 +2010,7 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             .ylenh-tag .icon {
-                font-size: 10px;
+                font-size: 12px;
             }
 
             /* Tag states for quick actions */
@@ -1954,12 +2018,57 @@ function showDashboardBenhNhanIfNeeded() {
                 background-color: rgba(37, 99, 235, 0.10);
                 color: #1d4ed8;
                 border-color: rgba(37, 99, 235, 0.35);
+                font-weight: 700;
             }
             .ylenh-tag.state-done {
                 background-color: rgba(34, 197, 94, 0.12);
                 color: #15803d;
                 border-color: rgba(34, 197, 94, 0.45);
                 font-weight: 600;
+            }
+
+            /* Stronger style for active discharge tag: bigger, clearer, higher contrast */
+            .ylenh-tag.discharge.state-active {
+                font-size: 12.5px; /* larger text */
+                font-weight: 700;  /* bolder */
+                color: #ffffff !important; /* keep white but ensure override */
+                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); /* improve readability on green */
+                border-color: #2e7d32 !important; /* deeper green border for contrast */
+                padding: 4px 9px; /* slightly larger click/visibility area */
+            }
+
+            /* Badge when medications for today are marked done */
+            .dr-card .dr-badge-meds-done {
+                position: absolute;
+                top: -10px;
+                right: 10px;
+                background: #16a34a;
+                color: #fff;
+                font-weight: 800;
+                font-size: 11px;
+                border-radius: 999px;
+                padding: 4px 8px;
+                box-shadow: 0 2px 6px rgba(22,163,74,0.35);
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                z-index: 2;
+            }
+            .dr-card .dr-badge-meds-done::before {
+                content: '✔';
+                background: rgba(255,255,255,0.2);
+                width: 16px;
+                height: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+                font-size: 11px;
+            }
+            /* Card highlight when meds done */
+            .dr-card.meds-done {
+                border: 2px solid #16a34a !important;
+                box-shadow: 0 0 0 2px rgba(22,163,74,0.08), 0 4px 12px rgba(0,0,0,0.06);
             }
         `;
         document.head.appendChild(style);
@@ -2074,7 +2183,9 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             window.checklistObj = checklistObj;
-            window.checklistState = ChecklistService.parseChecklistState(checklistObj);
+            // Parse into a fresh object; avoid leaking prior patient's HXT into others
+            const parsedState = ChecklistService.parseChecklistState(checklistObj) || {};
+            window.checklistState = { ...parsedState };
             
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
@@ -2393,11 +2504,31 @@ function showDashboardBenhNhanIfNeeded() {
         const sidebarActions = document.createElement('div');
         sidebarActions.className = 'dr-sidebar-actions';
         sidebarActions.style.cssText = `
-            display: flex; justify-content: flex-end; gap: 8px; 
+            display: flex; justify-content: flex-end; gap: 10px; 
             margin-bottom: 12px; flex-wrap: wrap;
         `;
         sidebarActions.appendChild(createToDieuTriButton(patient));
+        sidebarActions.appendChild(createHsbaV1Button(patient));
         sidebarActions.appendChild(createHsbaButton(patient));
+    // Helper function to create "HSBAv1" button (open legacy HSBA)
+    function createHsbaV1Button(item) {
+        const btn = document.createElement('button');
+        btn.className = 'dr-detail-btn no-print';
+        btn.style.position = 'static';
+        btn.style.marginLeft = '8px';
+        btn.textContent = 'HSBAv1';
+        btn.onclick = function (e) {
+            e.stopPropagation();
+            try {
+                if (!item || !item.mabn) return;
+                const url = `/hoso/${encodeURIComponent(String(item.mabn))}`;
+                window.open(url, '_blank', 'noopener');
+            } catch (error) {
+                console.warn('Open HSBAv1 failed', error);
+            }
+        };
+        return btn;
+    }
         leftColumn.appendChild(sidebarActions);
 
         const info = createPatientInfoSection(patient, quickYLenhActions);
@@ -2628,6 +2759,8 @@ function showDashboardBenhNhanIfNeeded() {
                                 console.log('Updated y lệnh tags for card:', item.mabn);
                             }
                         }
+                        // Update meds-done badge on the card
+                        try { updateMedsDoneBadge(card, item); } catch (_) {}
                     }
                     
                     // Update surgery status icon
@@ -2690,6 +2823,8 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Add surgery status icon
         addSurgeryStatusIcon(card, item);
+    // Show meds-done badge if applicable
+    try { updateMedsDoneBadge(card, item); } catch (_) {}
         
         card.onclick = () => showSidebar(item);
         // Preload HXT from checklist state after rendering card (non-blocking)
@@ -2788,13 +2923,13 @@ function showDashboardBenhNhanIfNeeded() {
         
         const btnGroup = document.createElement('div');
         btnGroup.className = 'dr-action-buttons';
-        btnGroup.style.display = 'flex';
-        btnGroup.style.gap = '8px';
-        btnGroup.style.justifyContent = 'flex-end';
-        btnGroup.style.alignItems = 'center';
-        btnGroup.style.position = 'absolute';
-        btnGroup.style.right = '16px';
-        btnGroup.style.bottom = '12px';
+    btnGroup.style.display = 'flex';
+    btnGroup.style.gap = '8px';
+    btnGroup.style.justifyContent = 'flex-end';
+    btnGroup.style.alignItems = 'center';
+    btnGroup.style.position = 'absolute';
+    btnGroup.style.right = '16px';
+    btnGroup.style.bottom = '12px';
         
         btnGroup.appendChild(btnToDieuTri);
         btnGroup.appendChild(btnHsba2);
@@ -2930,6 +3065,13 @@ async function createDirectReportGeneration() {
     
     // Create dialog
     const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog');
+    // Layout: flex column with a scrollable content area and a fixed (in-modal) footer
+    try {
+        inner.style.display = 'flex';
+        inner.style.flexDirection = 'column';
+        inner.style.overflowY = 'hidden';
+        inner.style.paddingBottom = '0px';
+    } catch (_) {}
     
     try {
         // Show loading state
@@ -2940,20 +3082,20 @@ async function createDirectReportGeneration() {
             </div>
         `;
         
-        // Get treatment plans for all patients (already sorted)
-        const { sortedPatients, treatmentPlans } = await ReportService.getBatchTreatmentPlans(data);
+    // Load checklist state for all patients (already sorted)
+    const { sortedPatients, states } = await ReportService.getBatchChecklistStates(data);
         
-        // Generate report content
-        const htmlContent = ReportService.generateHTMLReport(sortedPatients, treatmentPlans);
-        const textReport = ReportService.generateTextReport(sortedPatients, treatmentPlans);
+    // Generate report content
+    const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
+    const textReport = ReportService.generateTextReport(sortedPatients, states);
         
         // Create action buttons
         const buttons = DialogManager.createActionButtons([
             {
                 id: 'dr-copy-direct-report',
                 className: 'btn btn-primary',
-                text: 'Copy báo cáo',
-                onclick: () => copyReportToClipboard(textReport)
+                text: 'Copy báo cáo (định dạng)',
+                onclick: () => copyReportToClipboardRich(htmlContent, textReport)
             },
             {
                 id: 'dr-close-direct-report',
@@ -2963,9 +3105,20 @@ async function createDirectReportGeneration() {
             }
         ]);
         
-        // Update dialog content
-        inner.innerHTML = htmlContent;
-        inner.appendChild(buttons);
+        // Update dialog content: a scrollable content area
+        inner.innerHTML = `<div id="dr-report-content" style="flex:1; overflow:auto;">${htmlContent}</div>`;
+        // Build footer bar fixed within modal (not sticky)
+        const footerBar = document.createElement('div');
+        footerBar.style.cssText = [
+            'background:#fff',
+            'padding:10px 0 0',
+            'margin-top:8px',
+            'border-top:1px solid #eee',
+            'box-shadow:0 -2px 8px rgba(0,0,0,0.05)'
+        ].join(';');
+        if (buttons && buttons.style) buttons.style.marginTop = '0';
+        footerBar.appendChild(buttons);
+        inner.appendChild(footerBar);
         
     } catch (error) {
         console.error('Error generating report:', error);
@@ -2997,6 +3150,52 @@ async function copyReportToClipboard(report) {
             background: '#d32f2f',
             duration: 3000 
         });
+    }
+}
+
+/**
+ * Copy rich HTML (with plain text fallback) to clipboard for better pasting into Google Docs
+ */
+async function copyReportToClipboardRich(html, textFallback) {
+    try {
+        if (navigator.clipboard && window.ClipboardItem) {
+            const blobHTML = new Blob([html], { type: 'text/html' });
+            const blobText = new Blob([textFallback || ''], { type: 'text/plain' });
+            const data = new ClipboardItem({
+                'text/html': blobHTML,
+                'text/plain': blobText
+            });
+            await navigator.clipboard.write([data]);
+        } else {
+            // Fallback: inject a hidden contenteditable, select, execCommand
+            const div = document.createElement('div');
+            div.contentEditable = 'true';
+            div.style.position = 'fixed';
+            div.style.left = '-9999px';
+            div.style.top = '0';
+            div.innerHTML = html;
+            document.body.appendChild(div);
+            const range = document.createRange();
+            range.selectNodeContents(div);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('copy');
+            document.body.removeChild(div);
+        }
+        DialogManager.showToast('Đã copy báo cáo (định dạng) vào clipboard!');
+    } catch (error) {
+        console.error('Failed to copy rich report:', error);
+        // Last resort fallback
+        try {
+            await navigator.clipboard.writeText(textFallback || '');
+            DialogManager.showToast('Đã copy báo cáo dạng text (fallback).');
+        } catch (e2) {
+            DialogManager.showToast('Lỗi khi copy báo cáo', { 
+                background: '#d32f2f',
+                duration: 3000 
+            });
+        }
     }
 }
 
@@ -3902,44 +4101,30 @@ module.exports = PatientService;
 
 const DateUtils = require('../utils/dateUtils');
 const PatientDataMapper = require('../utils/patientDataMapper');
+const ChecklistService = require('./checklistService');
+const SurgeryUtils = require('../utils/surgeryUtils');
 
 const ReportService = {
-    /**
-     * Get treatment plan for a patient
-     */
+    // Deprecated: kept for reference; reports now load full checklist state
     async getPatientTreatmentPlan(mabn, ngayvv) {
         try {
             const formData = new FormData();
             formData.append('mabn', mabn + 9898);
-            
             const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
             formData.append('tungay', tungay);
             formData.append('denngay', denngay);
-
             const response = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
-                method: 'POST',
-                credentials: 'include',
-                body: formData
+                method: 'POST', credentials: 'include', body: formData
             });
-
             const res = await response.json();
-            
             if (res.data && Array.isArray(res.data) && res.data.length > 0) {
                 const obj = res.data[res.data.length - 1];
                 let state = {};
-                
                 if (obj && obj.chuky) {
-                    try {
-                        state = JSON.parse(obj.chuky);
-                    } catch (e) {
-                        console.warn('Failed to parse treatment plan state:', e);
-                        state = {};
-                    }
+                    try { state = JSON.parse(obj.chuky); } catch (e) { state = {}; }
                 }
-                
                 return state.kehoach || '';
             }
-            
             return '';
         } catch (error) {
             console.error('Error getting treatment plan:', error);
@@ -3948,27 +4133,57 @@ const ReportService = {
     },
 
     /**
-     * Get treatment plans for multiple patients
+     * Load checklist state for multiple patients (sorted)
      */
-    async getBatchTreatmentPlans(patients) {
-        // Sort patients first to maintain order in report
+    async getBatchChecklistStates(patients) {
         const sortedPatients = PatientDataMapper.sortPatients([...patients]);
-        
-        const promises = sortedPatients.map(patient => 
-            this.getPatientTreatmentPlan(patient.mabn, patient.ngayvv)
-        );
-        
-        const treatmentPlans = await Promise.all(promises);
-        
-        return { sortedPatients, treatmentPlans };
+        const promises = sortedPatients.map(async (patient) => {
+            try {
+                const res = await ChecklistService.loadChecklistData(patient);
+                const obj = ChecklistService.findChecklistObject(res);
+                return obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
+            } catch (e) {
+                console.warn('Failed to load checklist state for', patient?.mabn, e);
+                return {};
+            }
+        });
+        const states = await Promise.all(promises);
+        return { sortedPatients, states };
     },
 
     /**
      * Format patient data for report
      */
-    formatPatientData(patient, index, treatmentPlan = '') {
+    formatPatientData(patient, index, state = {}) {
         const { dob, age } = this.formatDateOfBirth(patient.ngaysinh);
         const gender = patient.phai === 1 ? 'Nữ' : 'Nam';
+        const phauThuat = PatientDataMapper.mapPhauThuatData(state);
+        const hxt = (state && typeof state.huongXuTri === 'string') ? state.huongXuTri.trim() : '';
+
+        // Build surgery displays similar to dr-card
+        let ppptDisplay = '';
+        let ngayPtDisplay = '';
+        if (phauThuat) {
+            const date = phauThuat.ngayPhauThuat || '';
+            const time = phauThuat.gioPhauThuat || '';
+            const method = phauThuat.pppt || '';
+            const dateLabel = time ? `${date} ${time}` : (date || '');
+            // Post-op / future label
+            const info = SurgeryUtils.getSurgeryDateInfo(date);
+            let postOp = '';
+            if (info) {
+                if (info.status === 'today') postOp = ' (Hôm nay PT)';
+                else if (info.status === 'past') postOp = ` (HPN${info.postOpDay})`;
+                else if (info.status === 'future') {
+                    const d = Math.abs(info.daysDiff);
+                    if (d === 1) postOp = ' (Ngày mai phẫu thuật)';
+                    else if (d === 2) postOp = ' (Ngày mốt PT)';
+                    else postOp = ` (Còn ${d} ngày nữa PT)`;
+                }
+            }
+            ppptDisplay = `${method}${postOp}`.trim();
+            ngayPtDisplay = dateLabel;
+        }
         
         return {
             index: index + 1,
@@ -3980,7 +4195,9 @@ const ReportService = {
             room: patient.teN_PHONG || '',
             bed: patient.teN_GIUONG || '',
             diagnosis: patient.chandoanvk || '',
-            treatmentPlan
+            hxt,
+            ppptDisplay,
+            ngayPtDisplay
         };
     },
 
@@ -4011,17 +4228,20 @@ const ReportService = {
     /**
      * Generate HTML report content
      */
-    generateHTMLReport(patients, treatmentPlans) {
-        let html = `<div style="font-size:1.1em;margin-bottom:12px"><b>BÁO CÁO TRỰC</b></div>`;
-        html += `<div style="margin-bottom:10px">Số lượng bệnh nhân hiện có: <b>${patients.length}</b></div>`;
+    generateHTMLReport(patients, states) {
+        let html = ``;
+        // html += `<div style="margin-bottom:10px">Số lượng bệnh nhân hiện có: <b>${patients.length}</b></div>`;
         
         patients.forEach((patient, idx) => {
-            const data = this.formatPatientData(patient, idx, treatmentPlans[idx]);
+            const data = this.formatPatientData(patient, idx, states[idx] || {});
             
-            html += `<div style='margin-bottom:12px'>`;
-            html += `<h3 style='font-size:1em;margin:0 0 2px 0'><strong>${data.index}. ${data.name} - ${data.mabn}</strong> - ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed} - </h3>`;
-            html += `<div><b>Chẩn đoán</b>: ${data.diagnosis}</div>`;
-            html += `<div><b>Điều trị</b>: ${data.treatmentPlan}</div>`;
+            html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
+            html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${data.name} - ${data.mabn}</strong></h3>`;
+            html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
+            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${data.diagnosis}</div>`;
+            if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
+            if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
+            if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt}</div>`;
             html += `</div>`;
         });
         
@@ -4031,15 +4251,17 @@ const ReportService = {
     /**
      * Generate plain text report content
      */
-    generateTextReport(patients, treatmentPlans) {
+    generateTextReport(patients, states) {
         let report = `BÁO CÁO TRỰC\nSố lượng bệnh nhân hiện có: ${patients.length}\n`;
         
         patients.forEach((patient, idx) => {
-            const data = this.formatPatientData(patient, idx, treatmentPlans[idx]);
+            const data = this.formatPatientData(patient, idx, states[idx] || {});
             
             report += `${data.index}. ${data.bed} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
             report += `   Chẩn đoán: ${data.diagnosis}\n`;
-            report += `   Điều trị: ${data.treatmentPlan}\n`;
+            if (data.ppptDisplay) report += `   PPPT: ${data.ppptDisplay}\n`;
+            if (data.ngayPtDisplay) report += `   Ngày PT: ${data.ngayPtDisplay}\n`;
+            if (data.hxt) report += `   HXT: ${data.hxt}\n`;
         });
         
         return report;
@@ -4048,7 +4270,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":21,"../utils/patientDataMapper":22}],17:[function(require,module,exports){
+},{"../utils/dateUtils":21,"../utils/patientDataMapper":22,"../utils/surgeryUtils":23,"./checklistService":14}],17:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -5266,6 +5488,44 @@ function hexToRgb(hex) {
         '76, 175, 80'; // fallback green
 }
 
+// Compute if today has a quick action 'Đã đánh thuốc' marked done
+function hasMedsDoneToday(patient) {
+    try {
+        if (!patient || !patient.checklistState || !Array.isArray(patient.checklistState.yLenhLog)) return false;
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        return patient.checklistState.yLenhLog.some(entry => {
+            if (!entry || !entry.timestamp || !entry.content) return false;
+            if (!entry.timestamp.startsWith(todayStr)) return false;
+            const isQuick = entry.q === true && (entry.action ? entry.action === 'Đã đánh thuốc' : entry.content === 'Đã đánh thuốc');
+            const isManual = !entry.q && entry.content === 'Đã đánh thuốc';
+            if (isQuick) return entry.status === 'done';
+            return isManual; // if someone typed it manually, count it
+        });
+    } catch (_) { return false; }
+}
+
+// Add or remove the meds-done badge on a specific card element
+function updateMedsDoneBadge(card, patient) {
+    try {
+        if (!card) return;
+        const existed = card.querySelector('.dr-badge-meds-done');
+        const shouldShow = hasMedsDoneToday(patient);
+        if (shouldShow) {
+            if (!existed) {
+                const badge = document.createElement('div');
+                badge.className = 'dr-badge-meds-done';
+                badge.textContent = 'Đã đánh thuốc';
+                card.appendChild(badge);
+            }
+            card.classList.add('meds-done');
+        } else if (existed) {
+            existed.remove();
+            card.classList.remove('meds-done');
+        }
+    } catch (_) { /* noop */ }
+}
+
 // Helper function to check for discharge tags and add xuatvienanimation class
 function checkAndAddCelebrationClass(card, patient) {
     if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
@@ -5375,6 +5635,8 @@ function updatePatientCardTags(patientMabn) {
         
         // Check if there's a discharge tag and add celebration class to card
         checkAndAddCelebrationClass(targetCard, patient);
+        // Update meds-done badge
+        updateMedsDoneBadge(targetCard, patient);
         // Update dataset flags for filters (today only)
         try {
             const today = new Date();
@@ -5401,6 +5663,9 @@ function updatePatientCardTags(patientMabn) {
         console.log('No tags to display for patient:', patientMabn);
         // Remove xuatvienanimation class if no tags
         targetCard.classList.remove('xuatvienanimation');
+    // Also remove meds-done badge if present
+    const existed = targetCard.querySelector('.dr-badge-meds-done');
+    if (existed) existed.remove();
     }
 }
 
@@ -5424,7 +5689,9 @@ module.exports = {
     createYLenhTags, 
     updatePatientCardTags,
     hexToRgb,
-    hasDischargeTag 
+    hasDischargeTag,
+    hasMedsDoneToday,
+    updateMedsDoneBadge
 };
 
 },{"../BS_CAI_DAT_GIAO_DIEN":1}],25:[function(require,module,exports){

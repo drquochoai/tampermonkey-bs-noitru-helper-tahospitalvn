@@ -2,44 +2,30 @@
 
 const DateUtils = require('../utils/dateUtils');
 const PatientDataMapper = require('../utils/patientDataMapper');
+const ChecklistService = require('./checklistService');
+const SurgeryUtils = require('../utils/surgeryUtils');
 
 const ReportService = {
-    /**
-     * Get treatment plan for a patient
-     */
+    // Deprecated: kept for reference; reports now load full checklist state
     async getPatientTreatmentPlan(mabn, ngayvv) {
         try {
             const formData = new FormData();
             formData.append('mabn', mabn + 9898);
-            
             const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
             formData.append('tungay', tungay);
             formData.append('denngay', denngay);
-
             const response = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
-                method: 'POST',
-                credentials: 'include',
-                body: formData
+                method: 'POST', credentials: 'include', body: formData
             });
-
             const res = await response.json();
-            
             if (res.data && Array.isArray(res.data) && res.data.length > 0) {
                 const obj = res.data[res.data.length - 1];
                 let state = {};
-                
                 if (obj && obj.chuky) {
-                    try {
-                        state = JSON.parse(obj.chuky);
-                    } catch (e) {
-                        console.warn('Failed to parse treatment plan state:', e);
-                        state = {};
-                    }
+                    try { state = JSON.parse(obj.chuky); } catch (e) { state = {}; }
                 }
-                
                 return state.kehoach || '';
             }
-            
             return '';
         } catch (error) {
             console.error('Error getting treatment plan:', error);
@@ -48,27 +34,57 @@ const ReportService = {
     },
 
     /**
-     * Get treatment plans for multiple patients
+     * Load checklist state for multiple patients (sorted)
      */
-    async getBatchTreatmentPlans(patients) {
-        // Sort patients first to maintain order in report
+    async getBatchChecklistStates(patients) {
         const sortedPatients = PatientDataMapper.sortPatients([...patients]);
-        
-        const promises = sortedPatients.map(patient => 
-            this.getPatientTreatmentPlan(patient.mabn, patient.ngayvv)
-        );
-        
-        const treatmentPlans = await Promise.all(promises);
-        
-        return { sortedPatients, treatmentPlans };
+        const promises = sortedPatients.map(async (patient) => {
+            try {
+                const res = await ChecklistService.loadChecklistData(patient);
+                const obj = ChecklistService.findChecklistObject(res);
+                return obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
+            } catch (e) {
+                console.warn('Failed to load checklist state for', patient?.mabn, e);
+                return {};
+            }
+        });
+        const states = await Promise.all(promises);
+        return { sortedPatients, states };
     },
 
     /**
      * Format patient data for report
      */
-    formatPatientData(patient, index, treatmentPlan = '') {
+    formatPatientData(patient, index, state = {}) {
         const { dob, age } = this.formatDateOfBirth(patient.ngaysinh);
         const gender = patient.phai === 1 ? 'Nữ' : 'Nam';
+        const phauThuat = PatientDataMapper.mapPhauThuatData(state);
+        const hxt = (state && typeof state.huongXuTri === 'string') ? state.huongXuTri.trim() : '';
+
+        // Build surgery displays similar to dr-card
+        let ppptDisplay = '';
+        let ngayPtDisplay = '';
+        if (phauThuat) {
+            const date = phauThuat.ngayPhauThuat || '';
+            const time = phauThuat.gioPhauThuat || '';
+            const method = phauThuat.pppt || '';
+            const dateLabel = time ? `${date} ${time}` : (date || '');
+            // Post-op / future label
+            const info = SurgeryUtils.getSurgeryDateInfo(date);
+            let postOp = '';
+            if (info) {
+                if (info.status === 'today') postOp = ' (Hôm nay PT)';
+                else if (info.status === 'past') postOp = ` (HPN${info.postOpDay})`;
+                else if (info.status === 'future') {
+                    const d = Math.abs(info.daysDiff);
+                    if (d === 1) postOp = ' (Ngày mai phẫu thuật)';
+                    else if (d === 2) postOp = ' (Ngày mốt PT)';
+                    else postOp = ` (Còn ${d} ngày nữa PT)`;
+                }
+            }
+            ppptDisplay = `${method}${postOp}`.trim();
+            ngayPtDisplay = dateLabel;
+        }
         
         return {
             index: index + 1,
@@ -80,7 +96,9 @@ const ReportService = {
             room: patient.teN_PHONG || '',
             bed: patient.teN_GIUONG || '',
             diagnosis: patient.chandoanvk || '',
-            treatmentPlan
+            hxt,
+            ppptDisplay,
+            ngayPtDisplay
         };
     },
 
@@ -111,17 +129,20 @@ const ReportService = {
     /**
      * Generate HTML report content
      */
-    generateHTMLReport(patients, treatmentPlans) {
-        let html = `<div style="font-size:1.1em;margin-bottom:12px"><b>BÁO CÁO TRỰC</b></div>`;
-        html += `<div style="margin-bottom:10px">Số lượng bệnh nhân hiện có: <b>${patients.length}</b></div>`;
+    generateHTMLReport(patients, states) {
+        let html = ``;
+        // html += `<div style="margin-bottom:10px">Số lượng bệnh nhân hiện có: <b>${patients.length}</b></div>`;
         
         patients.forEach((patient, idx) => {
-            const data = this.formatPatientData(patient, idx, treatmentPlans[idx]);
+            const data = this.formatPatientData(patient, idx, states[idx] || {});
             
-            html += `<div style='margin-bottom:12px'>`;
-            html += `<h3 style='font-size:1em;margin:0 0 2px 0'><strong>${data.index}. ${data.name} - ${data.mabn}</strong> - ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed} - </h3>`;
-            html += `<div><b>Chẩn đoán</b>: ${data.diagnosis}</div>`;
-            html += `<div><b>Điều trị</b>: ${data.treatmentPlan}</div>`;
+            html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
+            html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${data.name} - ${data.mabn}</strong></h3>`;
+            html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
+            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${data.diagnosis}</div>`;
+            if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
+            if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
+            if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt}</div>`;
             html += `</div>`;
         });
         
@@ -131,15 +152,17 @@ const ReportService = {
     /**
      * Generate plain text report content
      */
-    generateTextReport(patients, treatmentPlans) {
+    generateTextReport(patients, states) {
         let report = `BÁO CÁO TRỰC\nSố lượng bệnh nhân hiện có: ${patients.length}\n`;
         
         patients.forEach((patient, idx) => {
-            const data = this.formatPatientData(patient, idx, treatmentPlans[idx]);
+            const data = this.formatPatientData(patient, idx, states[idx] || {});
             
             report += `${data.index}. ${data.bed} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
             report += `   Chẩn đoán: ${data.diagnosis}\n`;
-            report += `   Điều trị: ${data.treatmentPlan}\n`;
+            if (data.ppptDisplay) report += `   PPPT: ${data.ppptDisplay}\n`;
+            if (data.ngayPtDisplay) report += `   Ngày PT: ${data.ngayPtDisplay}\n`;
+            if (data.hxt) report += `   HXT: ${data.hxt}\n`;
         });
         
         return report;

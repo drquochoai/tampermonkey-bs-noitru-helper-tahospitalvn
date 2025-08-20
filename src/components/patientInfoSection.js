@@ -13,9 +13,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
         
         <div style="margin-top:20px;">
-            <h3 style="margin-bottom:10px;">Thông tin phẫu thuật</h3>
-            <div style="margin-bottom:12px;">
-                <button id="dr-show-pt-form" style="background:#1976d2;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;font-size:0.9em;">Thêm phẫu thuật</button>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
+                <h3 style="margin:0;">Thông tin phẫu thuật</h3>
+                <button id="dr-show-pt-form" style="background:#1976d2;color:#fff;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;font-size:0.9em;white-space:nowrap;">Thêm phẫu thuật</button>
             </div>
             <div id="dr-pt-log" style="max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;border-radius:4px;background:#f9f9f9;">
                 <div style="color:#888;font-style:italic;">Chưa có phẫu thuật nào...</div>
@@ -62,10 +62,10 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     const hxtSaved = info.querySelector('#dr-hxt-saved');
     let hxtSaveTimer = null;
 
-    // Initial load if state already available
+    // Initial load from patient-scoped state only (avoid leaking previous patient's global state)
     setTimeout(() => {
-        if (window.checklistState && typeof window.checklistState.huongXuTri === 'string') {
-            hxtTextarea.value = window.checklistState.huongXuTri;
+        if (patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string') {
+            hxtTextarea.value = patient.checklistState.huongXuTri;
         }
     }, 50);
 
@@ -99,6 +99,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
     function softUpdateHXT() {
         const newVal = hxtTextarea.value.trim();
+    // If nothing typed and patient has no existing HXT, don't create/propagate empty or previous values
+    const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string' && patient.checklistState.huongXuTri.trim().length > 0);
+    if (!newVal && !hasExisting) return;
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
         patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
@@ -114,6 +117,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     async function saveHXT() {
         // Normalize and update global checklist state
         const newVal = hxtTextarea.value.trim();
+        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string' && patient.checklistState.huongXuTri.trim().length > 0);
+        // Avoid saving empty if there was no existing value
+        if (!newVal && !hasExisting) return;
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
 

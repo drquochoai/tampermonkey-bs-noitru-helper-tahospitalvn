@@ -18,7 +18,7 @@ const LoginHandler = require('./components/loginHandler');
 
 // Import newly refactored components
 const { createPatientInfoSection } = require('./components/patientInfoSection');
-const { createYLenhTags, updatePatientCardTags, hasDischargeTag } = require('./utils/tagUtils');
+const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
 // Import utility functions
@@ -58,6 +58,58 @@ function showDashboardBenhNhanIfNeeded() {
         const style = document.createElement('style');
         style.id = 'dr-ylenh-styles';
     style.textContent = `
+            /* Sidebar actions: modern look */
+            .dr-sidebar-actions {
+                gap: 10px !important;
+                padding: 6px 0 4px 0;
+            }
+            .dr-sidebar-actions .dr-detail-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+                padding: 10px 14px;
+                border-radius: 12px;
+                border: 1px solid #cbd5e1;
+                background: #ffffff;
+                color: #0f172a;
+                font-weight: 600;
+                line-height: 1;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+                transition: all 0.18s ease;
+            }
+            .dr-sidebar-actions .dr-detail-btn svg { width: 18px; height: 18px; }
+            .dr-sidebar-actions .dr-detail-btn:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+                border-color: #94a3b8;
+            }
+            .dr-sidebar-actions .dr-detail-btn:active {
+                transform: translateY(0);
+                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.10);
+            }
+            .dr-sidebar-actions .dr-detail-btn:focus-visible {
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
+            }
+            /* Primary variant for first button */
+            .dr-sidebar-actions .dr-detail-btn:first-child {
+                background: linear-gradient(180deg, #1e88e5, #1976d2);
+                color: #fff;
+                border-color: #1976d2;
+            }
+            .dr-sidebar-actions .dr-detail-btn:first-child:hover {
+                filter: brightness(1.03);
+                box-shadow: 0 6px 14px rgba(25, 118, 210, 0.25);
+            }
+            /* Subtle/secondary variant for last button */
+            .dr-sidebar-actions .dr-detail-btn:last-child {
+                background: #ffffff;
+                color: #0f172a;
+                border-color: #cbd5e1;
+            }
+            .dr-sidebar-actions .dr-detail-btn:last-child:hover {
+                background: #f8fafc;
+            }
             /* Quick action buttons container */
             .quick-ylenh-actions {
                 display: flex;
@@ -180,13 +232,14 @@ function showDashboardBenhNhanIfNeeded() {
                 display: inline-flex;
                 align-items: center;
                 gap: 4px;
-                padding: 3px 8px;
+                padding: 4px 10px;
                 background-color: rgba(76, 175, 80, 0.1);
                 color: #2e7d32;
                 border: 1px solid rgba(76, 175, 80, 0.3);
                 border-radius: 12px;
-                font-size: 11px;
-                font-weight: 500;
+                font-size: 12px;
+                font-weight: 600;
+                line-height: 1.2;
                 white-space: normal; /* allow wrapping */
                 overflow-wrap: anywhere;
                 word-break: break-word;
@@ -199,7 +252,9 @@ function showDashboardBenhNhanIfNeeded() {
                 background: linear-gradient(45deg, #4caf50, #66bb6a) !important;
                 color: white !important;
                 border: 2px solid #4caf50 !important;
-                font-weight: bold !important;
+                font-weight: 700 !important;
+                font-size: 12px; /* slightly larger for discharge tag */
+                text-shadow: 0 1px 1px rgba(0,0,0,0.25);
             }
 
             .ylenh-tag.completed {
@@ -209,7 +264,7 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             .ylenh-tag .icon {
-                font-size: 10px;
+                font-size: 12px;
             }
 
             /* Tag states for quick actions */
@@ -217,12 +272,57 @@ function showDashboardBenhNhanIfNeeded() {
                 background-color: rgba(37, 99, 235, 0.10);
                 color: #1d4ed8;
                 border-color: rgba(37, 99, 235, 0.35);
+                font-weight: 700;
             }
             .ylenh-tag.state-done {
                 background-color: rgba(34, 197, 94, 0.12);
                 color: #15803d;
                 border-color: rgba(34, 197, 94, 0.45);
                 font-weight: 600;
+            }
+
+            /* Stronger style for active discharge tag: bigger, clearer, higher contrast */
+            .ylenh-tag.discharge.state-active {
+                font-size: 12.5px; /* larger text */
+                font-weight: 700;  /* bolder */
+                color: #ffffff !important; /* keep white but ensure override */
+                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); /* improve readability on green */
+                border-color: #2e7d32 !important; /* deeper green border for contrast */
+                padding: 4px 9px; /* slightly larger click/visibility area */
+            }
+
+            /* Badge when medications for today are marked done */
+            .dr-card .dr-badge-meds-done {
+                position: absolute;
+                top: -10px;
+                right: 10px;
+                background: #16a34a;
+                color: #fff;
+                font-weight: 800;
+                font-size: 11px;
+                border-radius: 999px;
+                padding: 4px 8px;
+                box-shadow: 0 2px 6px rgba(22,163,74,0.35);
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                z-index: 2;
+            }
+            .dr-card .dr-badge-meds-done::before {
+                content: '✔';
+                background: rgba(255,255,255,0.2);
+                width: 16px;
+                height: 16px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border-radius: 50%;
+                font-size: 11px;
+            }
+            /* Card highlight when meds done */
+            .dr-card.meds-done {
+                border: 2px solid #16a34a !important;
+                box-shadow: 0 0 0 2px rgba(22,163,74,0.08), 0 4px 12px rgba(0,0,0,0.06);
             }
         `;
         document.head.appendChild(style);
@@ -337,7 +437,9 @@ function showDashboardBenhNhanIfNeeded() {
             }
 
             window.checklistObj = checklistObj;
-            window.checklistState = ChecklistService.parseChecklistState(checklistObj);
+            // Parse into a fresh object; avoid leaking prior patient's HXT into others
+            const parsedState = ChecklistService.parseChecklistState(checklistObj) || {};
+            window.checklistState = { ...parsedState };
             
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
@@ -656,11 +758,31 @@ function showDashboardBenhNhanIfNeeded() {
         const sidebarActions = document.createElement('div');
         sidebarActions.className = 'dr-sidebar-actions';
         sidebarActions.style.cssText = `
-            display: flex; justify-content: flex-end; gap: 8px; 
+            display: flex; justify-content: flex-end; gap: 10px; 
             margin-bottom: 12px; flex-wrap: wrap;
         `;
         sidebarActions.appendChild(createToDieuTriButton(patient));
+        sidebarActions.appendChild(createHsbaV1Button(patient));
         sidebarActions.appendChild(createHsbaButton(patient));
+    // Helper function to create "HSBAv1" button (open legacy HSBA)
+    function createHsbaV1Button(item) {
+        const btn = document.createElement('button');
+        btn.className = 'dr-detail-btn no-print';
+        btn.style.position = 'static';
+        btn.style.marginLeft = '8px';
+        btn.textContent = 'HSBAv1';
+        btn.onclick = function (e) {
+            e.stopPropagation();
+            try {
+                if (!item || !item.mabn) return;
+                const url = `/hoso/${encodeURIComponent(String(item.mabn))}`;
+                window.open(url, '_blank', 'noopener');
+            } catch (error) {
+                console.warn('Open HSBAv1 failed', error);
+            }
+        };
+        return btn;
+    }
         leftColumn.appendChild(sidebarActions);
 
         const info = createPatientInfoSection(patient, quickYLenhActions);
@@ -891,6 +1013,8 @@ function showDashboardBenhNhanIfNeeded() {
                                 console.log('Updated y lệnh tags for card:', item.mabn);
                             }
                         }
+                        // Update meds-done badge on the card
+                        try { updateMedsDoneBadge(card, item); } catch (_) {}
                     }
                     
                     // Update surgery status icon
@@ -953,6 +1077,8 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Add surgery status icon
         addSurgeryStatusIcon(card, item);
+    // Show meds-done badge if applicable
+    try { updateMedsDoneBadge(card, item); } catch (_) {}
         
         card.onclick = () => showSidebar(item);
         // Preload HXT from checklist state after rendering card (non-blocking)
@@ -1051,13 +1177,13 @@ function showDashboardBenhNhanIfNeeded() {
         
         const btnGroup = document.createElement('div');
         btnGroup.className = 'dr-action-buttons';
-        btnGroup.style.display = 'flex';
-        btnGroup.style.gap = '8px';
-        btnGroup.style.justifyContent = 'flex-end';
-        btnGroup.style.alignItems = 'center';
-        btnGroup.style.position = 'absolute';
-        btnGroup.style.right = '16px';
-        btnGroup.style.bottom = '12px';
+    btnGroup.style.display = 'flex';
+    btnGroup.style.gap = '8px';
+    btnGroup.style.justifyContent = 'flex-end';
+    btnGroup.style.alignItems = 'center';
+    btnGroup.style.position = 'absolute';
+    btnGroup.style.right = '16px';
+    btnGroup.style.bottom = '12px';
         
         btnGroup.appendChild(btnToDieuTri);
         btnGroup.appendChild(btnHsba2);

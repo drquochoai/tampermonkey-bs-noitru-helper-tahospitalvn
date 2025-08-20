@@ -12,6 +12,13 @@ async function createDirectReportGeneration() {
     
     // Create dialog
     const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog');
+    // Layout: flex column with a scrollable content area and a fixed (in-modal) footer
+    try {
+        inner.style.display = 'flex';
+        inner.style.flexDirection = 'column';
+        inner.style.overflowY = 'hidden';
+        inner.style.paddingBottom = '0px';
+    } catch (_) {}
     
     try {
         // Show loading state
@@ -22,20 +29,20 @@ async function createDirectReportGeneration() {
             </div>
         `;
         
-        // Get treatment plans for all patients (already sorted)
-        const { sortedPatients, treatmentPlans } = await ReportService.getBatchTreatmentPlans(data);
+    // Load checklist state for all patients (already sorted)
+    const { sortedPatients, states } = await ReportService.getBatchChecklistStates(data);
         
-        // Generate report content
-        const htmlContent = ReportService.generateHTMLReport(sortedPatients, treatmentPlans);
-        const textReport = ReportService.generateTextReport(sortedPatients, treatmentPlans);
+    // Generate report content
+    const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
+    const textReport = ReportService.generateTextReport(sortedPatients, states);
         
         // Create action buttons
         const buttons = DialogManager.createActionButtons([
             {
                 id: 'dr-copy-direct-report',
                 className: 'btn btn-primary',
-                text: 'Copy báo cáo',
-                onclick: () => copyReportToClipboard(textReport)
+                text: 'Copy báo cáo (định dạng)',
+                onclick: () => copyReportToClipboardRich(htmlContent, textReport)
             },
             {
                 id: 'dr-close-direct-report',
@@ -45,9 +52,20 @@ async function createDirectReportGeneration() {
             }
         ]);
         
-        // Update dialog content
-        inner.innerHTML = htmlContent;
-        inner.appendChild(buttons);
+        // Update dialog content: a scrollable content area
+        inner.innerHTML = `<div id="dr-report-content" style="flex:1; overflow:auto;">${htmlContent}</div>`;
+        // Build footer bar fixed within modal (not sticky)
+        const footerBar = document.createElement('div');
+        footerBar.style.cssText = [
+            'background:#fff',
+            'padding:10px 0 0',
+            'margin-top:8px',
+            'border-top:1px solid #eee',
+            'box-shadow:0 -2px 8px rgba(0,0,0,0.05)'
+        ].join(';');
+        if (buttons && buttons.style) buttons.style.marginTop = '0';
+        footerBar.appendChild(buttons);
+        inner.appendChild(footerBar);
         
     } catch (error) {
         console.error('Error generating report:', error);
@@ -79,6 +97,52 @@ async function copyReportToClipboard(report) {
             background: '#d32f2f',
             duration: 3000 
         });
+    }
+}
+
+/**
+ * Copy rich HTML (with plain text fallback) to clipboard for better pasting into Google Docs
+ */
+async function copyReportToClipboardRich(html, textFallback) {
+    try {
+        if (navigator.clipboard && window.ClipboardItem) {
+            const blobHTML = new Blob([html], { type: 'text/html' });
+            const blobText = new Blob([textFallback || ''], { type: 'text/plain' });
+            const data = new ClipboardItem({
+                'text/html': blobHTML,
+                'text/plain': blobText
+            });
+            await navigator.clipboard.write([data]);
+        } else {
+            // Fallback: inject a hidden contenteditable, select, execCommand
+            const div = document.createElement('div');
+            div.contentEditable = 'true';
+            div.style.position = 'fixed';
+            div.style.left = '-9999px';
+            div.style.top = '0';
+            div.innerHTML = html;
+            document.body.appendChild(div);
+            const range = document.createRange();
+            range.selectNodeContents(div);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('copy');
+            document.body.removeChild(div);
+        }
+        DialogManager.showToast('Đã copy báo cáo (định dạng) vào clipboard!');
+    } catch (error) {
+        console.error('Failed to copy rich report:', error);
+        // Last resort fallback
+        try {
+            await navigator.clipboard.writeText(textFallback || '');
+            DialogManager.showToast('Đã copy báo cáo dạng text (fallback).');
+        } catch (e2) {
+            DialogManager.showToast('Lỗi khi copy báo cáo', { 
+                background: '#d32f2f',
+                duration: 3000 
+            });
+        }
     }
 }
 

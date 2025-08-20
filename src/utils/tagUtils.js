@@ -74,6 +74,44 @@ function hexToRgb(hex) {
         '76, 175, 80'; // fallback green
 }
 
+// Compute if today has a quick action 'Đã đánh thuốc' marked done
+function hasMedsDoneToday(patient) {
+    try {
+        if (!patient || !patient.checklistState || !Array.isArray(patient.checklistState.yLenhLog)) return false;
+        const today = new Date();
+        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        return patient.checklistState.yLenhLog.some(entry => {
+            if (!entry || !entry.timestamp || !entry.content) return false;
+            if (!entry.timestamp.startsWith(todayStr)) return false;
+            const isQuick = entry.q === true && (entry.action ? entry.action === 'Đã đánh thuốc' : entry.content === 'Đã đánh thuốc');
+            const isManual = !entry.q && entry.content === 'Đã đánh thuốc';
+            if (isQuick) return entry.status === 'done';
+            return isManual; // if someone typed it manually, count it
+        });
+    } catch (_) { return false; }
+}
+
+// Add or remove the meds-done badge on a specific card element
+function updateMedsDoneBadge(card, patient) {
+    try {
+        if (!card) return;
+        const existed = card.querySelector('.dr-badge-meds-done');
+        const shouldShow = hasMedsDoneToday(patient);
+        if (shouldShow) {
+            if (!existed) {
+                const badge = document.createElement('div');
+                badge.className = 'dr-badge-meds-done';
+                badge.textContent = 'Đã đánh thuốc';
+                card.appendChild(badge);
+            }
+            card.classList.add('meds-done');
+        } else if (existed) {
+            existed.remove();
+            card.classList.remove('meds-done');
+        }
+    } catch (_) { /* noop */ }
+}
+
 // Helper function to check for discharge tags and add xuatvienanimation class
 function checkAndAddCelebrationClass(card, patient) {
     if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
@@ -183,6 +221,8 @@ function updatePatientCardTags(patientMabn) {
         
         // Check if there's a discharge tag and add celebration class to card
         checkAndAddCelebrationClass(targetCard, patient);
+        // Update meds-done badge
+        updateMedsDoneBadge(targetCard, patient);
         // Update dataset flags for filters (today only)
         try {
             const today = new Date();
@@ -209,6 +249,9 @@ function updatePatientCardTags(patientMabn) {
         console.log('No tags to display for patient:', patientMabn);
         // Remove xuatvienanimation class if no tags
         targetCard.classList.remove('xuatvienanimation');
+    // Also remove meds-done badge if present
+    const existed = targetCard.querySelector('.dr-badge-meds-done');
+    if (existed) existed.remove();
     }
 }
 
@@ -232,5 +275,7 @@ module.exports = {
     createYLenhTags, 
     updatePatientCardTags,
     hexToRgb,
-    hasDischargeTag 
+    hasDischargeTag,
+    hasMedsDoneToday,
+    updateMedsDoneBadge
 };

@@ -30,6 +30,8 @@ const DialogManager = {
             padding: 32px 24px 24px 24px;
             max-width: ${options.maxWidth || '700px'};
             width: 98vw;
+            max-height: ${options.maxHeight || '85vh'};
+            overflow-y: auto;
             border-radius: 12px;
             box-shadow: 0 4px 32px rgba(0,0,0,0.18);
             position: relative;

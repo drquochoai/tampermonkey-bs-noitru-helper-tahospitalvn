@@ -11,6 +11,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <div><b>Tuổi:</b> ${Utils.calculateAge(patient.ngaysinh)}</div>
         <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
+        <div style="margin-top:8px;">
+            <h3 style="margin-bottom:6px;">Chẩn đoán kèm theo</h3>
+            <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:10px;border:1px solid #eee;border-radius:6px;resize:vertical;"></textarea>
+            <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;margin-top:4px;">Đã lưu</div>
+        </div>
         
         <div style="margin-top:20px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:12px;">
@@ -61,11 +66,18 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     const hxtTextarea = info.querySelector('#dr-hxt-textarea');
     const hxtSaved = info.querySelector('#dr-hxt-saved');
     let hxtSaveTimer = null;
+    // Setup Chẩn đoán kèm theo auto-save
+    const cdktTextarea = info.querySelector('#dr-chandoan-kemtheo');
+    const cdktSaved = info.querySelector('#dr-chandoan-kemtheo-saved');
+    let cdktSaveTimer = null;
 
     // Initial load from patient-scoped state only (avoid leaking previous patient's global state)
     setTimeout(() => {
         if (patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string') {
             hxtTextarea.value = patient.checklistState.huongXuTri;
+        }
+        if (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string') {
+            cdktTextarea.value = patient.checklistState.chanDoanKemTheo;
         }
     }, 50);
 
@@ -168,6 +180,73 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         saveHXT();
     });
     hxtTextarea.addEventListener('change', saveHXT);
+
+    // ====== Chẩn đoán kèm theo: soft update + save ======
+    function softUpdateCDKT() {
+        const newVal = cdktTextarea.value.trim();
+        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string' && patient.checklistState.chanDoanKemTheo.trim().length > 0);
+        if (!newVal && !hasExisting) return;
+        if (!window.checklistState) window.checklistState = {};
+        window.checklistState = { ...(window.checklistState || {}), chanDoanKemTheo: newVal };
+        patient.checklistState = { ...(patient.checklistState || {}), chanDoanKemTheo: newVal };
+        if (window.dr_data && patient.mabn) {
+            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+            if (patientInData) {
+                patientInData.checklistState = { ...(patientInData.checklistState || {}), chanDoanKemTheo: newVal };
+            }
+        }
+    }
+
+    async function saveCDKT() {
+        const newVal = cdktTextarea.value.trim();
+        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string' && patient.checklistState.chanDoanKemTheo.trim().length > 0);
+        if (!newVal && !hasExisting) return;
+        if (!window.checklistState) window.checklistState = {};
+        window.checklistState = { ...(window.checklistState || {}), chanDoanKemTheo: newVal };
+        patient.checklistState = { ...(patient.checklistState || {}), chanDoanKemTheo: newVal };
+        if (window.dr_data && patient.mabn) {
+            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
+            if (patientInData) {
+                patientInData.checklistState = { ...(patientInData.checklistState || {}), chanDoanKemTheo: newVal };
+            }
+        }
+        if (window.checklistObj) {
+            const ok = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+            if (!ok) {
+                console.warn('Lưu Chẩn đoán kèm theo thất bại');
+            }
+        }
+        // Update card view immediately
+        try {
+            if (typeof updatePatientCardCDKT === 'function') {
+                updatePatientCardCDKT(patient);
+            } else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardCDKT === 'function') {
+                unsafeWindow.updatePatientCardCDKT(patient);
+            } else if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardCDKT === 'function') {
+                globalThis.updatePatientCardCDKT(patient);
+            }
+        } catch (_) {}
+        if (cdktSaved) {
+            cdktSaved.style.display = 'block';
+            setTimeout(() => cdktSaved.style.display = 'none', 1000);
+        }
+    }
+
+    cdktTextarea.addEventListener('input', () => {
+        softUpdateCDKT();
+        if (cdktSaveTimer) clearTimeout(cdktSaveTimer);
+        cdktSaveTimer = setTimeout(() => {
+            saveCDKT();
+        }, 700);
+    });
+    cdktTextarea.addEventListener('blur', () => {
+        if (cdktSaveTimer) {
+            clearTimeout(cdktSaveTimer);
+            cdktSaveTimer = null;
+        }
+        saveCDKT();
+    });
+    cdktTextarea.addEventListener('change', saveCDKT);
 
     return info;
 }

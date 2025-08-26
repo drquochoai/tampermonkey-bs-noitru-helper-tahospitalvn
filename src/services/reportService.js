@@ -6,6 +6,14 @@ const ChecklistService = require('./checklistService');
 const SurgeryUtils = require('../utils/surgeryUtils');
 
 const ReportService = {
+    _escapeHtml(str) {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
     // Deprecated: kept for reference; reports now load full checklist state
     async getPatientTreatmentPlan(mabn, ngayvv) {
         try {
@@ -60,30 +68,20 @@ const ReportService = {
         const gender = patient.phai === 1 ? 'Nữ' : 'Nam';
         const phauThuat = PatientDataMapper.mapPhauThuatData(state);
         const hxt = (state && typeof state.huongXuTri === 'string') ? state.huongXuTri.trim() : '';
+        const cdkt = (state && typeof state.chanDoanKemTheo === 'string') ? state.chanDoanKemTheo.trim() : '';
 
         // Build surgery displays similar to dr-card
         let ppptDisplay = '';
         let ngayPtDisplay = '';
         if (phauThuat) {
             const date = phauThuat.ngayPhauThuat || '';
-            const time = phauThuat.gioPhauThuat || '';
             const method = phauThuat.pppt || '';
-            const dateLabel = time ? `${date} ${time}` : (date || '');
-            // Post-op / future label
             const info = SurgeryUtils.getSurgeryDateInfo(date);
-            let postOp = '';
-            if (info) {
-                if (info.status === 'today') postOp = ' (Hôm nay PT)';
-                else if (info.status === 'past') postOp = ` (HPN${info.postOpDay})`;
-                else if (info.status === 'future') {
-                    const d = Math.abs(info.daysDiff);
-                    if (d === 1) postOp = ' (Ngày mai phẫu thuật)';
-                    else if (d === 2) postOp = ' (Ngày mốt PT)';
-                    else postOp = ` (Còn ${d} ngày nữa PT)`;
-                }
-            }
-            ppptDisplay = `${method}${postOp}`.trim();
-            ngayPtDisplay = dateLabel;
+            const hpnSuffix = (info && info.postOpDay !== null) ? ` (HPN${info.postOpDay})` : '';
+            // Show PPPT with HPNx when available
+            ppptDisplay = `${method}${hpnSuffix}`.trim();
+            // Show only the surgery date (no time)
+            ngayPtDisplay = date;
         }
         
         return {
@@ -95,7 +93,7 @@ const ReportService = {
             gender,
             room: patient.teN_PHONG || '',
             bed: patient.teN_GIUONG || '',
-            diagnosis: patient.chandoanvk || '',
+            diagnosis: `${patient.chandoanvk || ''}${cdkt ? '; ' + cdkt : ''}`,
             hxt,
             ppptDisplay,
             ngayPtDisplay
@@ -139,7 +137,7 @@ const ReportService = {
             html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
             html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${data.name} - ${data.mabn}</strong></h3>`;
             html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
-            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${data.diagnosis}</div>`;
+            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
             if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
             if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
             if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt}</div>`;

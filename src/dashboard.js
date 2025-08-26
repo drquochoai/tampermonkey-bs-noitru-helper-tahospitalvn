@@ -38,12 +38,14 @@ function showDashboardBenhNhanIfNeeded() {
         unsafeWindow.copyYLenhText = copyYLenhText;
     unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
     unsafeWindow.updatePatientCardHXT = updatePatientCardHXT;
+    unsafeWindow.updatePatientCardCDKT = updatePatientCardCDKT;
     } else if (typeof this !== 'undefined') {
         this.showToast = showToast;
         this.copyToClipboard = copyToClipboard;
         this.copyYLenhText = copyYLenhText;
     this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
     this.updatePatientCardHXT = updatePatientCardHXT;
+    this.updatePatientCardCDKT = updatePatientCardCDKT;
     } else {
         // Fallback - tạo global functions không qua window
         globalThis.showToast = showToast;
@@ -51,6 +53,7 @@ function showDashboardBenhNhanIfNeeded() {
         globalThis.copyYLenhText = copyYLenhText;
     globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
     globalThis.updatePatientCardHXT = updatePatientCardHXT;
+    globalThis.updatePatientCardCDKT = updatePatientCardCDKT;
     }
     
     // Inject CSS styles for quick actions and tags
@@ -964,6 +967,22 @@ function showDashboardBenhNhanIfNeeded() {
             sortedNewData.forEach((item, index) => {
                 const card = container.children[index];
                 if (card) {
+                    // Update merged diagnosis line (Chẩn đoán + CD kèm theo)
+                    try {
+                        const diagnosisEl = card.querySelector('.dr-diagnosis-line');
+                        if (diagnosisEl) {
+                            diagnosisEl.dataset.baseCd = item.chandoanvk || '';
+                            const cdktText = (item.checklistState && typeof item.checklistState.chanDoanKemTheo === 'string')
+                                ? item.checklistState.chanDoanKemTheo.trim()
+                                : '';
+                            const baseCd = diagnosisEl.dataset.baseCd || item.chandoanvk || '';
+                            const combined = `${baseCd}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+                            diagnosisEl.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combined}`;
+                        }
+                        // remove any legacy block if present
+                        const oldCdkt = card.querySelector('.dr-cdkt-block');
+                        if (oldCdkt) oldCdkt.remove();
+                    } catch (_) {}
                     // Update surgery info with post-op days using formatSurgeryInfo
                     const ptInfoContainer = card.querySelector('.dr-pt-info');
                     if (ptInfoContainer) {
@@ -1058,18 +1077,28 @@ function showDashboardBenhNhanIfNeeded() {
             item.teN_TOANHA
         );
 
-        const ptInfo = formatSurgeryInfo(item);
+    const ptInfo = formatSurgeryInfo(item);
         
     const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
     const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
+    const cdktText = (item.checklistState && item.checklistState.chanDoanKemTheo) ? String(item.checklistState.chanDoanKemTheo).trim() : '';
+    const combinedDiagnosis = `${item.chandoanvk || ''}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
-            <div class="dr-value"><span class="dr-label">Chẩn đoán:</span> ${item.chandoanvk || ''}</div>
+            <div class="dr-value dr-diagnosis-line"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
             ${ptInfo}
             ${hxtHtml}
             ${createYLenhTags(item)}
         `;
+        // mark base diagnosis for future updates
+        try {
+            const diagEl = card.querySelector('.dr-diagnosis-line');
+            if (diagEl) diagEl.dataset.baseCd = item.chandoanvk || '';
+        } catch (_) {}
+        if (item && item.mabn && !card.getAttribute('data-mabn')) {
+            card.setAttribute('data-mabn', item.mabn);
+        }
         
         // Add action buttons
         const btnGroup = createActionButtons(item);
@@ -1133,6 +1162,32 @@ function showDashboardBenhNhanIfNeeded() {
         } catch (_) {}
     }
 
+    // Update Chẩn đoán kèm theo on a card when sidebar saves
+    function updatePatientCardCDKT(patient) {
+        try {
+            if (!patient || !patient.mabn) return;
+            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`);
+            if (!targetCard) {
+                const allCards = document.querySelectorAll('.dr-card');
+                allCards.forEach(card => {
+                    const txt = card.textContent || card.innerText || '';
+                    if (txt.includes(String(patient.mabn))) targetCard = card;
+                });
+            }
+            if (!targetCard) return;
+            // Clean any legacy separate CDKT block
+            const legacy = targetCard.querySelector('.dr-cdkt-block');
+            if (legacy) legacy.remove();
+
+            const cdktText = (patient.checklistState && patient.checklistState.chanDoanKemTheo) ? String(patient.checklistState.chanDoanKemTheo).trim() : '';
+            const diagnosisLine = targetCard.querySelector('.dr-diagnosis-line');
+            if (!diagnosisLine) return;
+            const baseText = diagnosisLine.dataset.baseCd || '';
+            const combined = `${baseText}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+            diagnosisLine.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combined}`;
+        } catch (_) {}
+    }
+
     // Preload HXT for a patient by fetching checklist state if not present
     async function preloadHXTForPatient(item) {
         try {
@@ -1159,6 +1214,7 @@ function showDashboardBenhNhanIfNeeded() {
             // Update card view with merged state
             const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
             updatePatientCardHXT(updated);
+            try { updatePatientCardCDKT(updated); } catch (_) {}
         } catch (e) {
             console.warn('Preload HXT failed for', item?.mabn, e);
         }

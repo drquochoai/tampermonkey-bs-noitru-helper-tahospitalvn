@@ -17,15 +17,20 @@ function createYLenhTags(patient) {
     const todayEntries = patient.checklistState.yLenhLog.filter(entry => {
         return entry.timestamp && entry.timestamp.startsWith(todayStr);
     });
+    // Exclude 'Đã đánh thuốc' from tags (both quick and manual entries)
+    const filteredEntries = todayEntries.filter(entry => {
+        const text = ((entry.action || entry.content || '') + '').trim().toLowerCase();
+        return text !== 'đã đánh thuốc';
+    });
 
-    console.log('Today entries (including quick actions) for patient', patient.mabn, ':', todayEntries);
+    console.log('Today entries (excluding meds-done) for patient', patient.mabn, ':', filteredEntries);
 
-    if (todayEntries.length === 0) {
+    if (filteredEntries.length === 0) {
         return '';
     }
 
     // Take only first 3 entries (most recent)
-    const displayEntries = todayEntries.slice(0, 3);
+    const displayEntries = filteredEntries.slice(0, 3);
     
     const tagsHtml = displayEntries.map(entry => {
         // Determine tag color based on content
@@ -218,11 +223,6 @@ function updatePatientCardTags(patientMabn) {
         // Insert tags before the action buttons
         actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
         console.log('Inserted new tags before actions container');
-        
-        // Check if there's a discharge tag and add celebration class to card
-        checkAndAddCelebrationClass(targetCard, patient);
-        // Update meds-done badge
-        updateMedsDoneBadge(targetCard, patient);
         // Update dataset flags for filters (today only)
         try {
             const today = new Date();
@@ -245,14 +245,11 @@ function updatePatientCardTags(patientMabn) {
             targetCard.dataset.hascls = hasCLS ? '1' : '0';
             targetCard.dataset.hasodl = hasODL ? '1' : '0';
         } catch (_) {}
-    } else {
-        console.log('No tags to display for patient:', patientMabn);
-        // Remove xuatvienanimation class if no tags
-        targetCard.classList.remove('xuatvienanimation');
-    // Also remove meds-done badge if present
-    const existed = targetCard.querySelector('.dr-badge-meds-done');
-    if (existed) existed.remove();
     }
+
+    // Update discharge celebration class and meds-done badge regardless of tags presence
+    checkAndAddCelebrationClass(targetCard, patient);
+    updateMedsDoneBadge(targetCard, patient);
 }
 
 // Make updatePatientCardTags globally available

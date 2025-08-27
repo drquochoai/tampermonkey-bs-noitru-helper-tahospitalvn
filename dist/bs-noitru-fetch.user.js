@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.6.5
+// @version      1.6.8
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -757,13 +757,18 @@ const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
 const ChecklistService = require('../services/checklistService');
 const Utils = require('../utils');
+const ReportService = require('../services/reportService');
 
 function createPatientInfoSection(patient, quickYLenhActions) {
     const info = document.createElement('div');
+    // Reuse report DOB/age formatter for consistency with dr-report-content
+    const { dob, age } = ReportService.formatDateOfBirth(patient.ngaysinh);
+    const gender = patient.phai === 1 ? 'Nữ' : 'Nam';
+    const room = patient.teN_PHONG || '';
+    const bed = patient.teN_GIUONG || '';
     info.innerHTML = `
         <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
-        <div><b>Tuổi:</b> ${Utils.calculateAge(patient.ngaysinh)}</div>
-        <div><b>Giới tính:</b> <span>${patient.phai === 1 ? 'Nữ' : 'Nam'}</span></div>
+        <div><b>DOB:</b> ${dob} (${age}) - ${gender} - ${room} - ${bed}</div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
         <div style="margin-top:8px;">
             <h3 style="margin-bottom:6px;">Chẩn đoán kèm theo</h3>
@@ -1007,7 +1012,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":14,"../utils":19,"./phauThuatHandlers":8,"./yLenhHandlers":9}],8:[function(require,module,exports){
+},{"../services/checklistService":14,"../services/reportService":16,"../utils":19,"./phauThuatHandlers":8,"./yLenhHandlers":9}],8:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');

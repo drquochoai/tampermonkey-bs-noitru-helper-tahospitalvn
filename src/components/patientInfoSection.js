@@ -70,11 +70,23 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     // Setup HXT (kế hoạch điều trị) auto-save and live update
     const hxtTextarea = info.querySelector('#dr-hxt-textarea');
     const hxtSaved = info.querySelector('#dr-hxt-saved');
-    let hxtSaveTimer = null;
     // Setup Chẩn đoán kèm theo auto-save
     const cdktTextarea = info.querySelector('#dr-chandoan-kemtheo');
     const cdktSaved = info.querySelector('#dr-chandoan-kemtheo-saved');
-    let cdktSaveTimer = null;
+    // Shared debounced save state
+    let pendingSaveTimer = null;
+    const SAVE_DEBOUNCE_MS = 700;
+
+    // Track last saved values to avoid redundant saves
+    const lastSaved = {
+        hxt: (patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string')
+            ? String(patient.checklistState.huongXuTri).trim() : '',
+        cdkt: (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string')
+            ? String(patient.checklistState.chanDoanKemTheo).trim() : ''
+    };
+    // Current draft values
+    const draft = { hxt: lastSaved.hxt, cdkt: lastSaved.cdkt };
+    let dirty = { hxt: false, cdkt: false };
 
     // Initial load from patient-scoped state only (avoid leaking previous patient's global state)
     setTimeout(() => {
@@ -114,11 +126,8 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         return false;
     }
 
-    function softUpdateHXT() {
-        const newVal = hxtTextarea.value.trim();
-    // If nothing typed and patient has no existing HXT, don't create/propagate empty or previous values
-    const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string' && patient.checklistState.huongXuTri.trim().length > 0);
-    if (!newVal && !hasExisting) return;
+    function softUpdateHXT(newVal) {
+        // Update in-memory state and card immediately for UX
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
         patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
@@ -131,66 +140,88 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         invokeUpdatePatientCardHXT(patient);
     }
 
-    async function saveHXT() {
-        // Normalize and update global checklist state
-        const newVal = hxtTextarea.value.trim();
-        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.huongXuTri === 'string' && patient.checklistState.huongXuTri.trim().length > 0);
-        // Avoid saving empty if there was no existing value
-        if (!newVal && !hasExisting) return;
+    async function persistIfDirty() {
+        // Build a single save payload only if something actually changed
+        const changedKeys = [];
+        if (dirty.hxt && draft.hxt !== lastSaved.hxt) changedKeys.push('hxt');
+        if (dirty.cdkt && draft.cdkt !== lastSaved.cdkt) changedKeys.push('cdkt');
+        if (changedKeys.length === 0) return;
+
         if (!window.checklistState) window.checklistState = {};
-        window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
+        const nextState = { ...window.checklistState };
+        if (changedKeys.includes('hxt')) nextState.huongXuTri = draft.hxt;
+        if (changedKeys.includes('cdkt')) nextState.chanDoanKemTheo = draft.cdkt;
 
-        // Ensure the local patient object also carries the latest state
-        patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
-
-        // Update patient object in global dr_data (merge to avoid losing other fields)
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...(patientInData.checklistState || {}), huongXuTri: newVal };
-            }
-        }
-
-        // Persist (non-blocking UI-wise)
+        // Persist once
         if (window.checklistObj) {
-            const ok = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+            const ok = await ChecklistService.updateChecklistState(window.checklistObj, nextState);
             if (!ok) {
-                console.warn('Lưu HXT thất bại');
+                console.warn('Lưu checklist thất bại');
+            } else {
+                // Update global state snapshot and lastSaved
+                window.checklistState = nextState;
+                if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
+                if (changedKeys.includes('cdkt')) lastSaved.cdkt = draft.cdkt;
+                dirty = { hxt: false, cdkt: false };
+
+                // Subtle flash effect on saved fields
+                try {
+                    const flash = (el) => {
+                        if (!el) return;
+                        const prev = el.style.boxShadow;
+                        el.style.boxShadow = '0 0 0 2px rgba(76,175,80,0.6)';
+                        setTimeout(() => { el.style.boxShadow = prev || ''; }, 400);
+                    };
+                    if (changedKeys.includes('hxt')) {
+                        flash(hxtTextarea);
+                        if (hxtSaved) { hxtSaved.style.display = 'block'; setTimeout(() => hxtSaved.style.display = 'none', 600); }
+                    }
+                    if (changedKeys.includes('cdkt')) {
+                        flash(cdktTextarea);
+                        if (cdktSaved) { cdktSaved.style.display = 'block'; setTimeout(() => cdktSaved.style.display = 'none', 600); }
+                        // Update card diagnosis after saving CDKT to keep cards in sync
+                        try {
+                            if (typeof updatePatientCardCDKT === 'function') {
+                                updatePatientCardCDKT(patient);
+                            } else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardCDKT === 'function') {
+                                unsafeWindow.updatePatientCardCDKT(patient);
+                            } else if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardCDKT === 'function') {
+                                globalThis.updatePatientCardCDKT(patient);
+                            }
+                        } catch (_) {}
+                    }
+                } catch (_) {}
             }
         }
+    }
 
-        // Update card view immediately with the updated patient object
-    invokeUpdatePatientCardHXT(patient);
-
-        // Flash saved indicator
-        if (hxtSaved) {
-            hxtSaved.style.display = 'block';
-            setTimeout(() => hxtSaved.style.display = 'none', 1000);
-        }
+    function scheduleSave() {
+        if (pendingSaveTimer) clearTimeout(pendingSaveTimer);
+        pendingSaveTimer = setTimeout(() => {
+            pendingSaveTimer = null;
+            persistIfDirty();
+        }, SAVE_DEBOUNCE_MS);
     }
 
     hxtTextarea.addEventListener('input', () => {
-        softUpdateHXT();
-        if (hxtSaveTimer) clearTimeout(hxtSaveTimer);
-        hxtSaveTimer = setTimeout(() => {
-            saveHXT();
-        }, 700);
+        const val = hxtTextarea.value.trim();
+        draft.hxt = val;
+        // Mark dirty only if actual change relative to last saved
+        dirty.hxt = (val !== lastSaved.hxt);
+        softUpdateHXT(val);
+        scheduleSave();
     });
-
     hxtTextarea.addEventListener('blur', () => {
-        if (hxtSaveTimer) {
-            clearTimeout(hxtSaveTimer);
-            hxtSaveTimer = null;
+        if (pendingSaveTimer) {
+            clearTimeout(pendingSaveTimer);
+            pendingSaveTimer = null;
         }
-        saveHXT();
+        // Save only if dirty to avoid redundant saves on focus/blur without edits
+        persistIfDirty();
     });
-    hxtTextarea.addEventListener('change', saveHXT);
 
-    // ====== Chẩn đoán kèm theo: soft update + save ======
-    function softUpdateCDKT() {
-        const newVal = cdktTextarea.value.trim();
-        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string' && patient.checklistState.chanDoanKemTheo.trim().length > 0);
-        if (!newVal && !hasExisting) return;
+    // ====== Chẩn đoán kèm theo: soft update + shared save ======
+    function softUpdateCDKT(newVal) {
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), chanDoanKemTheo: newVal };
         patient.checklistState = { ...(patient.checklistState || {}), chanDoanKemTheo: newVal };
@@ -199,59 +230,23 @@ function createPatientInfoSection(patient, quickYLenhActions) {
             if (patientInData) {
                 patientInData.checklistState = { ...(patientInData.checklistState || {}), chanDoanKemTheo: newVal };
             }
-        }
-    }
-
-    async function saveCDKT() {
-        const newVal = cdktTextarea.value.trim();
-        const hasExisting = !!(patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string' && patient.checklistState.chanDoanKemTheo.trim().length > 0);
-        if (!newVal && !hasExisting) return;
-        if (!window.checklistState) window.checklistState = {};
-        window.checklistState = { ...(window.checklistState || {}), chanDoanKemTheo: newVal };
-        patient.checklistState = { ...(patient.checklistState || {}), chanDoanKemTheo: newVal };
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...(patientInData.checklistState || {}), chanDoanKemTheo: newVal };
-            }
-        }
-        if (window.checklistObj) {
-            const ok = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!ok) {
-                console.warn('Lưu Chẩn đoán kèm theo thất bại');
-            }
-        }
-        // Update card view immediately
-        try {
-            if (typeof updatePatientCardCDKT === 'function') {
-                updatePatientCardCDKT(patient);
-            } else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardCDKT === 'function') {
-                unsafeWindow.updatePatientCardCDKT(patient);
-            } else if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardCDKT === 'function') {
-                globalThis.updatePatientCardCDKT(patient);
-            }
-        } catch (_) {}
-        if (cdktSaved) {
-            cdktSaved.style.display = 'block';
-            setTimeout(() => cdktSaved.style.display = 'none', 1000);
         }
     }
 
     cdktTextarea.addEventListener('input', () => {
-        softUpdateCDKT();
-        if (cdktSaveTimer) clearTimeout(cdktSaveTimer);
-        cdktSaveTimer = setTimeout(() => {
-            saveCDKT();
-        }, 700);
+        const val = cdktTextarea.value.trim();
+        draft.cdkt = val;
+        dirty.cdkt = (val !== lastSaved.cdkt);
+        softUpdateCDKT(val);
+        scheduleSave();
     });
     cdktTextarea.addEventListener('blur', () => {
-        if (cdktSaveTimer) {
-            clearTimeout(cdktSaveTimer);
-            cdktSaveTimer = null;
+        if (pendingSaveTimer) {
+            clearTimeout(pendingSaveTimer);
+            pendingSaveTimer = null;
         }
-        saveCDKT();
+        persistIfDirty();
     });
-    cdktTextarea.addEventListener('change', saveCDKT);
 
     return info;
 }

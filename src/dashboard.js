@@ -413,7 +413,7 @@ function showDashboardBenhNhanIfNeeded() {
         try {
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
             
-            const res = await ChecklistService.loadChecklistData(patient);
+            const res = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
             checklistUl.innerHTML = '';
             
             let checklistObj = ChecklistService.findChecklistObject(res);

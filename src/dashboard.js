@@ -971,7 +971,8 @@ function showDashboardBenhNhanIfNeeded() {
                     try {
                         const diagnosisEl = card.querySelector('.dr-diagnosis-line');
                         if (diagnosisEl) {
-                            diagnosisEl.dataset.baseCd = item.chandoanvk || '';
+                            const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
+                            diagnosisEl.dataset.baseCd = (item.chandoanvk || '') + icdSuffix;
                             const cdktText = (item.checklistState && typeof item.checklistState.chanDoanKemTheo === 'string')
                                 ? item.checklistState.chanDoanKemTheo.trim()
                                 : '';
@@ -1082,7 +1083,8 @@ function showDashboardBenhNhanIfNeeded() {
     const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
     const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
     const cdktText = (item.checklistState && item.checklistState.chanDoanKemTheo) ? String(item.checklistState.chanDoanKemTheo).trim() : '';
-    const combinedDiagnosis = `${item.chandoanvk || ''}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+    const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
+    const combinedDiagnosis = `${item.chandoanvk || ''}${icdSuffix}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
@@ -1094,7 +1096,7 @@ function showDashboardBenhNhanIfNeeded() {
         // mark base diagnosis for future updates
         try {
             const diagEl = card.querySelector('.dr-diagnosis-line');
-            if (diagEl) diagEl.dataset.baseCd = item.chandoanvk || '';
+            if (diagEl) diagEl.dataset.baseCd = (item.chandoanvk || '') + (item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '');
         } catch (_) {}
         if (item && item.mabn && !card.getAttribute('data-mabn')) {
             card.setAttribute('data-mabn', item.mabn);

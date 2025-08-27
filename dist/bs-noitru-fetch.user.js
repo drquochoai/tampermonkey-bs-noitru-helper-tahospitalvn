@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.6.3
+// @version      1.6.5
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -566,9 +566,9 @@ const DialogManager = {
         inner.style = `
             background: #fff;
             padding: 32px 24px 24px 24px;
-            max-width: ${options.maxWidth || '700px'};
-            width: 98vw;
-            max-height: ${options.maxHeight || '85vh'};
+            max-width: ${options.maxWidth || '1000px'};
+            width: 95vw;
+            max-height: ${options.maxHeight || '88vh'};
             overflow-y: auto;
             border-radius: 12px;
             box-shadow: 0 4px 32px rgba(0,0,0,0.18);
@@ -593,7 +593,7 @@ const DialogManager = {
      */
     createActionButtons(buttons) {
         const buttonContainer = document.createElement('div');
-        buttonContainer.style = 'margin-top:18px;display:flex;gap:12px;justify-content:flex-end;';
+    buttonContainer.style = 'margin-top:18px;display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;';
 
         buttons.forEach(button => {
             const btn = document.createElement('button');
@@ -601,6 +601,21 @@ const DialogManager = {
             btn.className = button.className || 'btn';
             btn.textContent = button.text;
             btn.onclick = button.onclick;
+            // Add visual styles for easier recognition
+            btn.style.padding = '8px 14px';
+            btn.style.borderRadius = '8px';
+            btn.style.border = '1px solid #cbd5e1';
+            btn.style.cursor = 'pointer';
+            btn.style.fontWeight = '600';
+            if (btn.className.includes('btn-primary')) {
+                btn.style.background = 'linear-gradient(180deg, #1e88e5, #1976d2)';
+                btn.style.color = '#fff';
+                btn.style.borderColor = '#1976d2';
+            } else if (btn.className.includes('btn-secondary')) {
+                btn.style.background = '#f8fafc';
+                btn.style.color = '#0f172a';
+                btn.style.borderColor = '#cbd5e1';
+            }
             buttonContainer.appendChild(btn);
         });
 
@@ -2796,7 +2811,8 @@ function showDashboardBenhNhanIfNeeded() {
                     try {
                         const diagnosisEl = card.querySelector('.dr-diagnosis-line');
                         if (diagnosisEl) {
-                            diagnosisEl.dataset.baseCd = item.chandoanvk || '';
+                            const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
+                            diagnosisEl.dataset.baseCd = (item.chandoanvk || '') + icdSuffix;
                             const cdktText = (item.checklistState && typeof item.checklistState.chanDoanKemTheo === 'string')
                                 ? item.checklistState.chanDoanKemTheo.trim()
                                 : '';
@@ -2907,7 +2923,8 @@ function showDashboardBenhNhanIfNeeded() {
     const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
     const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
     const cdktText = (item.checklistState && item.checklistState.chanDoanKemTheo) ? String(item.checklistState.chanDoanKemTheo).trim() : '';
-    const combinedDiagnosis = `${item.chandoanvk || ''}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+    const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
+    const combinedDiagnosis = `${item.chandoanvk || ''}${icdSuffix}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
@@ -2919,7 +2936,7 @@ function showDashboardBenhNhanIfNeeded() {
         // mark base diagnosis for future updates
         try {
             const diagEl = card.querySelector('.dr-diagnosis-line');
-            if (diagEl) diagEl.dataset.baseCd = item.chandoanvk || '';
+            if (diagEl) diagEl.dataset.baseCd = (item.chandoanvk || '') + (item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '');
         } catch (_) {}
         if (item && item.mabn && !card.getAttribute('data-mabn')) {
             card.setAttribute('data-mabn', item.mabn);
@@ -3191,6 +3208,7 @@ module.exports = {
 const ReportService = require('./services/reportService');
 const ApiService = require('./services/apiService');
 const DialogManager = require('./components/dialogManager');
+const DateUtils = require('./utils/dateUtils');
 
 /**
  * Create direct report generation dialog
@@ -3199,7 +3217,7 @@ async function createDirectReportGeneration() {
     const data = window.dr_data || [];
     
     // Create dialog
-    const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog');
+    const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog', { maxWidth: '1100px', maxHeight: '88vh' });
     // Layout: flex column with a scrollable content area and a fixed (in-modal) footer
     try {
         inner.style.display = 'flex';
@@ -3220,23 +3238,123 @@ async function createDirectReportGeneration() {
     // Load checklist state for all patients (already sorted)
     const { sortedPatients, states } = await ReportService.getBatchChecklistStates(data);
         
-    // Generate report content
+    // Generate report content (all patients)
     const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
     const textReport = ReportService.generateTextReport(sortedPatients, states);
+
+    // Helpers to filter patients by admission date (ngayvv) using preloaded data only
+    function parseAdmitDateToMidnight(dateStr) {
+        if (!dateStr) return null;
+        try {
+            const us = DateUtils.convertToUSFormat(String(dateStr));
+            const d = new Date(us);
+            if (isNaN(d.getTime())) return null;
+            d.setHours(0, 0, 0, 0);
+            return d;
+        } catch (_) { return null; }
+    }
+
+    function filterByAdmitDay(patientsArr, statesArr, targetDate) {
+        const target = new Date(targetDate);
+        target.setHours(0,0,0,0);
+        const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+        const filtered = zipped.filter(({ p }) => {
+            const d = parseAdmitDateToMidnight(p && p.ngayvv);
+            return d && d.getTime() === target.getTime();
+        });
+        return {
+            patients: filtered.map(z => z.p),
+            states: filtered.map(z => z.s)
+        };
+    }
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const { patients: todayPatients, states: todayStates } = filterByAdmitDay(sortedPatients, states, today);
+    const { patients: yesterdayPatients, states: yesterdayStates } = filterByAdmitDay(sortedPatients, states, yesterday);
+    const htmlToday = ReportService.generateHTMLReport(todayPatients, todayStates);
+    const textToday = ReportService.generateTextReport(todayPatients, todayStates);
+    const htmlYesterday = ReportService.generateHTMLReport(yesterdayPatients, yesterdayStates);
+    const textYesterday = ReportService.generateTextReport(yesterdayPatients, yesterdayStates);
+
+    // Filter by surgery date (latest surgery in state.phauThuatLog[0])
+    function filterBySurgeryDay(patientsArr, statesArr, targetDate) {
+        const target = new Date(targetDate); target.setHours(0,0,0,0);
+        const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+        const filtered = zipped.filter(({ s }) => {
+            if (!s || !Array.isArray(s.phauThuatLog) || s.phauThuatLog.length === 0) return false;
+            const dStr = s.phauThuatLog[0] && s.phauThuatLog[0].date;
+            const d = parseAdmitDateToMidnight(dStr);
+            return d && d.getTime() === target.getTime();
+        });
+        return {
+            patients: filtered.map(z => z.p),
+            states: filtered.map(z => z.s)
+        };
+    }
+
+    const { patients: ptTodayPatients, states: ptTodayStates } = filterBySurgeryDay(sortedPatients, states, today);
+    const { patients: ptYesterdayPatients, states: ptYesterdayStates } = filterBySurgeryDay(sortedPatients, states, yesterday);
+    const htmlPtToday = ReportService.generateHTMLReport(ptTodayPatients, ptTodayStates);
+    const textPtToday = ReportService.generateTextReport(ptTodayPatients, ptTodayStates);
+    const htmlPtYesterday = ReportService.generateHTMLReport(ptYesterdayPatients, ptYesterdayStates);
+    const textPtYesterday = ReportService.generateTextReport(ptYesterdayPatients, ptYesterdayStates);
         
-        // Create action buttons
-        const buttons = DialogManager.createActionButtons([
+        // Create action buttons (copy set only)
+        const copyButtons = DialogManager.createActionButtons([
             {
                 id: 'dr-copy-direct-report',
                 className: 'btn btn-primary',
-                text: 'Copy báo cáo (định dạng)',
+                text: 'Copy bệnh ở khoa',
                 onclick: () => copyReportToClipboardRich(htmlContent, textReport)
             },
             {
-                id: 'dr-close-direct-report',
+                id: 'dr-copy-direct-report-yesterday',
                 className: 'btn btn-secondary',
-                text: 'Đóng',
-                onclick: () => dialog.remove()
+                text: 'Copy bệnh mới hôm qua',
+                onclick: () => {
+                    if (!yesterdayPatients || yesterdayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân mới hôm qua.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlYesterday, textYesterday);
+                }
+            },
+            {
+                id: 'dr-copy-direct-report-today',
+                className: 'btn btn-secondary',
+                text: 'Copy bệnh mới hôm nay',
+                onclick: () => {
+                    if (!todayPatients || todayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân mới hôm nay.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlToday, textToday);
+                }
+            },
+            {
+                id: 'dr-copy-direct-report-pt-yesterday',
+                className: 'btn btn-secondary',
+                text: 'Copy bệnh PT hôm qua',
+                onclick: () => {
+                    if (!ptYesterdayPatients || ptYesterdayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân PT hôm qua.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlPtYesterday, textPtYesterday);
+                }
+            },
+            {
+                id: 'dr-copy-direct-report-pt-today',
+                className: 'btn btn-secondary',
+                text: 'Copy bệnh PT hôm nay',
+                onclick: () => {
+                    if (!ptTodayPatients || ptTodayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân PT hôm nay.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlPtToday, textPtToday);
+                }
             }
         ]);
         
@@ -3251,8 +3369,53 @@ async function createDirectReportGeneration() {
             'border-top:1px solid #eee',
             'box-shadow:0 -2px 8px rgba(0,0,0,0.05)'
         ].join(';');
-        if (buttons && buttons.style) buttons.style.marginTop = '0';
-        footerBar.appendChild(buttons);
+        // Arrange copy buttons into a 2x3 grid as requested
+        try {
+            const grid = copyButtons;
+            grid.style.display = 'grid';
+            grid.style.gridTemplateColumns = '1fr 1fr 1fr';
+            grid.style.gridTemplateRows = 'auto auto';
+            grid.style.gap = '12px';
+            grid.style.justifyContent = 'stretch';
+            grid.style.alignItems = 'stretch';
+
+            const btnAll = grid.querySelector('#dr-copy-direct-report');
+            const btnNewY = grid.querySelector('#dr-copy-direct-report-yesterday');
+            const btnNewT = grid.querySelector('#dr-copy-direct-report-today');
+            const btnPtY = grid.querySelector('#dr-copy-direct-report-pt-yesterday');
+            const btnPtT = grid.querySelector('#dr-copy-direct-report-pt-today');
+            if (btnAll) {
+                btnAll.style.gridColumn = '1';
+                btnAll.style.gridRow = '1 / span 2';
+                btnAll.style.height = '100%';
+                btnAll.style.width = '100%';
+            }
+            if (btnNewY) { btnNewY.style.gridColumn = '2'; btnNewY.style.gridRow = '1'; btnNewY.style.width = '100%'; }
+            if (btnNewT) { btnNewT.style.gridColumn = '2'; btnNewT.style.gridRow = '2'; btnNewT.style.width = '100%'; }
+            if (btnPtY) { btnPtY.style.gridColumn = '3'; btnPtY.style.gridRow = '1'; btnPtY.style.width = '100%'; }
+            if (btnPtT) { btnPtT.style.gridColumn = '3'; btnPtT.style.gridRow = '2'; btnPtT.style.width = '100%'; }
+        } catch (_) {}
+
+        if (copyButtons && copyButtons.style) copyButtons.style.marginTop = '0';
+        footerBar.appendChild(copyButtons);
+
+        // Add a separate right-aligned close button row
+        const closeRow = document.createElement('div');
+        closeRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:8px;';
+        const closeBtnWrap = DialogManager.createActionButtons([
+            {
+                id: 'dr-close-direct-report',
+                className: 'btn btn-secondary',
+                text: 'Đóng',
+                onclick: () => dialog.remove()
+            }
+        ]);
+        // Flatten wrapper styles
+        if (closeBtnWrap && closeBtnWrap.style) {
+            closeBtnWrap.style.marginTop = '0';
+        }
+        closeRow.appendChild(closeBtnWrap);
+        footerBar.appendChild(closeRow);
         inner.appendChild(footerBar);
         
     } catch (error) {
@@ -3634,7 +3797,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"./components/dialogManager":4,"./services/apiService":13,"./services/reportService":16}],12:[function(require,module,exports){
+},{"./components/dialogManager":4,"./services/apiService":13,"./services/reportService":16,"./utils/dateUtils":21}],12:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -5057,6 +5220,7 @@ const PatientDataMapper = {
             phai: item.phai,
             mavaovien: item.mavaovien,
             chandoanvk: item.chandoanvk,
+            maicdvk: item.maicdvk,
             kehoach: item.kehoach,
             ngayvv: item.ngayvv,
             maql: item.maql,

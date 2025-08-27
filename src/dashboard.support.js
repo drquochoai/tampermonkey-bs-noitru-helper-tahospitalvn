@@ -3,6 +3,7 @@
 const ReportService = require('./services/reportService');
 const ApiService = require('./services/apiService');
 const DialogManager = require('./components/dialogManager');
+const DateUtils = require('./utils/dateUtils');
 
 /**
  * Create direct report generation dialog
@@ -11,7 +12,7 @@ async function createDirectReportGeneration() {
     const data = window.dr_data || [];
     
     // Create dialog
-    const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog');
+    const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog', { maxWidth: '1100px', maxHeight: '88vh' });
     // Layout: flex column with a scrollable content area and a fixed (in-modal) footer
     try {
         inner.style.display = 'flex';
@@ -32,23 +33,123 @@ async function createDirectReportGeneration() {
     // Load checklist state for all patients (already sorted)
     const { sortedPatients, states } = await ReportService.getBatchChecklistStates(data);
         
-    // Generate report content
+    // Generate report content (all patients)
     const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
     const textReport = ReportService.generateTextReport(sortedPatients, states);
+
+    // Helpers to filter patients by admission date (ngayvv) using preloaded data only
+    function parseAdmitDateToMidnight(dateStr) {
+        if (!dateStr) return null;
+        try {
+            const us = DateUtils.convertToUSFormat(String(dateStr));
+            const d = new Date(us);
+            if (isNaN(d.getTime())) return null;
+            d.setHours(0, 0, 0, 0);
+            return d;
+        } catch (_) { return null; }
+    }
+
+    function filterByAdmitDay(patientsArr, statesArr, targetDate) {
+        const target = new Date(targetDate);
+        target.setHours(0,0,0,0);
+        const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+        const filtered = zipped.filter(({ p }) => {
+            const d = parseAdmitDateToMidnight(p && p.ngayvv);
+            return d && d.getTime() === target.getTime();
+        });
+        return {
+            patients: filtered.map(z => z.p),
+            states: filtered.map(z => z.s)
+        };
+    }
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+    const { patients: todayPatients, states: todayStates } = filterByAdmitDay(sortedPatients, states, today);
+    const { patients: yesterdayPatients, states: yesterdayStates } = filterByAdmitDay(sortedPatients, states, yesterday);
+    const htmlToday = ReportService.generateHTMLReport(todayPatients, todayStates);
+    const textToday = ReportService.generateTextReport(todayPatients, todayStates);
+    const htmlYesterday = ReportService.generateHTMLReport(yesterdayPatients, yesterdayStates);
+    const textYesterday = ReportService.generateTextReport(yesterdayPatients, yesterdayStates);
+
+    // Filter by surgery date (latest surgery in state.phauThuatLog[0])
+    function filterBySurgeryDay(patientsArr, statesArr, targetDate) {
+        const target = new Date(targetDate); target.setHours(0,0,0,0);
+        const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+        const filtered = zipped.filter(({ s }) => {
+            if (!s || !Array.isArray(s.phauThuatLog) || s.phauThuatLog.length === 0) return false;
+            const dStr = s.phauThuatLog[0] && s.phauThuatLog[0].date;
+            const d = parseAdmitDateToMidnight(dStr);
+            return d && d.getTime() === target.getTime();
+        });
+        return {
+            patients: filtered.map(z => z.p),
+            states: filtered.map(z => z.s)
+        };
+    }
+
+    const { patients: ptTodayPatients, states: ptTodayStates } = filterBySurgeryDay(sortedPatients, states, today);
+    const { patients: ptYesterdayPatients, states: ptYesterdayStates } = filterBySurgeryDay(sortedPatients, states, yesterday);
+    const htmlPtToday = ReportService.generateHTMLReport(ptTodayPatients, ptTodayStates);
+    const textPtToday = ReportService.generateTextReport(ptTodayPatients, ptTodayStates);
+    const htmlPtYesterday = ReportService.generateHTMLReport(ptYesterdayPatients, ptYesterdayStates);
+    const textPtYesterday = ReportService.generateTextReport(ptYesterdayPatients, ptYesterdayStates);
         
-        // Create action buttons
-        const buttons = DialogManager.createActionButtons([
+        // Create action buttons (copy set only)
+        const copyButtons = DialogManager.createActionButtons([
             {
                 id: 'dr-copy-direct-report',
                 className: 'btn btn-primary',
-                text: 'Copy báo cáo (định dạng)',
+                text: 'Copy bệnh ở khoa',
                 onclick: () => copyReportToClipboardRich(htmlContent, textReport)
             },
             {
-                id: 'dr-close-direct-report',
+                id: 'dr-copy-direct-report-yesterday',
                 className: 'btn btn-secondary',
-                text: 'Đóng',
-                onclick: () => dialog.remove()
+                text: 'Copy bệnh mới hôm qua',
+                onclick: () => {
+                    if (!yesterdayPatients || yesterdayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân mới hôm qua.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlYesterday, textYesterday);
+                }
+            },
+            {
+                id: 'dr-copy-direct-report-today',
+                className: 'btn btn-secondary',
+                text: 'Copy bệnh mới hôm nay',
+                onclick: () => {
+                    if (!todayPatients || todayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân mới hôm nay.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlToday, textToday);
+                }
+            },
+            {
+                id: 'dr-copy-direct-report-pt-yesterday',
+                className: 'btn btn-secondary',
+                text: 'Copy bệnh PT hôm qua',
+                onclick: () => {
+                    if (!ptYesterdayPatients || ptYesterdayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân PT hôm qua.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlPtYesterday, textPtYesterday);
+                }
+            },
+            {
+                id: 'dr-copy-direct-report-pt-today',
+                className: 'btn btn-secondary',
+                text: 'Copy bệnh PT hôm nay',
+                onclick: () => {
+                    if (!ptTodayPatients || ptTodayPatients.length === 0) {
+                        try { DialogManager.showToast('Không có bệnh nhân PT hôm nay.'); } catch (_) {}
+                        return;
+                    }
+                    copyReportToClipboardRich(htmlPtToday, textPtToday);
+                }
             }
         ]);
         
@@ -63,8 +164,53 @@ async function createDirectReportGeneration() {
             'border-top:1px solid #eee',
             'box-shadow:0 -2px 8px rgba(0,0,0,0.05)'
         ].join(';');
-        if (buttons && buttons.style) buttons.style.marginTop = '0';
-        footerBar.appendChild(buttons);
+        // Arrange copy buttons into a 2x3 grid as requested
+        try {
+            const grid = copyButtons;
+            grid.style.display = 'grid';
+            grid.style.gridTemplateColumns = '1fr 1fr 1fr';
+            grid.style.gridTemplateRows = 'auto auto';
+            grid.style.gap = '12px';
+            grid.style.justifyContent = 'stretch';
+            grid.style.alignItems = 'stretch';
+
+            const btnAll = grid.querySelector('#dr-copy-direct-report');
+            const btnNewY = grid.querySelector('#dr-copy-direct-report-yesterday');
+            const btnNewT = grid.querySelector('#dr-copy-direct-report-today');
+            const btnPtY = grid.querySelector('#dr-copy-direct-report-pt-yesterday');
+            const btnPtT = grid.querySelector('#dr-copy-direct-report-pt-today');
+            if (btnAll) {
+                btnAll.style.gridColumn = '1';
+                btnAll.style.gridRow = '1 / span 2';
+                btnAll.style.height = '100%';
+                btnAll.style.width = '100%';
+            }
+            if (btnNewY) { btnNewY.style.gridColumn = '2'; btnNewY.style.gridRow = '1'; btnNewY.style.width = '100%'; }
+            if (btnNewT) { btnNewT.style.gridColumn = '2'; btnNewT.style.gridRow = '2'; btnNewT.style.width = '100%'; }
+            if (btnPtY) { btnPtY.style.gridColumn = '3'; btnPtY.style.gridRow = '1'; btnPtY.style.width = '100%'; }
+            if (btnPtT) { btnPtT.style.gridColumn = '3'; btnPtT.style.gridRow = '2'; btnPtT.style.width = '100%'; }
+        } catch (_) {}
+
+        if (copyButtons && copyButtons.style) copyButtons.style.marginTop = '0';
+        footerBar.appendChild(copyButtons);
+
+        // Add a separate right-aligned close button row
+        const closeRow = document.createElement('div');
+        closeRow.style.cssText = 'display:flex;justify-content:flex-end;margin-top:8px;';
+        const closeBtnWrap = DialogManager.createActionButtons([
+            {
+                id: 'dr-close-direct-report',
+                className: 'btn btn-secondary',
+                text: 'Đóng',
+                onclick: () => dialog.remove()
+            }
+        ]);
+        // Flatten wrapper styles
+        if (closeBtnWrap && closeBtnWrap.style) {
+            closeBtnWrap.style.marginTop = '0';
+        }
+        closeRow.appendChild(closeBtnWrap);
+        footerBar.appendChild(closeRow);
         inner.appendChild(footerBar);
         
     } catch (error) {

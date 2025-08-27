@@ -28,9 +28,9 @@ const DialogManager = {
         inner.style = `
             background: #fff;
             padding: 32px 24px 24px 24px;
-            max-width: ${options.maxWidth || '700px'};
-            width: 98vw;
-            max-height: ${options.maxHeight || '85vh'};
+            max-width: ${options.maxWidth || '1000px'};
+            width: 95vw;
+            max-height: ${options.maxHeight || '88vh'};
             overflow-y: auto;
             border-radius: 12px;
             box-shadow: 0 4px 32px rgba(0,0,0,0.18);
@@ -55,7 +55,7 @@ const DialogManager = {
      */
     createActionButtons(buttons) {
         const buttonContainer = document.createElement('div');
-        buttonContainer.style = 'margin-top:18px;display:flex;gap:12px;justify-content:flex-end;';
+    buttonContainer.style = 'margin-top:18px;display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap;';
 
         buttons.forEach(button => {
             const btn = document.createElement('button');
@@ -63,6 +63,21 @@ const DialogManager = {
             btn.className = button.className || 'btn';
             btn.textContent = button.text;
             btn.onclick = button.onclick;
+            // Add visual styles for easier recognition
+            btn.style.padding = '8px 14px';
+            btn.style.borderRadius = '8px';
+            btn.style.border = '1px solid #cbd5e1';
+            btn.style.cursor = 'pointer';
+            btn.style.fontWeight = '600';
+            if (btn.className.includes('btn-primary')) {
+                btn.style.background = 'linear-gradient(180deg, #1e88e5, #1976d2)';
+                btn.style.color = '#fff';
+                btn.style.borderColor = '#1976d2';
+            } else if (btn.className.includes('btn-secondary')) {
+                btn.style.background = '#f8fafc';
+                btn.style.color = '#0f172a';
+                btn.style.borderColor = '#cbd5e1';
+            }
             buttonContainer.appendChild(btn);
         });
 

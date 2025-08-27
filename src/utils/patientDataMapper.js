@@ -16,6 +16,7 @@ const PatientDataMapper = {
             phai: item.phai,
             mavaovien: item.mavaovien,
             chandoanvk: item.chandoanvk,
+            maicdvk: item.maicdvk,
             kehoach: item.kehoach,
             ngayvv: item.ngayvv,
             maql: item.maql,

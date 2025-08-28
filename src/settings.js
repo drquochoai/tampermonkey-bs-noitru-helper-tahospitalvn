@@ -3,7 +3,12 @@
 const SettingsService = require('./services/settingsService');
 
 async function showSettingsIfNeeded() {
-        if (!(/[?&](caidat)($|&)/.test(window.location.search))) return;
+        // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
+        const u = new URL(window.location.href);
+        const caidatParam = u.searchParams.get('caidat');
+        const tabParam = u.searchParams.get('tab');
+        const targetTab = (caidatParam && caidatParam !== 'true') ? caidatParam : (tabParam || 'discharge');
+        if (!(/[?&](caidat)($|=|&)/.test(window.location.search))) return;
 
         // Reset page and mount a two-column layout with tabs
         document.body.innerHTML = '';
@@ -40,7 +45,8 @@ async function showSettingsIfNeeded() {
         left.innerHTML = `
             <h2>Cài đặt</h2>
             <div class="dr-st-menu">
-                <button data-tab="discharge" class="active">Lời dặn dò ra viện</button>
+                <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
+                <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
             </div>
             <div class="dr-st-footer" id="dr-st-doctor"></div>
         `;
@@ -48,20 +54,30 @@ async function showSettingsIfNeeded() {
         // Right content with header and tabs
         const right = document.createElement('section');
         right.className = 'dr-st-right';
-        right.innerHTML = `
+                right.innerHTML = `
             <div class="dr-st-head">
-                <h3 class="dr-st-title">Lời dặn dò ra viện</h3>
+                        <h3 class="dr-st-title">${targetTab==='account'?'Account':'Lời dặn dò ra viện'}</h3>
                 <div>
                     <button class="dr-st-btn" id="reload-tab">Tải lại</button>
                     <button class="dr-st-btn primary" id="save-tab">Lưu</button>
                 </div>
             </div>
             <div class="dr-st-content">
-                <div id="tab-discharge" class="dr-st-tab active">
+                        <div id="tab-discharge" class="dr-st-tab ${targetTab==='discharge'?'active':''}">
                     <p style="margin:0 0 8px; color:#6b7280">Danh sách các lời dặn dò ra viện. Bạn có thể thêm/xóa và chỉnh sửa.</p>
                     <div id="discharge-list" class="dr-st-list"></div>
                     <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
                 </div>
+                                        <div id="tab-account" class="dr-st-tab ${targetTab==='account'?'active':''}">
+                                                <div style="margin-bottom:12px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#92400e">
+                                                <b>Lưu ý bảo mật:</b> Thông tin dưới đây chỉ lưu trên thiết bị (LocalStorage của trình duyệt), không gửi lên máy chủ. Hãy sử dụng trên máy tính cá nhân tin cậy. Nếu dùng máy công cộng, KHÔNG nhập mật khẩu ở đây.
+                                        </div>
+                                                <div id="dr-acc-toggle-wrap" style="margin:8px 0 16px;"></div>
+                                                <div style="margin-top:8px; color:#6b7280; font-size:13px; line-height:1.5;">
+                                                Khi bật "tự động login", lúc vào trang <code>/Home/Login</code> tiện ích sẽ tự điền Tên đăng nhập và Mật khẩu rồi nhấn Đăng nhập, sau đó chờ 1.5 giây và mở <code>/?nln</code>. Tắt tùy chọn này nếu bạn không muốn tự động đăng nhập.
+                                        </div>
+                                                <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
+                                </div>
             </div>
         `;
 
@@ -75,6 +91,133 @@ async function showSettingsIfNeeded() {
         const listEl = right.querySelector('#discharge-list');
         const doctorEl = left.querySelector('#dr-st-doctor');
         if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+
+                // Account tab: multi-account manager (localStorage only)
+                const ls = window.localStorage;
+                const ACC_KEY = 'dr_accounts_json';
+                const DEF_KEY = 'dr_acc_default';
+                const AUTO_KEY = 'dr_acc_autologin';
+                function readAccounts() {
+                        try { return JSON.parse(ls.getItem(ACC_KEY) || '[]'); } catch(_) { return []; }
+                }
+                function writeAccounts(arr) { ls.setItem(ACC_KEY, JSON.stringify(arr || [])); }
+                function readDefault() { return ls.getItem(DEF_KEY) || ''; }
+                function writeDefault(u) { ls.setItem(DEF_KEY, u || ''); }
+
+                const grid = right.querySelector('#dr-acc-grid');
+                function renderGrid() {
+                        if (!grid) return;
+                        grid.innerHTML = '';
+                                                   const accounts = readAccounts();
+                                                   let def = readDefault();
+                                                   // If only one account, auto set as default
+                                                   if (accounts.length === 1) {
+                                                           const only = accounts[0];
+                                                           if (only && only.username && def !== only.username) {
+                                                                   writeDefault(only.username);
+                                                                   def = only.username;
+                                                           }
+                                                   }
+                        accounts.forEach((acc, idx) => {
+                                const box = document.createElement('div');
+                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:10px; padding:10px; position:relative; background:#fff;';
+                                const radioId = `dr-acc-default-${idx}`;
+                                box.innerHTML = `
+                                                                                   <button class="dr-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#dc2626; color:#fff; border:none; border-radius:6px; padding:2px 6px; cursor:pointer;">X</button>
+                                        <div class="dr-st-row" style="margin-top:8px;">
+                                                <label style="width:100px">Tiêu đề</label>
+                                                <input class="dr-st-input dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: BS. ABC" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px">Tên đăng nhập</label>
+                                                <input class="dr-st-input dr-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px">Mật khẩu</label>
+                                                <input class="dr-st-input dr-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <input id="${radioId}" type="radio" name="dr-acc-default" class="dr-acc-default" ${def && def===acc.username ? 'checked' : ''} />
+                                                <label for="${radioId}" style="margin-left:6px; cursor:pointer;">Tài khoản mặc định</label>
+                                        </div>
+                                `;
+                                box.querySelector('.dr-acc-remove').addEventListener('click', () => {
+                                        if (confirm('Xóa tài khoản này?')) {
+                                                const arr = readAccounts();
+                                                arr.splice(idx,1);
+                                                writeAccounts(arr);
+                                                                if (def === acc.username) writeDefault('');
+                                                                if (arr.length === 1) {
+                                                                        const u = arr[0] && arr[0].username || '';
+                                                                        if (u) writeDefault(u);
+                                                                }
+                                                renderGrid();
+                                        }
+                                });
+                                box.querySelector('.dr-acc-title').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                        if (arr[idx]) { arr[idx].title = e.target.value; writeAccounts(arr); }
+                                });
+                                                box.querySelector('.dr-acc-username').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                                        if (arr[idx]) {
+                                                                const oldU = arr[idx].username || '';
+                                                                arr[idx].username = e.target.value; writeAccounts(arr);
+                                                                const curDef = readDefault();
+                                                                if (curDef === oldU) writeDefault(e.target.value || '');
+                                                        }
+                                });
+                                box.querySelector('.dr-acc-password').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                        if (arr[idx]) { arr[idx].password = e.target.value; writeAccounts(arr); }
+                                });
+                                box.querySelector('.dr-acc-default').addEventListener('change', (e) => {
+                                        if (e.target.checked) writeDefault(acc.username || '');
+                                });
+                                // Ensure label click also sets default (redundant with for=, but safe)
+                                const lbl = box.querySelector(`label[for="${radioId}"]`);
+                                if (lbl) {
+                                        lbl.addEventListener('click', () => {
+                                                const inp = box.querySelector(`#${radioId}`);
+                                                if (inp) { inp.checked = true; writeDefault(acc.username || ''); }
+                                        });
+                                }
+                                grid.appendChild(box);
+                        });
+                        // Add box
+                        const addBox = document.createElement('div');
+                        addBox.style.cssText = 'border:1px dashed #cbd5e1; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#fafafa;';
+                        addBox.innerHTML = '<div style="font-size:28px; line-height:1;">+</div>';
+                        addBox.title = 'Thêm tài khoản';
+                        addBox.addEventListener('click', () => {
+                                const arr = readAccounts();
+                                arr.push({ title:'', username:'', password:'' });
+                                writeAccounts(arr);
+                                renderGrid();
+                        });
+                        grid.appendChild(addBox);
+                }
+                renderGrid();
+
+                // Top-level auto-login toggle (shared component)
+                try {
+                        const { createAutoLoginToggle, applyToggleStyles } = require('./components/autoLoginToggle');
+                        const wrap = right.querySelector('#dr-acc-toggle-wrap');
+                        if (wrap) {
+                                const enabled = ls.getItem(AUTO_KEY) === '1';
+                                const toggle = createAutoLoginToggle({
+                                        enabled,
+                                        onToggle: () => {
+                                                const cur = ls.getItem(AUTO_KEY) === '1';
+                                                ls.setItem(AUTO_KEY, cur ? '0' : '1');
+                                                applyToggleStyles(toggle, !cur);
+                                        },
+                                        onDblClick: () => {},
+                                        title: 'Bật/tắt tự động login'
+                                });
+                                wrap.appendChild(toggle);
+                        }
+                } catch(_) {}
 
         const renderDischarge = (items) => {
                 listEl.innerHTML = '';
@@ -92,16 +235,22 @@ async function showSettingsIfNeeded() {
         renderDischarge(settings && settings.danDoRaVien ? settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien);
 
         // Left menu switching (future tabs-ready)
-        left.addEventListener('click', (e) => {
+                left.addEventListener('click', (e) => {
                 const btn = e.target.closest('button[data-tab]');
                 if (!btn) return;
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : btn.textContent.trim();
+                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : btn.textContent.trim());
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
+                                // Update URL (no reload) to reflect current tab for deep linking
+                                try {
+                                        const url = new URL(window.location.href);
+                                        url.searchParams.set('caidat', tab);
+                                        window.history.replaceState({}, '', url);
+                                } catch(_) {}
         });
 
         // Right actions
@@ -152,6 +301,8 @@ async function showSettingsIfNeeded() {
                         }
                 }
         });
+
+        // Account tab no longer uses single username/password fields; managed via grid.
 }
 
 module.exports = { showSettingsIfNeeded };

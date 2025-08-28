@@ -89,13 +89,122 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     autoClickCbTaCaIfNeeded();
 
+    // Auto-login on /Home/Login: always fill from default account; only auto-submit if enabled
+    try {
+        const isLoginPage = /\/Home\/Login(\?.*)?$/.test(window.location.pathname);
+        if (isLoginPage && window.localStorage) {
+            const ACC_KEY = 'dr_accounts_json';
+            const DEF_KEY = 'dr_acc_default';
+            const AUTO_KEY = 'dr_acc_autologin';
+            let accounts = [];
+            try { accounts = JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); } catch(_) { accounts = []; }
+            const defUser = localStorage.getItem(DEF_KEY) || '';
+            const acc = accounts.find(a => (a && a.username) === defUser) || accounts[0] || null;
+            const userInput = document.querySelector('input[name="username"][placeholder="Tên đăng nhập"]');
+            const passInput = document.querySelector('input[type="password"][name="password"][placeholder="Mật khẩu"]');
+            const submitBtn = document.querySelector('button[type="submit"].btn.btn-primary.btn-block');
+            if (acc && userInput && passInput) {
+                userInput.value = acc.username || '';
+                passInput.value = acc.password || '';
+            }
+            if (acc && localStorage.getItem(AUTO_KEY) === '1' && userInput && passInput && submitBtn) {
+                setTimeout(() => {
+                    submitBtn.click();
+                    setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
+                }, 200);
+            } else if (localStorage.getItem(AUTO_KEY) !== '1') {
+                // Render account picker panel to the right of login card
+                try {
+                    const ensurePanel = () => {
+                        const loginCard = document.querySelector('div.card.card-outline.card-primary');
+                        if (!loginCard || accounts.length === 0 || document.getElementById('dr-quochoai-danh-sach-tai-khoan-login')) return;
+                        // Inject minimal CSS for layout + blue buttons
+                        if (!document.getElementById('dr-login-accounts-css')) {
+                            const style = document.createElement('style');
+                            style.id = 'dr-login-accounts-css';
+                            style.textContent = `
+                                #dr-quochoai-danh-sach-tai-khoan-login { position: fixed; width: 300px; max-width: 340px; display: flex; flex-direction: column; gap: 8px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; z-index:2147483647; }
+                                #dr-quochoai-danh-sach-tai-khoan-login .dr-acc-title { font-weight: 700; margin-bottom: 4px; color: #0d47a1; }
+                                #dr-quochoai-danh-sach-tai-khoan-login .dr-acc-btn { background: #1976d2; color: #fff; border: none; padding: 10px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+                                #dr-quochoai-danh-sach-tai-khoan-login .dr-acc-btn:hover { background: #1565c0; }
+                            `;
+                            document.head && document.head.appendChild(style);
+                        }
+
+                        const panel = document.createElement('div');
+                        panel.id = 'dr-quochoai-danh-sach-tai-khoan-login';
+                        const titleEl = document.createElement('div');
+                        titleEl.className = 'dr-acc-title';
+                        titleEl.textContent = 'Tài khoản đã lưu';
+                        panel.appendChild(titleEl);
+
+                        accounts.forEach(a => {
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'dr-acc-btn';
+                            const title = a.title || a.username || 'Tài khoản';
+                            btn.textContent = title + (a.username ? ` (${a.username})` : '');
+                            btn.addEventListener('click', () => {
+                                if (userInput && passInput && submitBtn) {
+                                    userInput.value = a.username || '';
+                                    passInput.value = a.password || '';
+                                    submitBtn.click();
+                                    setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
+                                }
+                            });
+                            panel.appendChild(btn);
+                        });
+
+                        // Append panel directly to body and position it to the right of the login card
+                        if (document.body && document.body.appendChild) {
+                            document.body.appendChild(panel);
+                            const positionPanel = () => {
+                                const rect = loginCard.getBoundingClientRect();
+                                const panelRect = panel.getBoundingClientRect();
+                                const top = Math.max(12, rect.top + window.scrollY);
+                                let left = rect.right + 16 + window.scrollX;
+                                const maxLeft = window.scrollX + window.innerWidth - panelRect.width - 12;
+                                if (left > maxLeft) left = Math.max(12 + window.scrollX, maxLeft);
+                                panel.style.top = top + 'px';
+                                panel.style.left = left + 'px';
+                            };
+                            // Initial and delayed to ensure metrics
+                            positionPanel();
+                            setTimeout(positionPanel, 0);
+                            window.addEventListener('resize', positionPanel);
+                            window.addEventListener('scroll', positionPanel, { passive: true });
+                        }
+                    };
+                    // Run now or retry a few times if the DOM isn’t ready yet
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', ensurePanel);
+                    } else {
+                        ensurePanel();
+                        let tries = 0;
+                        const iv = setInterval(() => {
+                            tries++;
+                            if (document.getElementById('dr-quochoai-danh-sach-tai-khoan-login') || tries > 10) return clearInterval(iv);
+                            ensurePanel();
+                        }, 300);
+                    }
+                } catch(_) {}
+            }
+        }
+    } catch(_) {}
+
 
 
     // Gọi hàm khi trang chính load
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', addDashboardMenuToSidebar);
+        document.addEventListener('DOMContentLoaded', () => {
+            addDashboardMenuToSidebar();
+            addDashboardMenuToTopbar();
+            addAutoLoginToggleToTopbar();
+        });
     } else {
         addDashboardMenuToSidebar();
+        addDashboardMenuToTopbar();
+        addAutoLoginToggleToTopbar();
     }
 
     // Thêm menu mở dashboard vào sidebar
@@ -123,6 +232,70 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         li.appendChild(a);
         // Thêm vào đầu ul
         nav.insertBefore(li, nav.firstChild);
+    }
+
+    // Thêm nút TỰ ĐỘNG LOGIN vào TOPBAR bên trái <li class="nav-item dropdown">
+    function addAutoLoginToggleToTopbar() {
+        const { createAutoLoginToggle, applyToggleStyles } = require('./components/autoLoginToggle');
+        const dropdownLi = document.querySelector('nav.main-header ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('li.nav-item.dropdown');
+        if (!dropdownLi) return;
+        const ul = dropdownLi.parentElement;
+        if (!ul) return;
+        if (ul.querySelector('.bsnt-autologin-toggle')) return;
+
+        const li = document.createElement('li');
+        li.className = 'nav-item bsnt-autologin-toggle';
+        const enabled = window.localStorage && window.localStorage.getItem('dr_acc_autologin') === '1';
+        const a = createAutoLoginToggle({
+            enabled,
+            onToggle: () => {
+                const cur = window.localStorage && window.localStorage.getItem('dr_acc_autologin') === '1';
+                if (window.localStorage) window.localStorage.setItem('dr_acc_autologin', cur ? '0' : '1');
+                applyToggleStyles(a, !cur);
+            },
+            onDblClick: () => window.open('/?caidat=account', '_blank'),
+            title: 'Bật/tắt tự động login (double click để mở Cài đặt > Account)'
+        });
+        li.appendChild(a);
+        ul.insertBefore(li, dropdownLi);
+    }
+
+    // Thêm nút mở dashboard vào TOPBAR bên cạnh <li class="nav-item dropdown">
+    function addDashboardMenuToTopbar() {
+        // Tìm topbar ul chứa các nav-item
+        const dropdownLi = document.querySelector('nav.main-header ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('li.nav-item.dropdown');
+        if (!dropdownLi) return;
+        const ul = dropdownLi.parentElement;
+        if (!ul) return;
+        // Tránh thêm trùng
+        if (ul.querySelector('.bsnt-dashboard-menu-top')) return;
+
+        const li = document.createElement('li');
+        li.className = 'nav-item bsnt-dashboard-menu-top';
+        const a = document.createElement('a');
+        a.className = 'nav-link';
+        a.href = '/?nln';
+        a.target = '_blank';
+        a.innerHTML = '<i class="fas fa-tachometer-alt"></i> <span style="margin-left:6px;">Mở dashboard</span>';
+        // Style vàng và bo tròn giống sidebar
+        a.style.background = 'gold';
+        a.style.borderRadius = '12px';
+        a.style.color = '#333';
+        a.style.fontWeight = 'bold';
+        a.style.display = 'inline-flex';
+        a.style.alignItems = 'center';
+        a.style.gap = '6px';
+        a.style.padding = '6px 10px';
+        a.onmouseover = function () { a.style.background = '#ffe066'; };
+        a.onmouseout = function () { a.style.background = 'gold'; };
+        li.appendChild(a);
+
+        if (dropdownLi.nextSibling) ul.insertBefore(li, dropdownLi.nextSibling);
+        else ul.appendChild(li);
     }
 
     // --- HSBA V2 PAGE ENHANCEMENT: Hide empty sections (no documents) ---

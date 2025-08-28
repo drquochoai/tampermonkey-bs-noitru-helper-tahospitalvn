@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.7.0
+// @version      1.7.2
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -446,13 +446,122 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     autoClickCbTaCaIfNeeded();
 
+    // Auto-login on /Home/Login: always fill from default account; only auto-submit if enabled
+    try {
+        const isLoginPage = /\/Home\/Login(\?.*)?$/.test(window.location.pathname);
+        if (isLoginPage && window.localStorage) {
+            const ACC_KEY = 'dr_accounts_json';
+            const DEF_KEY = 'dr_acc_default';
+            const AUTO_KEY = 'dr_acc_autologin';
+            let accounts = [];
+            try { accounts = JSON.parse(localStorage.getItem(ACC_KEY) || '[]'); } catch(_) { accounts = []; }
+            const defUser = localStorage.getItem(DEF_KEY) || '';
+            const acc = accounts.find(a => (a && a.username) === defUser) || accounts[0] || null;
+            const userInput = document.querySelector('input[name="username"][placeholder="Tên đăng nhập"]');
+            const passInput = document.querySelector('input[type="password"][name="password"][placeholder="Mật khẩu"]');
+            const submitBtn = document.querySelector('button[type="submit"].btn.btn-primary.btn-block');
+            if (acc && userInput && passInput) {
+                userInput.value = acc.username || '';
+                passInput.value = acc.password || '';
+            }
+            if (acc && localStorage.getItem(AUTO_KEY) === '1' && userInput && passInput && submitBtn) {
+                setTimeout(() => {
+                    submitBtn.click();
+                    setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
+                }, 200);
+            } else if (localStorage.getItem(AUTO_KEY) !== '1') {
+                // Render account picker panel to the right of login card
+                try {
+                    const ensurePanel = () => {
+                        const loginCard = document.querySelector('div.card.card-outline.card-primary');
+                        if (!loginCard || accounts.length === 0 || document.getElementById('dr-quochoai-danh-sach-tai-khoan-login')) return;
+                        // Inject minimal CSS for layout + blue buttons
+                        if (!document.getElementById('dr-login-accounts-css')) {
+                            const style = document.createElement('style');
+                            style.id = 'dr-login-accounts-css';
+                            style.textContent = `
+                                #dr-quochoai-danh-sach-tai-khoan-login { position: fixed; width: 300px; max-width: 340px; display: flex; flex-direction: column; gap: 8px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:10px; z-index:2147483647; }
+                                #dr-quochoai-danh-sach-tai-khoan-login .dr-acc-title { font-weight: 700; margin-bottom: 4px; color: #0d47a1; }
+                                #dr-quochoai-danh-sach-tai-khoan-login .dr-acc-btn { background: #1976d2; color: #fff; border: none; padding: 10px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+                                #dr-quochoai-danh-sach-tai-khoan-login .dr-acc-btn:hover { background: #1565c0; }
+                            `;
+                            document.head && document.head.appendChild(style);
+                        }
+
+                        const panel = document.createElement('div');
+                        panel.id = 'dr-quochoai-danh-sach-tai-khoan-login';
+                        const titleEl = document.createElement('div');
+                        titleEl.className = 'dr-acc-title';
+                        titleEl.textContent = 'Tài khoản đã lưu';
+                        panel.appendChild(titleEl);
+
+                        accounts.forEach(a => {
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'dr-acc-btn';
+                            const title = a.title || a.username || 'Tài khoản';
+                            btn.textContent = title + (a.username ? ` (${a.username})` : '');
+                            btn.addEventListener('click', () => {
+                                if (userInput && passInput && submitBtn) {
+                                    userInput.value = a.username || '';
+                                    passInput.value = a.password || '';
+                                    submitBtn.click();
+                                    setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
+                                }
+                            });
+                            panel.appendChild(btn);
+                        });
+
+                        // Append panel directly to body and position it to the right of the login card
+                        if (document.body && document.body.appendChild) {
+                            document.body.appendChild(panel);
+                            const positionPanel = () => {
+                                const rect = loginCard.getBoundingClientRect();
+                                const panelRect = panel.getBoundingClientRect();
+                                const top = Math.max(12, rect.top + window.scrollY);
+                                let left = rect.right + 16 + window.scrollX;
+                                const maxLeft = window.scrollX + window.innerWidth - panelRect.width - 12;
+                                if (left > maxLeft) left = Math.max(12 + window.scrollX, maxLeft);
+                                panel.style.top = top + 'px';
+                                panel.style.left = left + 'px';
+                            };
+                            // Initial and delayed to ensure metrics
+                            positionPanel();
+                            setTimeout(positionPanel, 0);
+                            window.addEventListener('resize', positionPanel);
+                            window.addEventListener('scroll', positionPanel, { passive: true });
+                        }
+                    };
+                    // Run now or retry a few times if the DOM isn’t ready yet
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', ensurePanel);
+                    } else {
+                        ensurePanel();
+                        let tries = 0;
+                        const iv = setInterval(() => {
+                            tries++;
+                            if (document.getElementById('dr-quochoai-danh-sach-tai-khoan-login') || tries > 10) return clearInterval(iv);
+                            ensurePanel();
+                        }, 300);
+                    }
+                } catch(_) {}
+            }
+        }
+    } catch(_) {}
+
 
 
     // Gọi hàm khi trang chính load
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', addDashboardMenuToSidebar);
+        document.addEventListener('DOMContentLoaded', () => {
+            addDashboardMenuToSidebar();
+            addDashboardMenuToTopbar();
+            addAutoLoginToggleToTopbar();
+        });
     } else {
         addDashboardMenuToSidebar();
+        addDashboardMenuToTopbar();
+        addAutoLoginToggleToTopbar();
     }
 
     // Thêm menu mở dashboard vào sidebar
@@ -480,6 +589,70 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         li.appendChild(a);
         // Thêm vào đầu ul
         nav.insertBefore(li, nav.firstChild);
+    }
+
+    // Thêm nút TỰ ĐỘNG LOGIN vào TOPBAR bên trái <li class="nav-item dropdown">
+    function addAutoLoginToggleToTopbar() {
+        const { createAutoLoginToggle, applyToggleStyles } = require('./components/autoLoginToggle');
+        const dropdownLi = document.querySelector('nav.main-header ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('li.nav-item.dropdown');
+        if (!dropdownLi) return;
+        const ul = dropdownLi.parentElement;
+        if (!ul) return;
+        if (ul.querySelector('.bsnt-autologin-toggle')) return;
+
+        const li = document.createElement('li');
+        li.className = 'nav-item bsnt-autologin-toggle';
+        const enabled = window.localStorage && window.localStorage.getItem('dr_acc_autologin') === '1';
+        const a = createAutoLoginToggle({
+            enabled,
+            onToggle: () => {
+                const cur = window.localStorage && window.localStorage.getItem('dr_acc_autologin') === '1';
+                if (window.localStorage) window.localStorage.setItem('dr_acc_autologin', cur ? '0' : '1');
+                applyToggleStyles(a, !cur);
+            },
+            onDblClick: () => window.open('/?caidat=account', '_blank'),
+            title: 'Bật/tắt tự động login (double click để mở Cài đặt > Account)'
+        });
+        li.appendChild(a);
+        ul.insertBefore(li, dropdownLi);
+    }
+
+    // Thêm nút mở dashboard vào TOPBAR bên cạnh <li class="nav-item dropdown">
+    function addDashboardMenuToTopbar() {
+        // Tìm topbar ul chứa các nav-item
+        const dropdownLi = document.querySelector('nav.main-header ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('ul.navbar-nav li.nav-item.dropdown')
+            || document.querySelector('li.nav-item.dropdown');
+        if (!dropdownLi) return;
+        const ul = dropdownLi.parentElement;
+        if (!ul) return;
+        // Tránh thêm trùng
+        if (ul.querySelector('.bsnt-dashboard-menu-top')) return;
+
+        const li = document.createElement('li');
+        li.className = 'nav-item bsnt-dashboard-menu-top';
+        const a = document.createElement('a');
+        a.className = 'nav-link';
+        a.href = '/?nln';
+        a.target = '_blank';
+        a.innerHTML = '<i class="fas fa-tachometer-alt"></i> <span style="margin-left:6px;">Mở dashboard</span>';
+        // Style vàng và bo tròn giống sidebar
+        a.style.background = 'gold';
+        a.style.borderRadius = '12px';
+        a.style.color = '#333';
+        a.style.fontWeight = 'bold';
+        a.style.display = 'inline-flex';
+        a.style.alignItems = 'center';
+        a.style.gap = '6px';
+        a.style.padding = '6px 10px';
+        a.onmouseover = function () { a.style.background = '#ffe066'; };
+        a.onmouseout = function () { a.style.background = 'gold'; };
+        li.appendChild(a);
+
+        if (dropdownLi.nextSibling) ul.insertBefore(li, dropdownLi.nextSibling);
+        else ul.appendChild(li);
     }
 
     // --- HSBA V2 PAGE ENHANCEMENT: Hide empty sections (no documents) ---
@@ -535,7 +708,50 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./dashboard":10,"./googleAppsScript":12,"./settings":18,"./utils":19}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":4,"./dashboard":11,"./googleAppsScript":13,"./settings":19,"./utils":20}],4:[function(require,module,exports){
+// autoLoginToggle.js - Shared toggle UI for Auto Login
+
+function applyToggleStyles(a, enabled) {
+    a.className = (a.className || '') + ' dr-autologin-toggle nav-link';
+    a.style.borderRadius = '12px';
+    a.style.display = 'inline-flex';
+    a.style.alignItems = 'center';
+    a.style.gap = '6px';
+    a.style.padding = '6px 10px';
+    if (enabled) {
+        a.innerHTML = '<i class="fas fa-toggle-on"></i> <span style="margin-left:6px; font-weight:600;">TỰ ĐỘNG LOGIN</span>';
+        a.style.background = '#dc2626';
+        a.style.color = '#fff';
+        a.style.border = '1px solid #b91c1c';
+    } else {
+        a.innerHTML = '<i class="fas fa-toggle-off"></i> <span style="margin-left:6px;">TỰ ĐỘNG LOGIN</span>';
+        a.style.background = '#fff';
+        a.style.color = '#111827';
+        a.style.border = '1px solid #e5e7eb';
+    }
+}
+
+function createAutoLoginToggle({ enabled, onToggle, onDblClick, title }) {
+    const a = document.createElement('a');
+    a.href = 'javascript:void(0)';
+    a.title = title || 'Bật/tắt tự động login';
+    applyToggleStyles(a, !!enabled);
+    a.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (typeof onToggle === 'function') onToggle();
+    });
+    if (typeof onDblClick === 'function') {
+        a.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            onDblClick();
+        });
+    }
+    return a;
+}
+
+module.exports = { createAutoLoginToggle, applyToggleStyles };
+
+},{}],5:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -654,7 +870,7 @@ const DialogManager = {
 
 module.exports = DialogManager;
 
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -683,7 +899,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 
 const ModalManager = {
@@ -751,7 +967,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -1007,7 +1223,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":14,"../services/reportService":16,"../utils":19,"./phauThuatHandlers":8,"./yLenhHandlers":9}],8:[function(require,module,exports){
+},{"../services/checklistService":15,"../services/reportService":17,"../utils":20,"./phauThuatHandlers":9,"./yLenhHandlers":10}],9:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1367,7 +1583,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":14,"../utils/surgeryUtils":23}],9:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":15,"../utils/surgeryUtils":24}],10:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1837,7 +2053,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":14}],10:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":15}],11:[function(require,module,exports){
 // dashboard.js
 
 const Utils = require('./utils');
@@ -2781,7 +2997,11 @@ function showDashboardBenhNhanIfNeeded() {
             filterCount.textContent = (q || onlyXV || onlyCLS || onlyODL) ? `Hiển thị: ${visible}/${sortedData.length}` : '';
             const bottomLeft = document.querySelector('.dr-bottom-bar-left');
             if (bottomLeft) {
-                bottomLeft.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (q || onlyXV ? ` (lọc: ${visible})` : '');
+                const countSpan = bottomLeft.querySelector('.dr-bottom-count');
+                if (countSpan) {
+                    const hasAnyFilter = !!(q || onlyXV || onlyCLS || onlyODL);
+                    countSpan.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (hasAnyFilter ? ` (lọc: ${visible})` : '');
+                }
             }
         }
 
@@ -3142,7 +3362,12 @@ function showDashboardBenhNhanIfNeeded() {
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
-            <div class="dr-bottom-bar-left">Tổng số bệnh nhân: ${patientCount}</div>
+            <div class="dr-bottom-bar-left">
+                <a id="dr-settings-btn" class="dr-gear-btn" href="/?caidat" target="_blank" title="Cài đặt">
+                    <i class="fas fa-cog"></i>
+                </a>
+                <span class="dr-bottom-count">Tổng số bệnh nhân: ${patientCount}</span>
+            </div>
             <button id="dr-btn-direct-report" class="btn btn-warning" style="font-weight:bold;">Tạo báo cáo trực</button>
         `;
         document.body.appendChild(bottomBar);
@@ -3179,7 +3404,18 @@ function showDashboardBenhNhanIfNeeded() {
             .dr-bottom-bar-left {
                 color: #1976d2;
                 font-weight: bold;
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
             }
+            .dr-gear-btn { 
+                display:inline-flex; align-items:center; justify-content:center; 
+                width:32px; height:32px; border-radius:50%; 
+                color:#1976d2; border:1px solid rgba(25,118,210,0.25); 
+                text-decoration:none; background:#fff;
+            }
+            .dr-gear-btn i { font-size:16px; }
+            .dr-gear-btn:hover { background:#e3f2fd; box-shadow:0 0 0 2px rgba(25,118,210,0.15) inset; }
             @media (max-width: 600px) {
                 .dr-bottom-bar { flex-direction: column; height: auto; padding: 8px 8px; }
             }
@@ -3202,7 +3438,7 @@ module.exports = {
     showDashboardBenhNhanIfNeeded
 };
 
-},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":5,"./components/modalManager":6,"./components/patientInfoSection":7,"./components/phauThuatHandlers":8,"./dashboard.support":11,"./services/checklistService":14,"./services/patientService":15,"./utils":19,"./utils/checklistUtils":20,"./utils/patientDataMapper":22,"./utils/surgeryUtils":23,"./utils/tagUtils":24,"./utils/uiUtils":25}],11:[function(require,module,exports){
+},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":6,"./components/modalManager":7,"./components/patientInfoSection":8,"./components/phauThuatHandlers":9,"./dashboard.support":12,"./services/checklistService":15,"./services/patientService":16,"./utils":20,"./utils/checklistUtils":21,"./utils/patientDataMapper":23,"./utils/surgeryUtils":24,"./utils/tagUtils":25,"./utils/uiUtils":26}],12:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('./services/reportService');
@@ -3797,7 +4033,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"./components/dialogManager":4,"./services/apiService":13,"./services/reportService":16,"./utils/dateUtils":21}],12:[function(require,module,exports){
+},{"./components/dialogManager":5,"./services/apiService":14,"./services/reportService":17,"./utils/dateUtils":22}],13:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -3883,7 +4119,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],13:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 // apiService.js - Centralized API service
 
 const ApiService = {
@@ -3995,7 +4231,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -4203,7 +4439,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":21,"./apiService":13}],15:[function(require,module,exports){
+},{"../utils/dateUtils":22,"./apiService":14}],16:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../dashboard.support');
@@ -4432,7 +4668,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":5,"../dashboard.support":11,"../utils/patientDataMapper":22,"./checklistService":14}],16:[function(require,module,exports){
+},{"../components/loginHandler":6,"../dashboard.support":12,"../utils/patientDataMapper":23,"./checklistService":15}],17:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -4604,7 +4840,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":21,"../utils/patientDataMapper":22,"../utils/surgeryUtils":23,"./checklistService":14}],17:[function(require,module,exports){
+},{"../utils/dateUtils":22,"../utils/patientDataMapper":23,"../utils/surgeryUtils":24,"./checklistService":15}],18:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -4745,13 +4981,18 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"./apiService":13}],18:[function(require,module,exports){
+},{"./apiService":14}],19:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('./services/settingsService');
 
 async function showSettingsIfNeeded() {
-        if (!(/[?&](caidat)($|&)/.test(window.location.search))) return;
+        // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
+        const u = new URL(window.location.href);
+        const caidatParam = u.searchParams.get('caidat');
+        const tabParam = u.searchParams.get('tab');
+        const targetTab = (caidatParam && caidatParam !== 'true') ? caidatParam : (tabParam || 'discharge');
+        if (!(/[?&](caidat)($|=|&)/.test(window.location.search))) return;
 
         // Reset page and mount a two-column layout with tabs
         document.body.innerHTML = '';
@@ -4788,7 +5029,8 @@ async function showSettingsIfNeeded() {
         left.innerHTML = `
             <h2>Cài đặt</h2>
             <div class="dr-st-menu">
-                <button data-tab="discharge" class="active">Lời dặn dò ra viện</button>
+                <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
+                <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
             </div>
             <div class="dr-st-footer" id="dr-st-doctor"></div>
         `;
@@ -4796,20 +5038,30 @@ async function showSettingsIfNeeded() {
         // Right content with header and tabs
         const right = document.createElement('section');
         right.className = 'dr-st-right';
-        right.innerHTML = `
+                right.innerHTML = `
             <div class="dr-st-head">
-                <h3 class="dr-st-title">Lời dặn dò ra viện</h3>
+                        <h3 class="dr-st-title">${targetTab==='account'?'Account':'Lời dặn dò ra viện'}</h3>
                 <div>
                     <button class="dr-st-btn" id="reload-tab">Tải lại</button>
                     <button class="dr-st-btn primary" id="save-tab">Lưu</button>
                 </div>
             </div>
             <div class="dr-st-content">
-                <div id="tab-discharge" class="dr-st-tab active">
+                        <div id="tab-discharge" class="dr-st-tab ${targetTab==='discharge'?'active':''}">
                     <p style="margin:0 0 8px; color:#6b7280">Danh sách các lời dặn dò ra viện. Bạn có thể thêm/xóa và chỉnh sửa.</p>
                     <div id="discharge-list" class="dr-st-list"></div>
                     <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
                 </div>
+                                        <div id="tab-account" class="dr-st-tab ${targetTab==='account'?'active':''}">
+                                                <div style="margin-bottom:12px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#92400e">
+                                                <b>Lưu ý bảo mật:</b> Thông tin dưới đây chỉ lưu trên thiết bị (LocalStorage của trình duyệt), không gửi lên máy chủ. Hãy sử dụng trên máy tính cá nhân tin cậy. Nếu dùng máy công cộng, KHÔNG nhập mật khẩu ở đây.
+                                        </div>
+                                                <div id="dr-acc-toggle-wrap" style="margin:8px 0 16px;"></div>
+                                                <div style="margin-top:8px; color:#6b7280; font-size:13px; line-height:1.5;">
+                                                Khi bật "tự động login", lúc vào trang <code>/Home/Login</code> tiện ích sẽ tự điền Tên đăng nhập và Mật khẩu rồi nhấn Đăng nhập, sau đó chờ 1.5 giây và mở <code>/?nln</code>. Tắt tùy chọn này nếu bạn không muốn tự động đăng nhập.
+                                        </div>
+                                                <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
+                                </div>
             </div>
         `;
 
@@ -4823,6 +5075,133 @@ async function showSettingsIfNeeded() {
         const listEl = right.querySelector('#discharge-list');
         const doctorEl = left.querySelector('#dr-st-doctor');
         if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+
+                // Account tab: multi-account manager (localStorage only)
+                const ls = window.localStorage;
+                const ACC_KEY = 'dr_accounts_json';
+                const DEF_KEY = 'dr_acc_default';
+                const AUTO_KEY = 'dr_acc_autologin';
+                function readAccounts() {
+                        try { return JSON.parse(ls.getItem(ACC_KEY) || '[]'); } catch(_) { return []; }
+                }
+                function writeAccounts(arr) { ls.setItem(ACC_KEY, JSON.stringify(arr || [])); }
+                function readDefault() { return ls.getItem(DEF_KEY) || ''; }
+                function writeDefault(u) { ls.setItem(DEF_KEY, u || ''); }
+
+                const grid = right.querySelector('#dr-acc-grid');
+                function renderGrid() {
+                        if (!grid) return;
+                        grid.innerHTML = '';
+                                                   const accounts = readAccounts();
+                                                   let def = readDefault();
+                                                   // If only one account, auto set as default
+                                                   if (accounts.length === 1) {
+                                                           const only = accounts[0];
+                                                           if (only && only.username && def !== only.username) {
+                                                                   writeDefault(only.username);
+                                                                   def = only.username;
+                                                           }
+                                                   }
+                        accounts.forEach((acc, idx) => {
+                                const box = document.createElement('div');
+                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:10px; padding:10px; position:relative; background:#fff;';
+                                const radioId = `dr-acc-default-${idx}`;
+                                box.innerHTML = `
+                                                                                   <button class="dr-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#dc2626; color:#fff; border:none; border-radius:6px; padding:2px 6px; cursor:pointer;">X</button>
+                                        <div class="dr-st-row" style="margin-top:8px;">
+                                                <label style="width:100px">Tiêu đề</label>
+                                                <input class="dr-st-input dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: BS. ABC" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px">Tên đăng nhập</label>
+                                                <input class="dr-st-input dr-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px">Mật khẩu</label>
+                                                <input class="dr-st-input dr-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <input id="${radioId}" type="radio" name="dr-acc-default" class="dr-acc-default" ${def && def===acc.username ? 'checked' : ''} />
+                                                <label for="${radioId}" style="margin-left:6px; cursor:pointer;">Tài khoản mặc định</label>
+                                        </div>
+                                `;
+                                box.querySelector('.dr-acc-remove').addEventListener('click', () => {
+                                        if (confirm('Xóa tài khoản này?')) {
+                                                const arr = readAccounts();
+                                                arr.splice(idx,1);
+                                                writeAccounts(arr);
+                                                                if (def === acc.username) writeDefault('');
+                                                                if (arr.length === 1) {
+                                                                        const u = arr[0] && arr[0].username || '';
+                                                                        if (u) writeDefault(u);
+                                                                }
+                                                renderGrid();
+                                        }
+                                });
+                                box.querySelector('.dr-acc-title').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                        if (arr[idx]) { arr[idx].title = e.target.value; writeAccounts(arr); }
+                                });
+                                                box.querySelector('.dr-acc-username').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                                        if (arr[idx]) {
+                                                                const oldU = arr[idx].username || '';
+                                                                arr[idx].username = e.target.value; writeAccounts(arr);
+                                                                const curDef = readDefault();
+                                                                if (curDef === oldU) writeDefault(e.target.value || '');
+                                                        }
+                                });
+                                box.querySelector('.dr-acc-password').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                        if (arr[idx]) { arr[idx].password = e.target.value; writeAccounts(arr); }
+                                });
+                                box.querySelector('.dr-acc-default').addEventListener('change', (e) => {
+                                        if (e.target.checked) writeDefault(acc.username || '');
+                                });
+                                // Ensure label click also sets default (redundant with for=, but safe)
+                                const lbl = box.querySelector(`label[for="${radioId}"]`);
+                                if (lbl) {
+                                        lbl.addEventListener('click', () => {
+                                                const inp = box.querySelector(`#${radioId}`);
+                                                if (inp) { inp.checked = true; writeDefault(acc.username || ''); }
+                                        });
+                                }
+                                grid.appendChild(box);
+                        });
+                        // Add box
+                        const addBox = document.createElement('div');
+                        addBox.style.cssText = 'border:1px dashed #cbd5e1; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#fafafa;';
+                        addBox.innerHTML = '<div style="font-size:28px; line-height:1;">+</div>';
+                        addBox.title = 'Thêm tài khoản';
+                        addBox.addEventListener('click', () => {
+                                const arr = readAccounts();
+                                arr.push({ title:'', username:'', password:'' });
+                                writeAccounts(arr);
+                                renderGrid();
+                        });
+                        grid.appendChild(addBox);
+                }
+                renderGrid();
+
+                // Top-level auto-login toggle (shared component)
+                try {
+                        const { createAutoLoginToggle, applyToggleStyles } = require('./components/autoLoginToggle');
+                        const wrap = right.querySelector('#dr-acc-toggle-wrap');
+                        if (wrap) {
+                                const enabled = ls.getItem(AUTO_KEY) === '1';
+                                const toggle = createAutoLoginToggle({
+                                        enabled,
+                                        onToggle: () => {
+                                                const cur = ls.getItem(AUTO_KEY) === '1';
+                                                ls.setItem(AUTO_KEY, cur ? '0' : '1');
+                                                applyToggleStyles(toggle, !cur);
+                                        },
+                                        onDblClick: () => {},
+                                        title: 'Bật/tắt tự động login'
+                                });
+                                wrap.appendChild(toggle);
+                        }
+                } catch(_) {}
 
         const renderDischarge = (items) => {
                 listEl.innerHTML = '';
@@ -4840,16 +5219,22 @@ async function showSettingsIfNeeded() {
         renderDischarge(settings && settings.danDoRaVien ? settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien);
 
         // Left menu switching (future tabs-ready)
-        left.addEventListener('click', (e) => {
+                left.addEventListener('click', (e) => {
                 const btn = e.target.closest('button[data-tab]');
                 if (!btn) return;
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : btn.textContent.trim();
+                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : btn.textContent.trim());
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
+                                // Update URL (no reload) to reflect current tab for deep linking
+                                try {
+                                        const url = new URL(window.location.href);
+                                        url.searchParams.set('caidat', tab);
+                                        window.history.replaceState({}, '', url);
+                                } catch(_) {}
         });
 
         // Right actions
@@ -4900,11 +5285,13 @@ async function showSettingsIfNeeded() {
                         }
                 }
         });
+
+        // Account tab no longer uses single username/password fields; managed via grid.
 }
 
 module.exports = { showSettingsIfNeeded };
 
-},{"./services/settingsService":17}],19:[function(require,module,exports){
+},{"./components/autoLoginToggle":4,"./services/settingsService":18}],20:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -4999,7 +5386,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -5159,7 +5546,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":14,"./uiUtils":25}],21:[function(require,module,exports){
+},{"../services/checklistService":15,"./uiUtils":26}],22:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -5239,7 +5626,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],22:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -5477,7 +5864,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],23:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -5746,7 +6133,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -6026,7 +6413,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],25:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],26:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

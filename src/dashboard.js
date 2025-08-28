@@ -941,7 +941,11 @@ function showDashboardBenhNhanIfNeeded() {
             filterCount.textContent = (q || onlyXV || onlyCLS || onlyODL) ? `Hiển thị: ${visible}/${sortedData.length}` : '';
             const bottomLeft = document.querySelector('.dr-bottom-bar-left');
             if (bottomLeft) {
-                bottomLeft.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (q || onlyXV ? ` (lọc: ${visible})` : '');
+                const countSpan = bottomLeft.querySelector('.dr-bottom-count');
+                if (countSpan) {
+                    const hasAnyFilter = !!(q || onlyXV || onlyCLS || onlyODL);
+                    countSpan.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (hasAnyFilter ? ` (lọc: ${visible})` : '');
+                }
             }
         }
 
@@ -1302,7 +1306,12 @@ function showDashboardBenhNhanIfNeeded() {
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
-            <div class="dr-bottom-bar-left">Tổng số bệnh nhân: ${patientCount}</div>
+            <div class="dr-bottom-bar-left">
+                <a id="dr-settings-btn" class="dr-gear-btn" href="/?caidat" target="_blank" title="Cài đặt">
+                    <i class="fas fa-cog"></i>
+                </a>
+                <span class="dr-bottom-count">Tổng số bệnh nhân: ${patientCount}</span>
+            </div>
             <button id="dr-btn-direct-report" class="btn btn-warning" style="font-weight:bold;">Tạo báo cáo trực</button>
         `;
         document.body.appendChild(bottomBar);
@@ -1339,7 +1348,18 @@ function showDashboardBenhNhanIfNeeded() {
             .dr-bottom-bar-left {
                 color: #1976d2;
                 font-weight: bold;
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
             }
+            .dr-gear-btn { 
+                display:inline-flex; align-items:center; justify-content:center; 
+                width:32px; height:32px; border-radius:50%; 
+                color:#1976d2; border:1px solid rgba(25,118,210,0.25); 
+                text-decoration:none; background:#fff;
+            }
+            .dr-gear-btn i { font-size:16px; }
+            .dr-gear-btn:hover { background:#e3f2fd; box-shadow:0 0 0 2px rgba(25,118,210,0.15) inset; }
             @media (max-width: 600px) {
                 .dr-bottom-bar { flex-direction: column; height: auto; padding: 8px 8px; }
             }

@@ -43,8 +43,14 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
     const { showSettingsIfNeeded } = require('./settings');
+    const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();
     showSettingsIfNeeded();
+    try {
+        window.addEventListener('online', () => {
+            try { ChecklistService.drainSaveQueue(); } catch(_) {}
+        });
+    } catch(_) {}
     // --- Khởi tạo class và gắn vào window để dễ test ---
     window.DanhSachBenhNhanManager = new DanhSachBenhNhan();
     window.DanhSachBenhNhanManager.startAutoFetch();
@@ -71,14 +77,13 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
             $('#ddlKhoa').on('change', function () {
                 const v = $(this).val();
                 try {
-                    // keep legacy in sync for a while
-                    localStorage.setItem('bsnt_selected_khoa', v);
+                    localStorage.setItem('bsnt_khoa_dashboard', v);
                 } catch(_) {}
             });
 
             setTimeout(() => {
 
-                const savedKhoa = localStorage.getItem('bsnt_selected_khoa') || "551";
+                const savedKhoa = localStorage.getItem('bsnt_khoa_dashboard') || "551";
                 if (savedKhoa) {
                     $('#ddlKhoa').val(savedKhoa).change();
                 }

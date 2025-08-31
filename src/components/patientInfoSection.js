@@ -6,6 +6,7 @@ const Utils = require('../utils');
 const ReportService = require('../services/reportService');
 
 function createPatientInfoSection(patient, quickYLenhActions) {
+    const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
     const info = document.createElement('div');
     // Reuse report DOB/age formatter for consistency with dr-report-content
     const { dob, age } = ReportService.formatDateOfBirth(patient.ngaysinh);
@@ -154,10 +155,12 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
         // Persist once
         if (window.checklistObj) {
-            const ok = await ChecklistService.updateChecklistState(window.checklistObj, nextState);
-            if (!ok) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, nextState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.warn('Lưu checklist thất bại');
             } else {
+                // If this sidebar is no longer active, do not apply visual updates
+                if (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id !== ctxId) return;
                 // Update global state snapshot and lastSaved
                 window.checklistState = nextState;
                 if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
@@ -191,6 +194,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                         } catch (_) {}
                     }
                 } catch (_) {}
+                if (res && res.queued) {
+                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
+                }
             }
         }
     }

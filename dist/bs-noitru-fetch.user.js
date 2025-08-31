@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.7.3
+// @version      1.7.5
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -359,7 +359,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":24}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":26}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -405,8 +405,14 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
     const { showSettingsIfNeeded } = require('./settings');
+    const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();
     showSettingsIfNeeded();
+    try {
+        window.addEventListener('online', () => {
+            try { ChecklistService.drainSaveQueue(); } catch(_) {}
+        });
+    } catch(_) {}
     // --- Khởi tạo class và gắn vào window để dễ test ---
     window.DanhSachBenhNhanManager = new DanhSachBenhNhan();
     window.DanhSachBenhNhanManager.startAutoFetch();
@@ -433,14 +439,13 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
             $('#ddlKhoa').on('change', function () {
                 const v = $(this).val();
                 try {
-                    // keep legacy in sync for a while
-                    localStorage.setItem('bsnt_selected_khoa', v);
+                    localStorage.setItem('bsnt_khoa_dashboard', v);
                 } catch(_) {}
             });
 
             setTimeout(() => {
 
-                const savedKhoa = localStorage.getItem('bsnt_selected_khoa') || "551";
+                const savedKhoa = localStorage.getItem('bsnt_khoa_dashboard') || "551";
                 if (savedKhoa) {
                     $('#ddlKhoa').val(savedKhoa).change();
                 }
@@ -717,7 +722,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":4,"./dashboard":11,"./googleAppsScript":13,"./settings":20,"./utils":21}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":4,"./dashboard":12,"./googleAppsScript":14,"./services/checklistService":16,"./settings":22,"./utils":23}],4:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -910,6 +915,8 @@ module.exports = LoginHandler;
 
 },{}],7:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
+let SidebarSession = null;
+try { SidebarSession = require('./sidebarSession'); } catch(_) {}
 
 const ModalManager = {
     /**
@@ -953,6 +960,7 @@ const ModalManager = {
     hideModal(sidebar, backdrop) {
         if (sidebar) sidebar.style.display = 'none';
         backdrop.style.display = 'none';
+    try { if (SidebarSession && typeof SidebarSession.endSession === 'function') SidebarSession.endSession(); } catch(_) {}
     },
 
     /**
@@ -976,7 +984,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{}],8:[function(require,module,exports){
+},{"./sidebarSession":10}],8:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -985,6 +993,7 @@ const Utils = require('../utils');
 const ReportService = require('../services/reportService');
 
 function createPatientInfoSection(patient, quickYLenhActions) {
+    const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
     const info = document.createElement('div');
     // Reuse report DOB/age formatter for consistency with dr-report-content
     const { dob, age } = ReportService.formatDateOfBirth(patient.ngaysinh);
@@ -1133,10 +1142,12 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
         // Persist once
         if (window.checklistObj) {
-            const ok = await ChecklistService.updateChecklistState(window.checklistObj, nextState);
-            if (!ok) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, nextState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.warn('Lưu checklist thất bại');
             } else {
+                // If this sidebar is no longer active, do not apply visual updates
+                if (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id !== ctxId) return;
                 // Update global state snapshot and lastSaved
                 window.checklistState = nextState;
                 if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
@@ -1170,6 +1181,9 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                         } catch (_) {}
                     }
                 } catch (_) {}
+                if (res && res.queued) {
+                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
+                }
             }
         }
     }
@@ -1232,7 +1246,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":15,"../services/reportService":17,"../utils":21,"./phauThuatHandlers":9,"./yLenhHandlers":10}],9:[function(require,module,exports){
+},{"../services/checklistService":16,"../services/reportService":18,"../utils":23,"./phauThuatHandlers":9,"./yLenhHandlers":11}],9:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1560,8 +1574,8 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     async function savePhauThuatLog() {
         if (window.checklistObj) {
-            const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!success) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log phẫu thuật thất bại!');
             }
         }
@@ -1592,12 +1606,48 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":15,"../utils/surgeryUtils":26}],10:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":16,"../utils/surgeryUtils":28}],10:[function(require,module,exports){
+// sidebarSession.js - Manage per-sidebar session context and AbortController
+
+let _current = {
+    id: 0,
+    mabn: null,
+    controller: null
+};
+
+const SidebarSession = {
+    startSession(mabn) {
+        // End previous session
+        try { if (_current.controller) _current.controller.abort(); } catch(_) {}
+        _current.id = Date.now();
+        _current.mabn = mabn || null;
+        _current.controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        return _current.id;
+    },
+    endSession() {
+        try { if (_current.controller) _current.controller.abort(); } catch(_) {}
+        _current.controller = null;
+        _current.mabn = null;
+        _current.id = 0;
+    },
+    getSignal() {
+        return _current.controller ? _current.controller.signal : undefined;
+    },
+    isActive(sessionId) {
+        return !!sessionId && sessionId === _current.id;
+    },
+    getCurrent() { return { ..._current }; }
+};
+
+module.exports = SidebarSession;
+
+},{}],11:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 function setupYLenhHandlers(infoElement, patient) {
+    const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
     const input = infoElement.querySelector('#dr-y-lenh-input');
     const addBtn = infoElement.querySelector('#dr-add-y-lenh');
     const logContainer = infoElement.querySelector('#dr-y-lenh-log');
@@ -1751,9 +1801,12 @@ function setupYLenhHandlers(infoElement, patient) {
     // Save y lệnh log to server
     async function saveYLenhLog() {
         if (window.checklistObj) {
-            const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!success) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log y lệnh thất bại!');
+            }
+            if (res && res.queued) {
+                try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
             }
         }
     }
@@ -2062,7 +2115,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":15}],11:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":16}],12:[function(require,module,exports){
 // dashboard.js
 
 const Utils = require('./utils');
@@ -2083,6 +2136,7 @@ const LoginHandler = require('./components/loginHandler');
 
 // Import newly refactored components
 const { createPatientInfoSection } = require('./components/patientInfoSection');
+const SidebarSession = require('./components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
@@ -2615,8 +2669,8 @@ function showDashboardBenhNhanIfNeeded() {
                     
                     window.checklistState[key] = this.checked;
                     
-                    const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                    if (!success) {
+                    const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                    if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist xuất viện thất bại!');
                     }
                 });
@@ -2663,7 +2717,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 renderYLenhLog(window.checklistState.yLenhLog);
                                 // Save to server
                                 if (window.checklistObj) {
-                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                                 }
                             }
                         }
@@ -2720,7 +2774,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 renderPhauThuatLog(window.checklistState.phauThuatLog);
                                 // Save to server
                                 if (window.checklistObj) {
-                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                                 }
                             }
                         }
@@ -2780,6 +2834,8 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Clear and setup sidebar with responsive layout
         sidebar.innerHTML = '';
+    // Start a new session for this sidebar open
+    const sessionId = SidebarSession.startSession(patient && patient.mabn);
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
         
         // Create responsive container
@@ -2853,7 +2909,9 @@ function showDashboardBenhNhanIfNeeded() {
     }
         leftColumn.appendChild(sidebarActions);
 
-        const info = createPatientInfoSection(patient, quickYLenhActions);
+    // Provide sidebar context for children (ctx id + abort signal)
+    window.dr_sidebar_ctx = { id: sessionId, signal: SidebarSession.getSignal() };
+    const info = createPatientInfoSection(patient, quickYLenhActions);
         leftColumn.appendChild(info);
         
         // Setup phẫu thuật handlers for the info section
@@ -2874,7 +2932,12 @@ function showDashboardBenhNhanIfNeeded() {
         container.appendChild(leftColumn);
         container.appendChild(rightColumn);
         
-        // Add container to sidebar
+    // Add container to sidebar plus an offline banner
+    const offlineBanner = document.createElement('div');
+    offlineBanner.className = 'dr-offline-banner';
+    offlineBanner.textContent = 'Đang offline — thay đổi sẽ được lưu tạm và đồng bộ khi có mạng.';
+    sidebar.appendChild(offlineBanner);
+    // Add container to sidebar
         sidebar.appendChild(container);
         
         // Close button
@@ -2883,6 +2946,19 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Show modal
         ModalManager.showModal(sidebar, backdrop);
+
+        // Toggle offline banner visibility
+        const toggleOffline = () => {
+            try {
+                const b = document.querySelector('#dr-sidebar .dr-offline-banner');
+                if (!b) return;
+                b.style.display = (navigator && navigator.onLine === false) ? 'block' : 'none';
+            } catch(_) {}
+        };
+        toggleOffline();
+        try {
+            window.addEventListener('online', toggleOffline, { once: true });
+        } catch(_) {}
     }
 
 
@@ -3518,7 +3594,7 @@ module.exports = {
     showDashboardBenhNhanIfNeeded
 };
 
-},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":6,"./components/modalManager":7,"./components/patientInfoSection":8,"./components/phauThuatHandlers":9,"./dashboard.support":12,"./services/apiService":14,"./services/checklistService":15,"./services/patientService":16,"./services/reportService":17,"./utils":21,"./utils/checklistUtils":22,"./utils/khoaUtils":24,"./utils/patientDataMapper":25,"./utils/surgeryUtils":26,"./utils/tagUtils":27,"./utils/uiUtils":28}],12:[function(require,module,exports){
+},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":6,"./components/modalManager":7,"./components/patientInfoSection":8,"./components/phauThuatHandlers":9,"./components/sidebarSession":10,"./dashboard.support":13,"./services/apiService":15,"./services/checklistService":16,"./services/patientService":17,"./services/reportService":18,"./utils":23,"./utils/checklistUtils":24,"./utils/khoaUtils":26,"./utils/patientDataMapper":27,"./utils/surgeryUtils":28,"./utils/tagUtils":29,"./utils/uiUtils":30}],13:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('./services/reportService');
@@ -3923,6 +3999,8 @@ function addGlobalStyles() {
             z-index: 99999;
             font-size: 1.1em;
         }
+    /* Offline banner */
+    .dr-offline-banner { background:#fff3cd; color:#8a6d3b; border:1px solid #ffeeba; padding:6px 10px; border-radius:6px; margin:8px 0; display:none; }
         .dr-bottom-bar-left { 
             color: #1976d2; 
             font-weight: bold; 
@@ -4122,7 +4200,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"./components/dialogManager":5,"./services/apiService":14,"./services/reportService":17,"./utils/dateUtils":23}],13:[function(require,module,exports){
+},{"./components/dialogManager":5,"./services/apiService":15,"./services/reportService":18,"./utils/dateUtils":25}],14:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -4208,7 +4286,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],14:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -4297,7 +4375,7 @@ const ApiService = {
     /**
      * Update checklist data
      */
-    async updateChecklistData(oldData, checklistState) {
+    async updateChecklistData(oldData, checklistState, { signal } = {}) {
         try {
             const formData = new FormData();
             
@@ -4314,7 +4392,8 @@ const ApiService = {
             const response = await fetch('/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/EditAjax', {
                 method: 'POST',
                 credentials: 'include',
-                body: formData
+                body: formData,
+                signal
             });
 
             return response.json();
@@ -4364,11 +4443,12 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":24}],15:[function(require,module,exports){
+},{"../utils/khoaUtils":26}],16:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
 const ApiService = require('./apiService');
+const SaveQueue = require('./saveQueue');
 
 // In-memory cache to dedupe checklist fetches per patient and date range
 const _checklistCache = new Map();
@@ -4385,6 +4465,32 @@ const ChecklistService = {
                 if (key.startsWith(prefix)) _checklistCache.delete(key);
             }
         } catch (_) {}
+    },
+
+    async drainSaveQueue() {
+        return await SaveQueue.drain(async ({ checklistObj, checklistState }) => {
+            try {
+                const res = await ApiService.updateChecklistData(checklistObj, checklistState);
+                const ok = res && (res.Status == 1 || res.isValid);
+                if (ok) {
+                    try {
+                        const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
+                        let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
+                        if (mabn) {
+                            if (ngayvv) {
+                                const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
+                                const key = _makeCacheKey(mabn, tungay, denngay);
+                                _checklistCache.delete(key);
+                            }
+                            this._invalidateCacheForMabn(mabn);
+                        }
+                    } catch (_) {}
+                }
+                return ok;
+            } catch (_) {
+                return false;
+            }
+        });
     },
     /**
      * Load checklist data for a patient
@@ -4531,28 +4637,61 @@ const ChecklistService = {
     /**
      * Update checklist state on server
      */
-    async updateChecklistState(checklistObj, checklistState) {
-        try {
-            const result = await ApiService.updateChecklistData(checklistObj, checklistState);
-            const ok = result && result.Status == 1;
-            // Invalidate cached DSPhieu results so subsequent loads see fresh data
+    _locks: new Map(), // mabn -> Promise chain for serialization
+
+    async updateChecklistState(checklistObj, checklistState, options = {}) {
+        const { enqueueOnOffline = true, signal, ctxId, clientVersion = Date.now() } = options || {};
+        const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
+        // If offline, queue and return
+        if (enqueueOnOffline && typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+            SaveQueue.enqueueUpdate(checklistObj, checklistState);
+            return { ok: false, queued: true, clientVersion };
+        }
+        const send = async () => {
+            const result = await ApiService.updateChecklistData(checklistObj, checklistState, { signal });
+            const ok = result && (result.Status == 1 || result.isValid);
+            return { ok, queued: false, clientVersion };
+        };
+        // Serialize per patient to avoid races
+        if (mabn) {
+            const prev = this._locks.get(mabn) || Promise.resolve();
+            const next = prev.then(send, send);
+            this._locks.set(mabn, next.catch(() => {}));
             try {
-                const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
-                let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
-                if (mabn) {
-                    if (ngayvv) {
-                        const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
-                        const key = _makeCacheKey(mabn, tungay, denngay);
-                        _checklistCache.delete(key);
-                    }
-                    // Fallback: clear all entries for this mabn
-                    this._invalidateCacheForMabn(mabn);
+                const res = await next;
+                if (res.ok) {
+                    // Invalidate cache when saved
+                    try {
+                        let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
+                        if (ngayvv) {
+                            const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
+                            const key = _makeCacheKey(mabn, tungay, denngay);
+                            _checklistCache.delete(key);
+                        }
+                        this._invalidateCacheForMabn(mabn);
+                    } catch (_) {}
                 }
-            } catch (_) {}
-            return ok;
-        } catch (error) {
-            console.error('Failed to update checklist state:', error);
-            return false;
+                return res;
+            } catch (error) {
+                console.error('Failed to update checklist state:', error);
+                // Network error: queue if allowed
+                if (enqueueOnOffline) {
+                    SaveQueue.enqueueUpdate(checklistObj, checklistState);
+                    return { ok: false, queued: true, clientVersion };
+                }
+                return { ok: false, queued: false, clientVersion };
+            }
+        } else {
+            try {
+                return await send();
+            } catch (error) {
+                console.error('Failed to update checklist state:', error);
+                if (enqueueOnOffline) {
+                    SaveQueue.enqueueUpdate(checklistObj, checklistState);
+                    return { ok: false, queued: true, clientVersion };
+                }
+                return { ok: false, queued: false, clientVersion };
+            }
         }
     },
 
@@ -4572,7 +4711,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":23,"./apiService":14}],16:[function(require,module,exports){
+},{"../utils/dateUtils":25,"./apiService":15,"./saveQueue":19}],17:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../dashboard.support');
@@ -4801,7 +4940,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":6,"../dashboard.support":12,"../utils/patientDataMapper":25,"./checklistService":15}],17:[function(require,module,exports){
+},{"../components/loginHandler":6,"../dashboard.support":13,"../utils/patientDataMapper":27,"./checklistService":16}],18:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -5004,7 +5143,71 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":23,"../utils/patientDataMapper":25,"../utils/surgeryUtils":26,"./checklistService":15}],18:[function(require,module,exports){
+},{"../utils/dateUtils":25,"../utils/patientDataMapper":27,"../utils/surgeryUtils":28,"./checklistService":16}],19:[function(require,module,exports){
+// saveQueue.js - Offline queue for checklist saves
+
+const QUEUE_KEY = 'dr_save_queue_v1';
+
+function loadQueue() {
+    try {
+        const raw = localStorage.getItem(QUEUE_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function saveQueue(arr) {
+    try { localStorage.setItem(QUEUE_KEY, JSON.stringify(arr)); } catch (_) {}
+}
+
+// Keep only the latest item per mabn (dedupe)
+function upsertByMabn(queue, item) {
+    const idx = queue.findIndex(q => q.mabn === item.mabn);
+    if (idx >= 0) queue[idx] = item; else queue.push(item);
+}
+
+const SaveQueue = {
+    enqueueUpdate(checklistObj, checklistState) {
+        const mabn = (checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN)) || '';
+        const item = {
+            id: `${mabn}:${Date.now()}`,
+            mabn,
+            type: 'updateChecklist',
+            payload: { checklistObj, checklistState },
+            createdAt: Date.now()
+        };
+        const q = loadQueue();
+        upsertByMabn(q, item);
+        saveQueue(q);
+        return item.id;
+    },
+    async drain(processor) {
+        // processor: async ({ checklistObj, checklistState }) => boolean
+        const q = loadQueue();
+        if (!q.length) return 0;
+        let successCount = 0;
+        const rest = [];
+        for (const item of q) {
+            try {
+                const ok = await processor(item.payload);
+                if (ok) successCount++; else rest.push(item);
+            } catch (_) { rest.push(item); }
+        }
+        saveQueue(rest);
+        return successCount;
+    },
+    size() { return loadQueue().length; },
+    purge(mabn) {
+        const q = loadQueue().filter(i => i.mabn !== mabn);
+        saveQueue(q);
+    }
+};
+
+module.exports = SaveQueue;
+
+},{}],20:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -5146,7 +5349,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":24,"./apiService":14}],19:[function(require,module,exports){
+},{"../utils/khoaUtils":26,"./apiService":15}],21:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('./services/settingsService');
@@ -5301,7 +5504,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"./services/apiService":14,"./services/settingsService":18}],20:[function(require,module,exports){
+},{"./services/apiService":15,"./services/settingsService":20}],22:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('./services/settingsService');
@@ -5634,7 +5837,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"./components/autoLoginToggle":4,"./services/settingsService":18,"./settings-open-world":19}],21:[function(require,module,exports){
+},{"./components/autoLoginToggle":4,"./services/settingsService":20,"./settings-open-world":21}],23:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -5729,7 +5932,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -5795,8 +5998,8 @@ async function copyYLenhText(text, id, mabn) {
         
         // Save to server
         if (window.checklistObj) {
-            const saveSuccess = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!saveSuccess) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu checklist thất bại!');
             }
         }
@@ -5889,7 +6092,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":15,"./uiUtils":28}],23:[function(require,module,exports){
+},{"../services/checklistService":16,"./uiUtils":30}],25:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -5969,7 +6172,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],24:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -5985,7 +6188,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],25:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -6223,7 +6426,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],26:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -6492,7 +6695,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],27:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -6772,7 +6975,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],28:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],30:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

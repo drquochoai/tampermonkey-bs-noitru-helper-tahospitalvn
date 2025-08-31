@@ -86,7 +86,7 @@ const ApiService = {
     /**
      * Update checklist data
      */
-    async updateChecklistData(oldData, checklistState) {
+    async updateChecklistData(oldData, checklistState, { signal } = {}) {
         try {
             const formData = new FormData();
             
@@ -103,7 +103,8 @@ const ApiService = {
             const response = await fetch('/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/EditAjax', {
                 method: 'POST',
                 credentials: 'include',
-                body: formData
+                body: formData,
+                signal
             });
 
             return response.json();

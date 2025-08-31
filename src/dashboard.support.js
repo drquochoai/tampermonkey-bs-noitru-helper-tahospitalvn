@@ -402,6 +402,8 @@ function addGlobalStyles() {
             z-index: 99999;
             font-size: 1.1em;
         }
+    /* Offline banner */
+    .dr-offline-banner { background:#fff3cd; color:#8a6d3b; border:1px solid #ffeeba; padding:6px 10px; border-radius:6px; margin:8px 0; display:none; }
         .dr-bottom-bar-left { 
             color: #1976d2; 
             font-weight: bold; 

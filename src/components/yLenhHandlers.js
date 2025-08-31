@@ -3,6 +3,7 @@ const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 function setupYLenhHandlers(infoElement, patient) {
+    const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
     const input = infoElement.querySelector('#dr-y-lenh-input');
     const addBtn = infoElement.querySelector('#dr-add-y-lenh');
     const logContainer = infoElement.querySelector('#dr-y-lenh-log');
@@ -156,9 +157,12 @@ function setupYLenhHandlers(infoElement, patient) {
     // Save y lệnh log to server
     async function saveYLenhLog() {
         if (window.checklistObj) {
-            const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!success) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log y lệnh thất bại!');
+            }
+            if (res && res.queued) {
+                try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
             }
         }
     }

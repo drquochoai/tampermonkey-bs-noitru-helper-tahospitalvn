@@ -18,6 +18,7 @@ const LoginHandler = require('./components/loginHandler');
 
 // Import newly refactored components
 const { createPatientInfoSection } = require('./components/patientInfoSection');
+const SidebarSession = require('./components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('./utils/tagUtils');
 const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
@@ -550,8 +551,8 @@ function showDashboardBenhNhanIfNeeded() {
                     
                     window.checklistState[key] = this.checked;
                     
-                    const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                    if (!success) {
+                    const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                    if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist xuất viện thất bại!');
                     }
                 });
@@ -598,7 +599,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 renderYLenhLog(window.checklistState.yLenhLog);
                                 // Save to server
                                 if (window.checklistObj) {
-                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                                 }
                             }
                         }
@@ -655,7 +656,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 renderPhauThuatLog(window.checklistState.phauThuatLog);
                                 // Save to server
                                 if (window.checklistObj) {
-                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
+                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                                 }
                             }
                         }
@@ -715,6 +716,8 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Clear and setup sidebar with responsive layout
         sidebar.innerHTML = '';
+    // Start a new session for this sidebar open
+    const sessionId = SidebarSession.startSession(patient && patient.mabn);
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
         
         // Create responsive container
@@ -788,7 +791,9 @@ function showDashboardBenhNhanIfNeeded() {
     }
         leftColumn.appendChild(sidebarActions);
 
-        const info = createPatientInfoSection(patient, quickYLenhActions);
+    // Provide sidebar context for children (ctx id + abort signal)
+    window.dr_sidebar_ctx = { id: sessionId, signal: SidebarSession.getSignal() };
+    const info = createPatientInfoSection(patient, quickYLenhActions);
         leftColumn.appendChild(info);
         
         // Setup phẫu thuật handlers for the info section
@@ -809,7 +814,12 @@ function showDashboardBenhNhanIfNeeded() {
         container.appendChild(leftColumn);
         container.appendChild(rightColumn);
         
-        // Add container to sidebar
+    // Add container to sidebar plus an offline banner
+    const offlineBanner = document.createElement('div');
+    offlineBanner.className = 'dr-offline-banner';
+    offlineBanner.textContent = 'Đang offline — thay đổi sẽ được lưu tạm và đồng bộ khi có mạng.';
+    sidebar.appendChild(offlineBanner);
+    // Add container to sidebar
         sidebar.appendChild(container);
         
         // Close button
@@ -818,6 +828,19 @@ function showDashboardBenhNhanIfNeeded() {
         
         // Show modal
         ModalManager.showModal(sidebar, backdrop);
+
+        // Toggle offline banner visibility
+        const toggleOffline = () => {
+            try {
+                const b = document.querySelector('#dr-sidebar .dr-offline-banner');
+                if (!b) return;
+                b.style.display = (navigator && navigator.onLine === false) ? 'block' : 'none';
+            } catch(_) {}
+        };
+        toggleOffline();
+        try {
+            window.addEventListener('online', toggleOffline, { once: true });
+        } catch(_) {}
     }
 
 

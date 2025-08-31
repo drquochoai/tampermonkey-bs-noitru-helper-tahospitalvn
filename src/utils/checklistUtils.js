@@ -63,8 +63,8 @@ async function copyYLenhText(text, id, mabn) {
         
         // Save to server
         if (window.checklistObj) {
-            const saveSuccess = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!saveSuccess) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu checklist thất bại!');
             }
         }

@@ -325,8 +325,8 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     async function savePhauThuatLog() {
         if (window.checklistObj) {
-            const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-            if (!success) {
+            const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+            if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log phẫu thuật thất bại!');
             }
         }

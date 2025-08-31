@@ -1,4 +1,6 @@
 // modalManager.js - Centralized modal/sidebar management
+let SidebarSession = null;
+try { SidebarSession = require('./sidebarSession'); } catch(_) {}
 
 const ModalManager = {
     /**
@@ -42,6 +44,7 @@ const ModalManager = {
     hideModal(sidebar, backdrop) {
         if (sidebar) sidebar.style.display = 'none';
         backdrop.style.display = 'none';
+    try { if (SidebarSession && typeof SidebarSession.endSession === 'function') SidebarSession.endSession(); } catch(_) {}
     },
 
     /**

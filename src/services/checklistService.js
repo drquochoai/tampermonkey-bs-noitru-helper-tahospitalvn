@@ -2,6 +2,7 @@
 
 const DateUtils = require('../utils/dateUtils');
 const ApiService = require('./apiService');
+const SaveQueue = require('./saveQueue');
 
 // In-memory cache to dedupe checklist fetches per patient and date range
 const _checklistCache = new Map();
@@ -18,6 +19,32 @@ const ChecklistService = {
                 if (key.startsWith(prefix)) _checklistCache.delete(key);
             }
         } catch (_) {}
+    },
+
+    async drainSaveQueue() {
+        return await SaveQueue.drain(async ({ checklistObj, checklistState }) => {
+            try {
+                const res = await ApiService.updateChecklistData(checklistObj, checklistState);
+                const ok = res && (res.Status == 1 || res.isValid);
+                if (ok) {
+                    try {
+                        const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
+                        let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
+                        if (mabn) {
+                            if (ngayvv) {
+                                const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
+                                const key = _makeCacheKey(mabn, tungay, denngay);
+                                _checklistCache.delete(key);
+                            }
+                            this._invalidateCacheForMabn(mabn);
+                        }
+                    } catch (_) {}
+                }
+                return ok;
+            } catch (_) {
+                return false;
+            }
+        });
     },
     /**
      * Load checklist data for a patient
@@ -164,28 +191,61 @@ const ChecklistService = {
     /**
      * Update checklist state on server
      */
-    async updateChecklistState(checklistObj, checklistState) {
-        try {
-            const result = await ApiService.updateChecklistData(checklistObj, checklistState);
-            const ok = result && result.Status == 1;
-            // Invalidate cached DSPhieu results so subsequent loads see fresh data
+    _locks: new Map(), // mabn -> Promise chain for serialization
+
+    async updateChecklistState(checklistObj, checklistState, options = {}) {
+        const { enqueueOnOffline = true, signal, ctxId, clientVersion = Date.now() } = options || {};
+        const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
+        // If offline, queue and return
+        if (enqueueOnOffline && typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
+            SaveQueue.enqueueUpdate(checklistObj, checklistState);
+            return { ok: false, queued: true, clientVersion };
+        }
+        const send = async () => {
+            const result = await ApiService.updateChecklistData(checklistObj, checklistState, { signal });
+            const ok = result && (result.Status == 1 || result.isValid);
+            return { ok, queued: false, clientVersion };
+        };
+        // Serialize per patient to avoid races
+        if (mabn) {
+            const prev = this._locks.get(mabn) || Promise.resolve();
+            const next = prev.then(send, send);
+            this._locks.set(mabn, next.catch(() => {}));
             try {
-                const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
-                let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
-                if (mabn) {
-                    if (ngayvv) {
-                        const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
-                        const key = _makeCacheKey(mabn, tungay, denngay);
-                        _checklistCache.delete(key);
-                    }
-                    // Fallback: clear all entries for this mabn
-                    this._invalidateCacheForMabn(mabn);
+                const res = await next;
+                if (res.ok) {
+                    // Invalidate cache when saved
+                    try {
+                        let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
+                        if (ngayvv) {
+                            const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
+                            const key = _makeCacheKey(mabn, tungay, denngay);
+                            _checklistCache.delete(key);
+                        }
+                        this._invalidateCacheForMabn(mabn);
+                    } catch (_) {}
                 }
-            } catch (_) {}
-            return ok;
-        } catch (error) {
-            console.error('Failed to update checklist state:', error);
-            return false;
+                return res;
+            } catch (error) {
+                console.error('Failed to update checklist state:', error);
+                // Network error: queue if allowed
+                if (enqueueOnOffline) {
+                    SaveQueue.enqueueUpdate(checklistObj, checklistState);
+                    return { ok: false, queued: true, clientVersion };
+                }
+                return { ok: false, queued: false, clientVersion };
+            }
+        } else {
+            try {
+                return await send();
+            } catch (error) {
+                console.error('Failed to update checklist state:', error);
+                if (enqueueOnOffline) {
+                    SaveQueue.enqueueUpdate(checklistObj, checklistState);
+                    return { ok: false, queued: true, clientVersion };
+                }
+                return { ok: false, queued: false, clientVersion };
+            }
         }
     },
 

@@ -1,6 +1,7 @@
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 const SettingsService = {
     async fetchDoctorName() {
@@ -81,7 +82,7 @@ const SettingsService = {
         formData.append('khu', '1');
         formData.append('mabn', doctorName);
         formData.append('bieumauid', '027');
-        formData.append('makp', '551');
+    formData.append('makp', getSelectedKhoa('551'));
         formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
         formData.append('actiontype', '');
         // Mark with name% so it can be identified and matched by endsWith('%')

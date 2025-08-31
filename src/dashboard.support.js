@@ -348,6 +348,14 @@ function addGlobalStyles() {
         .dr-card .dr-value { 
             margin-bottom: 6px; 
         }
+        /* Clamp secondary diagnosis (CD kèm theo) to 2 lines in card view */
+        .dr-card .dr-diagnosis-line .dr-cdkt-clamp {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            max-height: 2.8em; /* approx two lines */
+        }
         .dr-card .dr-detail-btn { 
             position: absolute; 
             right: 16px; 
@@ -588,6 +596,7 @@ module.exports = {
     createDirectReportGeneration,
     fetchToDieuTriData,
     addGlobalStyles,
+    copyReportToClipboardRich,
     updateChecklistPhieu,
     createChecklistPhieu
 };

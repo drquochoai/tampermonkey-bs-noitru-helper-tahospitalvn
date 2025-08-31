@@ -849,6 +849,7 @@ function showDashboardBenhNhanIfNeeded() {
                 <input id="dr-filter-rutodl" type="checkbox"> Rút ODL
             </label>
             <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
+            <span id="dr-total-compact" style="color:#0f172a; font-weight:600; white-space:nowrap;"></span>
         `;
 
     const container = document.createElement('div');
@@ -903,8 +904,8 @@ function showDashboardBenhNhanIfNeeded() {
         document.body.appendChild(topBar);
         document.body.appendChild(container);
         
-        // Add bottom bar
-        createBottomBar(sortedData.length);
+    // Add bottom bar
+    createBottomBar();
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
@@ -937,22 +938,21 @@ function showDashboardBenhNhanIfNeeded() {
                 if (show) visible++;
             });
 
-            // Update counts in top bar and bottom bar
+            // Update counts in top bar and compact total
             filterCount.textContent = (q || onlyXV || onlyCLS || onlyODL) ? `Hiển thị: ${visible}/${sortedData.length}` : '';
-            const bottomLeft = document.querySelector('.dr-bottom-bar-left');
-            if (bottomLeft) {
-                const countSpan = bottomLeft.querySelector('.dr-bottom-count');
-                if (countSpan) {
-                    const hasAnyFilter = !!(q || onlyXV || onlyCLS || onlyODL);
-                    countSpan.textContent = `Tổng số bệnh nhân: ${sortedData.length}` + (hasAnyFilter ? ` (lọc: ${visible})` : '');
-                }
-            }
+            const totalCompact = document.getElementById('dr-total-compact');
+            if (totalCompact) totalCompact.textContent = `${visible}/${sortedData.length}`;
         }
 
-        searchInput.addEventListener('input', applyFilter);
+    searchInput.addEventListener('input', applyFilter);
     chkXuatVien.addEventListener('change', applyFilter);
     chkCanLamSang.addEventListener('change', applyFilter);
     chkRutODL.addEventListener('change', applyFilter);
+
+    // Initialize compact total and run first filter
+    const totalCompactInit = document.getElementById('dr-total-compact');
+    if (totalCompactInit) totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
+    applyFilter();
 
         // Prefill from query param ?q=
         try {
@@ -976,12 +976,13 @@ function showDashboardBenhNhanIfNeeded() {
                         const diagnosisEl = card.querySelector('.dr-diagnosis-line');
                         if (diagnosisEl) {
                             const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
-                            diagnosisEl.dataset.baseCd = (item.chandoanvk || '') + icdSuffix;
+                            const baseCdNew = (item.chandoanvk || '') + icdSuffix;
+                            diagnosisEl.dataset.baseCd = baseCdNew;
                             const cdktText = (item.checklistState && typeof item.checklistState.chanDoanKemTheo === 'string')
                                 ? item.checklistState.chanDoanKemTheo.trim()
                                 : '';
-                            const baseCd = diagnosisEl.dataset.baseCd || item.chandoanvk || '';
-                            const combined = `${baseCd}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+                            diagnosisEl.dataset.cdkt = cdktText;
+                            const combined = `${baseCdNew}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
                             diagnosisEl.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combined}`;
                         }
                         // remove any legacy block if present
@@ -1088,11 +1089,12 @@ function showDashboardBenhNhanIfNeeded() {
     const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
     const cdktText = (item.checklistState && item.checklistState.chanDoanKemTheo) ? String(item.checklistState.chanDoanKemTheo).trim() : '';
     const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
-    const combinedDiagnosis = `${item.chandoanvk || ''}${icdSuffix}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+    const baseDiagnosis = `${item.chandoanvk || ''}${icdSuffix}`;
+    const combinedDiagnosis = `${baseDiagnosis}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
-            <div class="dr-value dr-diagnosis-line"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
+            <div class="dr-value dr-diagnosis-line" data-base-cd="${baseDiagnosis.replace(/"/g,'&quot;')}" data-cdkt="${escapeHtml(cdktText).replace(/"/g,'&quot;')}"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
             ${ptInfo}
             ${hxtHtml}
             ${createYLenhTags(item)}
@@ -1100,7 +1102,7 @@ function showDashboardBenhNhanIfNeeded() {
         // mark base diagnosis for future updates
         try {
             const diagEl = card.querySelector('.dr-diagnosis-line');
-            if (diagEl) diagEl.dataset.baseCd = (item.chandoanvk || '') + (item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '');
+            if (diagEl) diagEl.dataset.baseCd = baseDiagnosis;
         } catch (_) {}
         if (item && item.mabn && !card.getAttribute('data-mabn')) {
             card.setAttribute('data-mabn', item.mabn);
@@ -1189,7 +1191,8 @@ function showDashboardBenhNhanIfNeeded() {
             const diagnosisLine = targetCard.querySelector('.dr-diagnosis-line');
             if (!diagnosisLine) return;
             const baseText = diagnosisLine.dataset.baseCd || '';
-            const combined = `${baseText}${cdktText ? '; ' + escapeHtml(cdktText) : ''}`;
+            diagnosisLine.dataset.cdkt = cdktText;
+            const combined = `${baseText}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
             diagnosisLine.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combined}`;
         } catch (_) {}
     }
@@ -1236,6 +1239,7 @@ function showDashboardBenhNhanIfNeeded() {
     function createActionButtons(item) {
         const btnToDieuTri = createToDieuTriButton(item);
         const btnHsba2 = createHsbaButton(item);
+    const btnCopyOne = createCopyOneButton(item);
         
         const btnGroup = document.createElement('div');
         btnGroup.className = 'dr-action-buttons';
@@ -1247,7 +1251,8 @@ function showDashboardBenhNhanIfNeeded() {
     btnGroup.style.right = '16px';
     btnGroup.style.bottom = '12px';
         
-        btnGroup.appendChild(btnToDieuTri);
+    btnGroup.appendChild(btnCopyOne);
+    btnGroup.appendChild(btnToDieuTri);
         btnGroup.appendChild(btnHsba2);
         
         return btnGroup;
@@ -1301,8 +1306,44 @@ function showDashboardBenhNhanIfNeeded() {
         return btnHsba2;
     }
 
+    // Icon-only copy button for a single patient's direct-report formatted data
+    function createCopyOneButton(item) {
+        const btn = document.createElement('button');
+        btn.className = 'dr-detail-btn no-print';
+        btn.style.position = 'static';
+        btn.style.padding = '8px';
+        btn.style.borderRadius = '10px';
+        btn.style.width = '36px';
+        btn.style.height = '36px';
+        btn.style.display = 'inline-flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.title = 'Copy báo cáo (1 BN)';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+        btn.onclick = async (e) => {
+            e.stopPropagation();
+            try {
+                const ReportService = require('./services/reportService');
+                const ChecklistService = require('./services/checklistService');
+                const { copyReportToClipboardRich } = require('./dashboard.support');
+                // Load state for this single patient
+                const res = await ChecklistService.loadChecklistData(item);
+                const obj = ChecklistService.findChecklistObject(res);
+                const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
+                const html = ReportService.generateSingleHTML(item, state);
+                const text = ReportService.generateSingleText(item, state);
+                await copyReportToClipboardRich(html, text);
+            } catch (err) {
+                console.error('Copy single-patient report failed:', err);
+            }
+        };
+        return btn;
+    }
+
     // Helper function to create bottom bar
-    function createBottomBar(patientCount) {
+    function createBottomBar() {
+        const ApiService = require('./services/apiService');
+        const { getSelectedKhoa } = require('./utils/khoaUtils');
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
@@ -1310,7 +1351,7 @@ function showDashboardBenhNhanIfNeeded() {
                 <a id="dr-settings-btn" class="dr-gear-btn" href="/?caidat" target="_blank" title="Cài đặt">
                     <i class="fas fa-cog"></i>
                 </a>
-                <span class="dr-bottom-count">Tổng số bệnh nhân: ${patientCount}</span>
+                <select id="dr-khoa-select" class="dr-khoa-select" title="Chọn khoa"></select>
             </div>
             <button id="dr-btn-direct-report" class="btn btn-warning" style="font-weight:bold;">Tạo báo cáo trực</button>
         `;
@@ -1324,6 +1365,35 @@ function showDashboardBenhNhanIfNeeded() {
             const btn = document.getElementById('dr-btn-direct-report');
             if (btn) btn.onclick = createDirectReportGeneration;
         }, 10);
+
+        // Populate khoa dropdown and wire change
+        (async () => {
+            try {
+                const select = document.getElementById('dr-khoa-select');
+                if (!select) return;
+                select.disabled = true;
+                select.innerHTML = `<option>Đang tải khoa...</option>`;
+                const list = await ApiService.fetchKhoaPhong();
+                const current = String(getSelectedKhoa('551'));
+                select.innerHTML = '';
+                list.forEach(k => {
+                    const opt = document.createElement('option');
+                    opt.value = String(k.id);
+                    opt.textContent = k.name || k.id;
+                    if (opt.value === current) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                select.disabled = false;
+                select.addEventListener('change', (e) => {
+                    const val = e.target.value;
+                    try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch(_) {}
+                    // reload dashboard data by simply reloading the page or re-running init
+                    window.location.reload();
+                });
+            } catch (e) {
+                console.warn('Load khoa for bottom bar failed', e);
+            }
+        })();
     }
 
     // Helper function to add bottom bar styles
@@ -1352,6 +1422,7 @@ function showDashboardBenhNhanIfNeeded() {
                 align-items: center;
                 gap: 10px;
             }
+            .dr-khoa-select { height: 32px; min-width: 180px; border:1px solid #cbd5e1; border-radius: 8px; padding: 0 8px; }
             .dr-gear-btn { 
                 display:inline-flex; align-items:center; justify-content:center; 
                 width:32px; height:32px; border-radius:50%; 

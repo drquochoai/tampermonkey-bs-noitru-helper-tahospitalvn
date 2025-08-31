@@ -69,7 +69,11 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         // --- Tự động click #cbTaCa nếu ở trang /to-dieu-tri ---
         if (/\/to-dieu-tri(\?.*)?$/.test(window.location.pathname) || window.location.href.includes('DanhSachBenhNhan')) {
             $('#ddlKhoa').on('change', function () {
-                localStorage.setItem('bsnt_selected_khoa', $(this).val());
+                const v = $(this).val();
+                try {
+                    // keep legacy in sync for a while
+                    localStorage.setItem('bsnt_selected_khoa', v);
+                } catch(_) {}
             });
 
             setTimeout(() => {

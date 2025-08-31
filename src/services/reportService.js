@@ -148,6 +148,23 @@ const ReportService = {
     },
 
     /**
+     * Generate HTML for a single patient (no numbering)
+     */
+    generateSingleHTML(patient, state = {}) {
+        const data = this.formatPatientData(patient, 0, state);
+        let html = ``;
+        html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
+        html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.name} - ${data.mabn}</strong></h3>`;
+        html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
+        html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
+        if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
+        if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
+        if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt}</div>`;
+        html += `</div>`;
+        return html;
+    },
+
+    /**
      * Generate plain text report content
      */
     generateTextReport(patients, states) {
@@ -163,6 +180,20 @@ const ReportService = {
             if (data.hxt) report += `   HXT: ${data.hxt}\n`;
         });
         
+        return report;
+    }
+    ,
+    /**
+     * Generate plain text for a single patient (no numbering)
+     */
+    generateSingleText(patient, state = {}) {
+        const data = this.formatPatientData(patient, 0, state);
+        let report = '';
+        report += `${data.bed} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+        report += `Chẩn đoán: ${data.diagnosis}\n`;
+        if (data.ppptDisplay) report += `PPPT: ${data.ppptDisplay}\n`;
+        if (data.ngayPtDisplay) report += `Ngày PT: ${data.ngayPtDisplay}\n`;
+        if (data.hxt) report += `HXT: ${data.hxt}\n`;
         return report;
     }
 };

@@ -1,6 +1,7 @@
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('./services/settingsService');
+const { mountOpenWorldTab } = require('./settings-open-world');
 
 async function showSettingsIfNeeded() {
         // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
@@ -44,9 +45,10 @@ async function showSettingsIfNeeded() {
         left.className = 'dr-st-left';
         left.innerHTML = `
             <h2>Cài đặt</h2>
-            <div class="dr-st-menu">
+                        <div class="dr-st-menu">
                 <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
                 <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
+                                <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
             </div>
             <div class="dr-st-footer" id="dr-st-doctor"></div>
         `;
@@ -76,8 +78,11 @@ async function showSettingsIfNeeded() {
                                                 <div style="margin-top:8px; color:#6b7280; font-size:13px; line-height:1.5;">
                                                 Khi bật "tự động login", lúc vào trang <code>/Home/Login</code> tiện ích sẽ tự điền Tên đăng nhập và Mật khẩu rồi nhấn Đăng nhập, sau đó chờ 1.5 giây và mở <code>/?nln</code>. Tắt tùy chọn này nếu bạn không muốn tự động đăng nhập.
                                         </div>
-                                                <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
+                                                                                                <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
                                 </div>
+                                                                <div id="tab-openworld" class="dr-st-tab ${targetTab==='openworld'?'active':''}">
+                                                                        <div id="dr-openworld-container"></div>
+                                                                </div>
             </div>
         `;
 
@@ -236,12 +241,12 @@ async function showSettingsIfNeeded() {
 
         // Left menu switching (future tabs-ready)
                 left.addEventListener('click', (e) => {
-                const btn = e.target.closest('button[data-tab]');
+                                const btn = e.target.closest('button[data-tab]');
                 if (!btn) return;
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : btn.textContent.trim());
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : btn.textContent.trim()));
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
@@ -251,6 +256,14 @@ async function showSettingsIfNeeded() {
                                         url.searchParams.set('caidat', tab);
                                         window.history.replaceState({}, '', url);
                                 } catch(_) {}
+                                // Mount Open World content when its tab is shown
+                                if (tab === 'openworld') {
+                                        const mountEl = right.querySelector('#dr-openworld-container');
+                                        if (mountEl && !mountEl.dataset.mounted) {
+                                                mountEl.dataset.mounted = '1';
+                                                mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
+                                        }
+                                }
         });
 
         // Right actions
@@ -303,6 +316,16 @@ async function showSettingsIfNeeded() {
         });
 
         // Account tab no longer uses single username/password fields; managed via grid.
+                // Mount Open World if deep-linked initially
+                try {
+                        if (targetTab === 'openworld') {
+                                const mountEl = right.querySelector('#dr-openworld-container');
+                                if (mountEl) {
+                                        mountEl.dataset.mounted = '1';
+                                        mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
+                                }
+                        }
+                } catch(_) {}
 }
 
 module.exports = { showSettingsIfNeeded };

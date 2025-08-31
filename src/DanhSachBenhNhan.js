@@ -110,7 +110,12 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
     formData.append('khu', '1');
     formData.append('mabn', mabn);
     formData.append('bieumauid', '027');
-    formData.append('makp', '551');
+    try {
+        const { getSelectedKhoa } = require('./utils/khoaUtils');
+        formData.append('makp', getSelectedKhoa('551'));
+    } catch(_) {
+        formData.append('makp', '551');
+    }
     formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
     formData.append('actiontype', '');
     formData.append('hoten', 'Không rõ%');

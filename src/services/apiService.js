@@ -1,13 +1,55 @@
 // apiService.js - Centralized API service
+const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 const ApiService = {
+    /**
+     * Load list of khoa/phòng (departments)
+     */
+    async fetchKhoaPhong() {
+        const body = new URLSearchParams();
+        body.set('loaibn', '');
+        body.set('makp', '');
+        const res = await fetch('/ToDieuTri/LoadKhoaPhong', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': '*/*'
+            },
+            body
+        });
+        const json = await res.json();
+        return (json && json.data) || [];
+    },
+
+    /**
+     * Load rooms by khoa id
+     */
+    async fetchRoomsByKhoa(khoaId) {
+        const body = new URLSearchParams();
+        body.set('code', String(khoaId || ''));
+        const res = await fetch('/ToDieuTri/LoadRoom', {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': '*/*'
+            },
+            body
+        });
+        const json = await res.json();
+        return (json && json.data) || [];
+    },
     /**
      * Fetch patient data from ToDieuTri endpoint
      */
     async fetchToDieuTriData() {
         try {
             const formData = new FormData();
-            formData.append('khoa', '551');
+            const khoa = getSelectedKhoa('551');
+            formData.append('khoa', khoa);
             formData.append('tk', '0');
             formData.append('cbAll', '1');
 
@@ -84,7 +126,9 @@ const ApiService = {
             formData.append('khu', patient.khu || '1');
             formData.append('mabn', patient.mabn + 9898);
             formData.append('bieumauid', '027');
-            formData.append('makp', patient.makp || '551');
+            // prefer patient's makp; fallback to selected khoa
+            const makp = (patient.makp || getSelectedKhoa('551'));
+            formData.append('makp', makp);
             formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
             formData.append('actiontype', '');
             formData.append('hoten', (patient.hoten || '') + "%");

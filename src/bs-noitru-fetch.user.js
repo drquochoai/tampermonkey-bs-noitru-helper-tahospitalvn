@@ -271,6 +271,11 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         ul.insertBefore(li, dropdownLi);
     }
 
+    // Helper: detect smartphone/small screens
+    function shouldShowTopbarMenu() {
+        try { return window.matchMedia && window.matchMedia('(max-width: 768px)').matches; } catch(_) { return false; }
+    }
+
     // Thêm nút mở dashboard vào TOPBAR bên cạnh <li class="nav-item dropdown">
     function addDashboardMenuToTopbar() {
         // Tìm topbar ul chứa các nav-item
@@ -280,6 +285,12 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         if (!dropdownLi) return;
         const ul = dropdownLi.parentElement;
         if (!ul) return;
+        // On desktop, remove if present and skip
+        if (!shouldShowTopbarMenu()) {
+            const existing = ul.querySelector('.bsnt-dashboard-menu-top');
+            if (existing) existing.remove();
+            return;
+        }
         // Tránh thêm trùng
         if (ul.querySelector('.bsnt-dashboard-menu-top')) return;
 
@@ -305,6 +316,14 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
 
         if (dropdownLi.nextSibling) ul.insertBefore(li, dropdownLi.nextSibling);
         else ul.appendChild(li);
+    }
+
+    // Re-evaluate visibility on resize (bind once)
+    if (!window.__bsntTopbarMenuResizeBound) {
+        window.addEventListener('resize', () => {
+            try { addDashboardMenuToTopbar(); } catch(_) {}
+        }, { passive: true });
+        window.__bsntTopbarMenuResizeBound = true;
     }
 
     // --- HSBA V2 PAGE ENHANCEMENT: Hide empty sections (no documents) ---

@@ -243,7 +243,7 @@ function updatePatientCardTags(patientMabn) {
             const today = new Date();
             const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
             const log = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog) ? patient.checklistState.yLenhLog : [];
-            let hasXV = false, hasCLS = false, hasODL = false;
+            let hasXV = false, hasCLS = false;
             for (const e of log) {
                 if (!e.timestamp || !e.content) continue;
                 if (!e.timestamp.startsWith(todayStr)) continue;
@@ -254,11 +254,9 @@ function updatePatientCardTags(patientMabn) {
                     } else { hasXV = true; }
                 }
                 if (c.includes('cận lâm sàng')) hasCLS = true;
-                if (c.includes('rút odl')) hasODL = true;
             }
             targetCard.dataset.hasxv = hasXV ? '1' : '0';
             targetCard.dataset.hascls = hasCLS ? '1' : '0';
-            targetCard.dataset.hasodl = hasODL ? '1' : '0';
         } catch (_) {}
     }
 

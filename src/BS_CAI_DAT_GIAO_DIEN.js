@@ -46,8 +46,8 @@ const BS_CAI_DAT = {
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
         { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
-    { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
-    { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a' },
+        { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
+        { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a' },
         { label: 'Thay băng', icon: '👗', color: '#310994ff' },
         { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
         { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
@@ -57,7 +57,7 @@ const BS_CAI_DAT = {
     // ================== CÀI ĐẶT BÁC SĨ ==================
     danhSachBacSi: [
         'BS Dũng',
-        'BS Quyền', 
+        'BS Quyền',
         'BS Hằng',
         'BS Hoài',
         'BS Hiếu',
@@ -79,12 +79,12 @@ const BS_CAI_DAT = {
         danger: '#d32f2f',
         warning: '#ff9800',
         info: '#2196f3',
-        
+
         // Màu cho thẻ bệnh nhân
         cardBackground: '#fff',
         cardBorder: '#e0e0e0',
         blueCardBackground: '#e3f2fd',
-        
+
         // Màu cho tags y lệnh
         tagDefault: '#4caf50',
         tagBackground: 'rgba(76, 175, 80, 0.1)',
@@ -96,7 +96,7 @@ const BS_CAI_DAT = {
         maxDisplayTags: 3, // Số lượng tags tối đa hiển thị trên mỗi thẻ bệnh nhân
         showOnlyToday: true, // Chỉ hiển thị y lệnh hôm nay
         defaultIcon: '📋',
-        
+
         // Cài đặt cho celebration (khi có tag Xuất viện)
         celebration: {
             enabled: true, // Bật/tắt hiệu ứng celebration
@@ -115,7 +115,7 @@ const BS_CAI_DAT = {
 
     // ================== CÀI ĐẶT DEBUG ==================
     debug: {
-        enableLogging: true, // Bật/tắt console.log
+        enableLogging: false, // Bật/tắt console.log
         enableTagsTest: true, // Bật/tắt function test tags
         defaultTestMabn: '2510149440', // Mã bệnh nhân mặc định để test
     },
@@ -127,19 +127,19 @@ const BS_CAI_DAT = {
         loadingMessage: 'Đang tải checklist...',
         noDataMessage: 'Không có dữ liệu',
         errorMessage: 'Lỗi tải checklist',
-        
+
         // Tiêu đề các phần
         checklistTitle: 'Checklist bộ mổ',
         phauThuatTitle: 'Thông tin phẫu thuật',
         yLenhTitle: 'Log y lệnh',
-        
+
         // Button text
         addPhauThuatBtn: 'Thêm phẫu thuật',
         addYLenhBtn: 'Thêm',
         saveBtn: 'Lưu',
         cancelBtn: 'Hủy',
         deleteBtn: 'Xóa',
-        
+
         // Placeholder text
         yLenhPlaceholder: 'Nhập y lệnh (VD: rút sonde tiểu)',
         ppptPlaceholder: 'Nhập PPPT',
@@ -170,14 +170,14 @@ const BS_CAI_DAT = {
             maxWidth: '80vw',
             zIndex: 100000,
         },
-        
+
         popup: {
             maxWidth: '500px',
             width: '90vw',
             maxHeight: '80vh',
             zIndex: 100001,
         },
-        
+
         cards: {
             gap: '16px',
             borderRadius: '8px',

@@ -24,7 +24,9 @@ const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
 
 // Import utility functions
 const { showToast, copyToClipboard } = require('./utils/uiUtils');
-const { getSurgeryDateInfo, getSurgeryDateStatus, addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('./utils/surgeryUtils');
+const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('./utils/surgeryUtils');
+const { escapeHtml } = require('./utils/htmlUtils');
+const DomUpdaters = require('./utils/domUpdaters');
 const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('./utils/checklistUtils');
 
 function showDashboardBenhNhanIfNeeded() {
@@ -38,316 +40,26 @@ function showDashboardBenhNhanIfNeeded() {
         unsafeWindow.copyToClipboard = copyToClipboard;
         unsafeWindow.copyYLenhText = copyYLenhText;
     unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
-    unsafeWindow.updatePatientCardHXT = updatePatientCardHXT;
-    unsafeWindow.updatePatientCardCDKT = updatePatientCardCDKT;
+    unsafeWindow.updatePatientCardHXT = DomUpdaters.updateHXT;
+    unsafeWindow.updatePatientCardCDKT = DomUpdaters.updateCDKT;
     } else if (typeof this !== 'undefined') {
         this.showToast = showToast;
         this.copyToClipboard = copyToClipboard;
         this.copyYLenhText = copyYLenhText;
     this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
-    this.updatePatientCardHXT = updatePatientCardHXT;
-    this.updatePatientCardCDKT = updatePatientCardCDKT;
+    this.updatePatientCardHXT = DomUpdaters.updateHXT;
+    this.updatePatientCardCDKT = DomUpdaters.updateCDKT;
     } else {
         // Fallback - tạo global functions không qua window
         globalThis.showToast = showToast;
         globalThis.copyToClipboard = copyToClipboard;
         globalThis.copyYLenhText = copyYLenhText;
     globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
-    globalThis.updatePatientCardHXT = updatePatientCardHXT;
-    globalThis.updatePatientCardCDKT = updatePatientCardCDKT;
+    globalThis.updatePatientCardHXT = DomUpdaters.updateHXT;
+    globalThis.updatePatientCardCDKT = DomUpdaters.updateCDKT;
     }
     
-    // Inject CSS styles for quick actions and tags
-    if (!document.getElementById('dr-ylenh-styles')) {
-        const style = document.createElement('style');
-        style.id = 'dr-ylenh-styles';
-    style.textContent = `
-            /* Sidebar actions: modern look */
-            .dr-sidebar-actions {
-                gap: 10px !important;
-                padding: 6px 0 4px 0;
-            }
-            .dr-sidebar-actions .dr-detail-btn {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
-                padding: 10px 14px;
-                border-radius: 12px;
-                border: 1px solid #cbd5e1;
-                background: #ffffff;
-                color: #0f172a;
-                font-weight: 600;
-                line-height: 1;
-                box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
-                transition: all 0.18s ease;
-            }
-            .dr-sidebar-actions .dr-detail-btn svg { width: 18px; height: 18px; }
-            .dr-sidebar-actions .dr-detail-btn img { width: 18px; height: 18px; object-fit: contain; display: block; }
-            .dr-sidebar-actions .dr-detail-btn:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
-                border-color: #94a3b8;
-            }
-            .dr-sidebar-actions .dr-detail-btn:active {
-                transform: translateY(0);
-                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.10);
-            }
-            .dr-sidebar-actions .dr-detail-btn:focus-visible {
-                outline: none;
-                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
-            }
-            /* Primary variant for first button */
-            .dr-sidebar-actions .dr-detail-btn:first-child {
-                background: linear-gradient(180deg, #1e88e5, #1976d2);
-                color: #fff;
-                border-color: #1976d2;
-            }
-            .dr-sidebar-actions .dr-detail-btn:first-child:hover {
-                filter: brightness(1.03);
-                box-shadow: 0 6px 14px rgba(25, 118, 210, 0.25);
-            }
-            /* Subtle/secondary variant for last button */
-            .dr-sidebar-actions .dr-detail-btn:last-child {
-                background: #ffffff;
-                color: #0f172a;
-                border-color: #cbd5e1;
-            }
-            .dr-sidebar-actions .dr-detail-btn:last-child:hover {
-                background: #f8fafc;
-            }
-            /* Quick action buttons container */
-            .quick-ylenh-actions {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                margin: 10px 0;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-radius: 8px;
-                border: 1px solid #e9ecef;
-            }
-
-            .quick-ylenh-btn {
-                display: flex;
-                align-items: center;
-                gap: 6px;
-                padding: 8px 12px;
-                border: none;
-                border-radius: 6px;
-                background-color: white;
-                color: #333;
-                font-size: 12px;
-                font-weight: 500;
-                cursor: pointer;
-                transition: all 0.2s ease;
-                border: 2px solid transparent;
-                white-space: nowrap;
-                position: relative;
-            }
-
-            .quick-ylenh-btn:hover {
-                transform: translateY(-1px);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-                border-color: currentColor;
-            }
-
-            .quick-ylenh-btn:active {
-                transform: translateY(0);
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            }
-
-            /* Trạng thái toggle ON - viền đỏ đậm + tick xanh */
-            .quick-ylenh-btn.active {
-                border: 3px solid #d32f2f !important;
-                background-color: #ffebee;
-                box-shadow: 0 0 10px rgba(211, 47, 47, 0.3);
-            }
-
-            /* Active state shows a processing badge (no inline tick) */
-            .quick-ylenh-btn.active::after {
-                content: '⏳';
-                position: absolute;
-                top: -6px;
-                right: -6px;
-                background: #1d4ed8;
-                color: #fff;
-                width: 18px;
-                height: 18px;
-                border-radius: 50%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 12px;
-            }
-
-            .quick-ylenh-btn.active .text {
-                font-weight: bold;
-            }
-
-            .quick-ylenh-btn .icon {
-                font-size: 14px;
-            }
-
-            /* Discharge time editor */
-            .xv-time-editor {
-                display:flex; align-items:center; gap:8px;
-                padding:8px 12px; margin:6px 0 0 0;
-                background:#f1f5f9; border:1px dashed #cbd5e1; border-radius:8px;
-                width:fit-content;
-            }
-            .xv-time-editor .xv-label { color:#0f172a; font-weight:600; }
-            .xv-time-editor .xv-time { padding:4px 6px; border:1px solid #cbd5e1; border-radius:6px; }
-            .xv-time-editor .xv-saved { color:#16a34a; font-weight:600; }
-
-            /* Trạng thái DONE - hoàn tất */
-            .quick-ylenh-btn.done {
-                border: 3px solid #2e7d32 !important;
-                background-color: #e8f5e9;
-                color: #1b5e20 !important;
-                box-shadow: 0 0 10px rgba(27, 94, 32, 0.2);
-                position: relative;
-            }
-            .quick-ylenh-btn.done::after {
-                content: '✔';
-                position: absolute;
-                top: -6px;
-                right: -6px;
-                background: #2e7d32;
-                color: #fff;
-                width: 18px;
-                height: 18px;
-                border-radius: 50%;
-
-            /* Mobile tweaks: reduce padding and icon size on narrow screens */
-            @media (max-width: 600px) {
-                .dr-sidebar-actions { gap: 6px !important; }
-                .dr-sidebar-actions .dr-detail-btn {
-                    gap: 6px;
-                    padding: 8px 10px;
-                    border-radius: 10px;
-                    font-size: 12px;
-                    line-height: 1.1;
-                }
-                .dr-sidebar-actions .dr-detail-btn svg,
-                .dr-sidebar-actions .dr-detail-btn img {
-                    width: 14px; height: 14px;
-                }
-            }
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 12px;
-            }
-
-            /* Y lệnh tags on patient cards */
-            .ylenh-tags {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 4px;
-                margin: 8px 0 4px 0;
-                overflow-wrap: anywhere;
-                word-break: break-word;
-            }
-
-            .ylenh-tag {
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                padding: 4px 10px;
-                background-color: rgba(76, 175, 80, 0.1);
-                color: #2e7d32;
-                border: 1px solid rgba(76, 175, 80, 0.3);
-                border-radius: 12px;
-                font-size: 12px;
-                font-weight: 600;
-                line-height: 1.2;
-                white-space: normal; /* allow wrapping */
-                overflow-wrap: anywhere;
-                word-break: break-word;
-                max-width: 100%;
-                flex-wrap: wrap;
-            }
-
-            /* Hiệu ứng cho tag Xuất viện - giữ đơn giản */
-            .ylenh-tag.discharge {
-                background: linear-gradient(45deg, #4caf50, #66bb6a) !important;
-                color: white !important;
-                border: 2px solid #4caf50 !important;
-                font-weight: 700 !important;
-                font-size: 12px; /* slightly larger for discharge tag */
-                text-shadow: 0 1px 1px rgba(0,0,0,0.25);
-            }
-
-            .ylenh-tag.completed {
-                background-color: rgba(76, 175, 80, 0.2);
-                color: #1b5e20;
-                border-color: rgba(76, 175, 80, 0.5);
-            }
-
-            .ylenh-tag .icon {
-                font-size: 12px;
-            }
-
-            /* Tag states for quick actions */
-            .ylenh-tag.state-active {
-                background-color: rgba(37, 99, 235, 0.10);
-                color: #1d4ed8;
-                border-color: rgba(37, 99, 235, 0.35);
-                font-weight: 700;
-            }
-            .ylenh-tag.state-done {
-                background-color: rgba(34, 197, 94, 0.12);
-                color: #15803d;
-                border-color: rgba(34, 197, 94, 0.45);
-                font-weight: 600;
-            }
-
-            /* Stronger style for active discharge tag: bigger, clearer, higher contrast */
-            .ylenh-tag.discharge.state-active {
-                font-size: 12.5px; /* larger text */
-                font-weight: 700;  /* bolder */
-                color: #ffffff !important; /* keep white but ensure override */
-                text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35); /* improve readability on green */
-                border-color: #2e7d32 !important; /* deeper green border for contrast */
-                padding: 4px 9px; /* slightly larger click/visibility area */
-            }
-
-            /* Badge when medications for today are marked done */
-            .dr-card .dr-badge-meds-done {
-                position: absolute;
-                top: -10px;
-                right: 10px;
-                background: #16a34a;
-                color: #fff;
-                font-weight: 800;
-                font-size: 11px;
-                border-radius: 999px;
-                padding: 4px 8px;
-                box-shadow: 0 2px 6px rgba(22,163,74,0.35);
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                z-index: 2;
-            }
-            .dr-card .dr-badge-meds-done::before {
-                content: '✔';
-                background: rgba(255,255,255,0.2);
-                width: 16px;
-                height: 16px;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                border-radius: 50%;
-                font-size: 11px;
-            }
-            /* Card highlight when meds done */
-            .dr-card.meds-done {
-                border: 2px solid #16a34a !important;
-                box-shadow: 0 0 0 2px rgba(22,163,74,0.08), 0 4px 12px rgba(0,0,0,0.06);
-            }
-        `;
-        document.head.appendChild(style);
-    }
+    // Styles are injected via addGlobalStyles() only
 
     const checklistItems = BS_CAI_DAT.checklistItems;
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
@@ -746,26 +458,7 @@ function showDashboardBenhNhanIfNeeded() {
             height: 100%;
         `;
         
-        // Add media query styles for desktop layout
-        const desktopStyles = document.createElement('style');
-        desktopStyles.textContent = `
-            @media (min-width: 1024px) {
-                .dr-sidebar-container {
-                    flex-direction: row !important;
-                    gap: 24px !important;
-                }
-                .dr-sidebar-left {
-                    flex: 0 0 40% !important;
-                }
-                .dr-sidebar-right {
-                    flex: 1 !important;
-                }
-            }
-        `;
-        if (!document.getElementById('dr-responsive-styles')) {
-            desktopStyles.id = 'dr-responsive-styles';
-            document.head.appendChild(desktopStyles);
-        }
+    // Responsive styles are handled in addGlobalStyles()
         
         container.className = 'dr-sidebar-container';
         
@@ -777,35 +470,19 @@ function showDashboardBenhNhanIfNeeded() {
             min-width: 0;
         `;
         
-        // Sidebar action buttons (reuse card actions behavior)
+    // Sidebar action buttons (reuse card actions behavior)
         const sidebarActions = document.createElement('div');
         sidebarActions.className = 'dr-sidebar-actions';
         sidebarActions.style.cssText = `
             display: flex; justify-content: flex-end; gap: 10px; 
             margin-bottom: 12px; flex-wrap: wrap;
         `;
-        sidebarActions.appendChild(createToDieuTriButton(patient));
-        sidebarActions.appendChild(createHsbaV1Button(patient));
-        sidebarActions.appendChild(createHsbaButton(patient));
-    // Helper function to create "HSBAv1" button (open legacy HSBA)
-    function createHsbaV1Button(item) {
-        const btn = document.createElement('button');
-        btn.className = 'dr-detail-btn no-print';
-        btn.style.position = 'static';
-        btn.style.marginLeft = '8px';
-        btn.textContent = 'HSBAv1';
-        btn.onclick = function (e) {
-            e.stopPropagation();
-            try {
-                if (!item || !item.mabn) return;
-                const url = `/hoso/${encodeURIComponent(String(item.mabn))}`;
-                window.open(url, '_blank', 'noopener');
-            } catch (error) {
-                console.warn('Open HSBAv1 failed', error);
-            }
-        };
-        return btn;
-    }
+    // Import shared action creators
+    const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('./components/actionButtons');
+    sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
+    sidebarActions.appendChild(createHsbaV1Button(patient));
+    sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
+    // HSBAv1 button now comes from components/actionButtons.js
         leftColumn.appendChild(sidebarActions);
 
     // Provide sidebar context for children (ctx id + abort signal)
@@ -877,20 +554,22 @@ function showDashboardBenhNhanIfNeeded() {
             background: #fff; border-bottom: 1px solid #e0e0e0;
         `;
         topBar.innerHTML = `
-            <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
-                style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
-            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
-            </label>
-            <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                <input id="dr-filter-rutodl" type="checkbox"> Rút ODL
-            </label>
-            <button id="dr-view-toggle" title="Đổi chế độ hiển thị" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;white-space:nowrap;">Chế độ: <b><span id="dr-view-label"></span></b></button>
-            <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
-            <span id="dr-total-compact" style="color:#0f172a; font-weight:600; white-space:nowrap;"></span>
+            <div class="dr-topbar-left" style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
+                    style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
+            </div>
+            <div class="dr-topbar-center" style="flex:0 0 auto; display:flex; justify-content:center; min-width:140px;">
+                <span id="dr-total-compact" style="display:inline-block; text-align:center; color:#0f172a; font-weight:700; white-space:nowrap; background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 10px; border-radius:9999px; min-width:110px;">0/0</span>
+            </div>
+            <div class="dr-topbar-right" style="flex:1; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
+                <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                    <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                    <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
+                </label>
+                <button id="dr-view-toggle" title="Đổi chế độ hiển thị" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;white-space:nowrap;">Chế độ: <b><span id="dr-view-label"></span></b></button>
+            </div>
         `;
 
     const container = document.createElement('div');
@@ -928,7 +607,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const today = new Date();
                 const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
                 const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
-                let hasXV = false, hasCLS = false, hasODL = false;
+                let hasXV = false, hasCLS = false;
                 for (const e of log) {
                     if (!e.timestamp || !e.content) continue;
                     if (!e.timestamp.startsWith(todayStr)) continue;
@@ -942,11 +621,9 @@ function showDashboardBenhNhanIfNeeded() {
                         }
                     }
                     if (c.includes('cận lâm sàng')) hasCLS = true;
-                    if (c.includes('rút odl')) hasODL = true;
                 }
                 card.dataset.hasxv = hasXV ? '1' : '0';
                 card.dataset.hascls = hasCLS ? '1' : '0';
-                card.dataset.hasodl = hasODL ? '1' : '0';
             } catch (_) {}
             container.appendChild(card);
         });
@@ -959,17 +636,15 @@ function showDashboardBenhNhanIfNeeded() {
     createBottomBar();
 
         // Filter logic
-        const searchInput = topBar.querySelector('#dr-search-input');
+    const searchInput = topBar.querySelector('#dr-search-input');
     const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
     const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
-    const chkRutODL = topBar.querySelector('#dr-filter-rutodl');
-        const filterCount = topBar.querySelector('#dr-filter-count');
+    const totalCompact = topBar.querySelector('#dr-total-compact');
 
         function applyFilter() {
             const q = (searchInput.value || '').trim().toLowerCase();
             const onlyXV = !!chkXuatVien.checked;
             const onlyCLS = !!chkCanLamSang.checked;
-            const onlyODL = !!chkRutODL.checked;
             let visible = 0;
 
             const cards = container.querySelectorAll('.dr-card, .dr-list-row');
@@ -983,27 +658,41 @@ function showDashboardBenhNhanIfNeeded() {
                 // dataset flags prepared on card creation
                 const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
                 const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
-                const matchesODL = !onlyODL || card.dataset.hasodl === '1';
-                const show = matchesText && matchesXV && matchesCLS && matchesODL;
+                const show = matchesText && matchesXV && matchesCLS;
                 card.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
 
-            // Update counts in top bar and compact total
-            filterCount.textContent = (q || onlyXV || onlyCLS || onlyODL) ? `Hiển thị: ${visible}/${sortedData.length}` : '';
-            const totalCompact = document.getElementById('dr-total-compact');
-            if (totalCompact) totalCompact.textContent = `${visible}/${sortedData.length}`;
+            // Update centered compact total, integrating the filter count
+            if (totalCompact) {
+                const hasFilter = !!(q || onlyXV || onlyCLS);
+                totalCompact.textContent = hasFilter ? `Hiển thị: ${visible}/${sortedData.length}` : `${visible}/${sortedData.length}`;
+                // Color accents: blue when filtered, neutral otherwise
+                if (hasFilter) {
+                    totalCompact.style.background = '#e3f2fd';
+                    totalCompact.style.borderColor = '#bbdefb';
+                    totalCompact.style.color = '#1976d2';
+                } else {
+                    totalCompact.style.background = '#f1f5f9';
+                    totalCompact.style.borderColor = '#e2e8f0';
+                    totalCompact.style.color = '#0f172a';
+                }
+            }
         }
 
     searchInput.addEventListener('input', applyFilter);
     chkXuatVien.addEventListener('change', applyFilter);
     chkCanLamSang.addEventListener('change', applyFilter);
-    chkRutODL.addEventListener('change', applyFilter);
 
     // Initialize view label, compact total and run first filter
     setViewLabel();
     const totalCompactInit = document.getElementById('dr-total-compact');
-    if (totalCompactInit) totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
+    if (totalCompactInit) {
+        totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
+        totalCompactInit.style.background = '#f1f5f9';
+        totalCompactInit.style.borderColor = '#e2e8f0';
+        totalCompactInit.style.color = '#0f172a';
+    }
     applyFilter();
 
         // Prefill from query param ?q=
@@ -1027,92 +716,29 @@ function showDashboardBenhNhanIfNeeded() {
                     try {
                         const diagnosisEl = card.querySelector('.dr-diagnosis-line');
                         if (diagnosisEl) {
-                            const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
-                            const baseCdNew = (item.chandoanvk || '') + icdSuffix;
+                            const { composeDiagnosis } = DomUpdaters;
+                            const { baseText: baseCdNew, cdktText, combinedHtml } = composeDiagnosis(item);
                             diagnosisEl.dataset.baseCd = baseCdNew;
-                            const cdktText = (item.checklistState && typeof item.checklistState.chanDoanKemTheo === 'string')
-                                ? item.checklistState.chanDoanKemTheo.trim()
-                                : '';
-                            diagnosisEl.dataset.cdkt = cdktText;
-                            const combined = `${baseCdNew}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
-                            diagnosisEl.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combined}`;
+                            diagnosisEl.dataset.cdkt = cdktText || '';
+                            diagnosisEl.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combinedHtml}`;
                         }
                         // remove any legacy block if present
                         const oldCdkt = card.querySelector('.dr-cdkt-block');
                         if (oldCdkt) oldCdkt.remove();
                     } catch (_) {}
-                    // Update surgery info with post-op days using formatSurgeryInfo
-                    const ptInfoContainer = card.querySelector('.dr-pt-info');
-                    if (ptInfoContainer) {
-                        const formattedPtInfo = formatSurgeryInfo(item);
-                        // Extract just the inner content from the formatted HTML
-                        const tempDiv = document.createElement('div');
-                        tempDiv.innerHTML = formattedPtInfo;
-                        const innerContent = tempDiv.querySelector('.dr-pt-info');
-                        if (innerContent) {
-                            ptInfoContainer.innerHTML = innerContent.innerHTML;
-                        }
-                    }
+                    // Update surgery info with post-op days using shared updater
+                    DomUpdaters.updateSurgeryInfo(card, item);
                     
-                    // Update HXT (Hướng xử trí) line in the card
-                    {
-                        const hxtText = (item.checklistState && typeof item.checklistState.huongXuTri === 'string')
-                            ? item.checklistState.huongXuTri.trim()
-                            : '';
-                        const oldHxt = card.querySelector('.dr-hxt-block');
-                        if (oldHxt) oldHxt.remove();
-                        if (hxtText) {
-                            const div = document.createElement('div');
-                            div.className = 'dr-value dr-hxt-block';
-                            div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
-                            if (card.classList.contains('dr-card')) {
-                                // Card view: after pt-info then after diagnosis
-                                const ptInfoEl = card.querySelector('.dr-pt-info');
-                                const cdEl = card.querySelector('.dr-diagnosis-line');
-                                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
-                                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
-                                else card.insertAdjacentElement('afterbegin', div);
-                            } else {
-                                // List row: always under diagnosis
-                                const dxEl = card.querySelector('.dr-list-dx');
-                                if (dxEl) dxEl.insertAdjacentElement('afterend', div);
-                                else card.insertAdjacentElement('afterbegin', div);
-                            }
-                        }
-                    }
+                    // Update HXT line in the card/list row
+                    DomUpdaters.updateHXT(item);
                     
                     // Update y lệnh tags if checklistState is available
                     if (item.checklistState) {
-                        // Remove existing tags
-                        const existingTags = card.querySelector('.ylenh-tags');
-                        if (existingTags) {
-                            existingTags.remove();
-                        }
-                        
-                        // Add new tags if any
-                        const tagsHtml = createYLenhTags(item);
-                        if (tagsHtml) {
-                            // In card view, insert before action buttons; in list view, append after left block
-                            let inserted = false;
-                            if (card.classList.contains('dr-card')) {
-                                const btnGroup = card.querySelector('.dr-action-buttons');
-                                if (btnGroup) {
-                                    btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
-                                    inserted = true;
-                                }
-                            }
-                            if (!inserted) {
-                                const left = card.querySelector(':scope > div');
-                                if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
-                                else card.insertAdjacentHTML('beforeend', tagsHtml);
-                            }
-                        }
-                        // Update meds-done badge on the card
-                        try { updateMedsDoneBadge(card, item); } catch (_) {}
+                        DomUpdaters.updateTagsAndMedsBadge(card, item);
                     }
                     
                     // Update surgery status icon
-                    addSurgeryStatusIcon(card, item);
+                    DomUpdaters.updateSurgeryIcon(card, item);
 
                     // Re-evaluate filter visibility after updates (e.g., xuatvienanimation class changes)
                     // Delay to allow DOM/class updates done elsewhere
@@ -1168,10 +794,7 @@ function showDashboardBenhNhanIfNeeded() {
         
     const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
     const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
-    const cdktText = (item.checklistState && item.checklistState.chanDoanKemTheo) ? String(item.checklistState.chanDoanKemTheo).trim() : '';
-    const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
-    const baseDiagnosis = `${item.chandoanvk || ''}${icdSuffix}`;
-    const combinedDiagnosis = `${baseDiagnosis}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
+    const { baseText: baseDiagnosis, cdktText, combinedHtml: combinedDiagnosis } = DomUpdaters.composeDiagnosis(item);
         card.innerHTML = `
             <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
@@ -1183,7 +806,10 @@ function showDashboardBenhNhanIfNeeded() {
         // mark base diagnosis for future updates
         try {
             const diagEl = card.querySelector('.dr-diagnosis-line');
-            if (diagEl) diagEl.dataset.baseCd = baseDiagnosis;
+            if (diagEl) {
+                diagEl.dataset.baseCd = baseDiagnosis;
+                diagEl.dataset.cdkt = cdktText || '';
+            }
         } catch (_) {}
         if (item && item.mabn && !card.getAttribute('data-mabn')) {
             card.setAttribute('data-mabn', item.mabn);
@@ -1209,84 +835,13 @@ function showDashboardBenhNhanIfNeeded() {
 
     // List view row now lives in components/listView.js
 
-    // Safely escape HTML for rendering user-entered HXT
-    function escapeHtml(str) {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;')
-            .replace(/\n/g, '<br/>');
-    }
+    // escapeHtml provided by utils/htmlUtils
 
     // Update HXT on a card when sidebar saves
-    function updatePatientCardHXT(patient) {
-        try {
-            if (!patient || !patient.mabn) return;
-            // Prefer matching by data attribute for accuracy (card or list row)
-            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`) 
-                            || document.querySelector(`.dr-list-row[data-mabn="${patient.mabn}"]`);
-            if (!targetCard) {
-                // Fallback: text search in cards only
-                const allCards = document.querySelectorAll('.dr-card');
-                allCards.forEach(card => {
-                    const txt = card.textContent || card.innerText || '';
-                    if (txt.includes(String(patient.mabn))) targetCard = card;
-                });
-            }
-            if (!targetCard) return;
-            const hxtText = (patient.checklistState && patient.checklistState.huongXuTri) ? String(patient.checklistState.huongXuTri).trim() : '';
-            // Remove previous HXT block if found by class marker
-            const oldBlock = targetCard.querySelector('.dr-hxt-block');
-            if (oldBlock) oldBlock.remove();
-            if (hxtText) {
-                const div = document.createElement('div');
-                div.className = 'dr-value dr-hxt-block';
-                div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
-                if (targetCard.classList.contains('dr-card')) {
-                    // Card view: after ptInfo then after diagnosis line
-                    const ptInfoEl = targetCard.querySelector('.dr-pt-info');
-                    const cdEl = targetCard.querySelector('.dr-diagnosis-line');
-                    if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
-                    else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
-                    else targetCard.insertAdjacentElement('afterbegin', div);
-                } else {
-                    // List view: place under diagnosis summary
-                    const dxEl = targetCard.querySelector('.dr-list-dx');
-                    if (dxEl) dxEl.insertAdjacentElement('afterend', div);
-                    else targetCard.insertAdjacentElement('afterbegin', div);
-                }
-            }
-        } catch (_) {}
-    }
+    function updatePatientCardHXT(patient) { try { DomUpdaters.updateHXT(patient); } catch (_) {} }
 
     // Update Chẩn đoán kèm theo on a card when sidebar saves
-    function updatePatientCardCDKT(patient) {
-        try {
-            if (!patient || !patient.mabn) return;
-            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`);
-            if (!targetCard) {
-                const allCards = document.querySelectorAll('.dr-card');
-                allCards.forEach(card => {
-                    const txt = card.textContent || card.innerText || '';
-                    if (txt.includes(String(patient.mabn))) targetCard = card;
-                });
-            }
-            if (!targetCard) return;
-            // Clean any legacy separate CDKT block
-            const legacy = targetCard.querySelector('.dr-cdkt-block');
-            if (legacy) legacy.remove();
-
-            const cdktText = (patient.checklistState && patient.checklistState.chanDoanKemTheo) ? String(patient.checklistState.chanDoanKemTheo).trim() : '';
-            const diagnosisLine = targetCard.querySelector('.dr-diagnosis-line');
-            if (!diagnosisLine) return;
-            const baseText = diagnosisLine.dataset.baseCd || '';
-            diagnosisLine.dataset.cdkt = cdktText;
-            const combined = `${baseText}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
-            diagnosisLine.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combined}`;
-        } catch (_) {}
-    }
+    function updatePatientCardCDKT(patient) { try { DomUpdaters.updateCDKT(patient); } catch (_) {} }
 
     // Preload HXT for a patient by fetching checklist state if not present
     async function preloadHXTForPatient(item) {
@@ -1294,7 +849,7 @@ function showDashboardBenhNhanIfNeeded() {
             if (!item || !item.mabn) return;
             const existing = item.checklistState && typeof item.checklistState.huongXuTri === 'string' ? item.checklistState.huongXuTri.trim() : '';
             if (existing) {
-                updatePatientCardHXT(item);
+                DomUpdaters.updateHXT(item);
                 return;
             }
             const res = await ChecklistService.loadChecklistData(item);
@@ -1313,8 +868,8 @@ function showDashboardBenhNhanIfNeeded() {
             }
             // Update card view with merged state
             const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
-            updatePatientCardHXT(updated);
-            try { updatePatientCardCDKT(updated); } catch (_) {}
+            DomUpdaters.updateHXT(updated);
+            try { DomUpdaters.updateCDKT(updated); } catch (_) {}
         } catch (e) {
             console.warn('Preload HXT failed for', item?.mabn, e);
         }
@@ -1328,9 +883,10 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create action buttons
     function createActionButtons(item) {
-        const btnToDieuTri = createToDieuTriButton(item);
-        const btnHsba2 = createHsbaButton(item);
-    const btnCopyOne = createCopyOneButton(item);
+    const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('./components/actionButtons');
+    const btnToDieuTri = createToDieuTriButton({ item, variant: 'full' });
+    const btnHsba2 = createHsbaButton({ item, variant: 'full' });
+    const btnCopyOne = createCopyOneButton({ item, variant: 'icon' });
         
         const btnGroup = document.createElement('div');
         btnGroup.className = 'dr-action-buttons';
@@ -1349,92 +905,7 @@ function showDashboardBenhNhanIfNeeded() {
         return btnGroup;
     }
 
-    // Helper function to create "Tờ điều trị" button
-    function createToDieuTriButton(item) {
-        const btn = document.createElement('button');
-        btn.className = 'dr-detail-btn no-print';
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12c-4.97 0-8.19-4.16-8.94-5C3.81 10.16 7.03 6 12 6s8.19 4.16 8.94 5c-.75.84-3.97 5-8.94 5zm0-8a3 3 0 100 6 3 3 0 000-6zm0 4a1 1 0 110-2 1 1 0 010 2z"/></svg>Tờ điều trị`;
-        btn.style.position = 'static';
-    // Mobile-friendly sizing via inline CSS var that can be overridden by media queries
-    btn.style.fontSize = '14px';
-    btn.style.padding = '8px 12px 8px 10px';
-        btn.onclick = e => {
-            e.stopPropagation();
-            if (item.mabn) {
-                window.open(`/to-dieu-tri?mabn=${encodeURIComponent(item.mabn)}`, '_blank');
-            }
-        };
-        return btn;
-    }
-
-    // Helper function to create "HSBA V2" button
-    function createHsbaButton(item) {
-        const btnHsba2 = document.createElement('button');
-        btnHsba2.className = 'dr-detail-btn no-print';
-        btnHsba2.style.position = 'static';
-        btnHsba2.style.marginLeft = '8px';
-    btnHsba2.style.fontSize = '14px';
-    btnHsba2.style.padding = '8px 12px 8px 10px';
-        btnHsba2.textContent = 'HSBA V2';
-        btnHsba2.onclick = async function (e) {
-            e.stopPropagation();
-            try {
-                const response = await fetch('/ToDieuTri/LoadLinkHsba', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'include',
-                    body: 'code=' + encodeURIComponent(item.mabn)
-                });
-                
-                const result = await response.json();
-                if (result && result.data && result.data.link) {
-                    window.open(result.data.link, '_blank');
-                } else {
-                    console.error('Không lấy được link HSBA V2');
-                }
-            } catch (error) {
-                console.error('Lỗi khi load link HSBA V2:', error);
-            }
-        };
-        return btnHsba2;
-    }
-
-    // Icon-only copy button for a single patient's direct-report formatted data
-    function createCopyOneButton(item) {
-        const btn = document.createElement('button');
-        btn.className = 'dr-detail-btn no-print';
-        btn.style.position = 'static';
-        btn.style.padding = '8px';
-        btn.style.borderRadius = '10px';
-        btn.style.width = '36px';
-        btn.style.height = '36px';
-        btn.style.display = 'inline-flex';
-        btn.style.alignItems = 'center';
-        btn.style.justifyContent = 'center';
-        btn.title = 'Copy báo cáo (1 BN)';
-        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
-        btn.onclick = async (e) => {
-            e.stopPropagation();
-            try {
-                const ReportService = require('./services/reportService');
-                const ChecklistService = require('./services/checklistService');
-                const { copyReportToClipboardRich } = require('./dashboard.support');
-                // Load state for this single patient
-                const res = await ChecklistService.loadChecklistData(item);
-                const obj = ChecklistService.findChecklistObject(res);
-                const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
-                const html = ReportService.generateSingleHTML(item, state);
-                const text = ReportService.generateSingleText(item, state);
-                await copyReportToClipboardRich(html, text);
-            } catch (err) {
-                console.error('Copy single-patient report failed:', err);
-            }
-        };
-        return btn;
-    }
+    // Button creators moved to components/actionButtons.js
 
     // Helper function to create bottom bar
     function createBottomBar() {
@@ -1453,8 +924,7 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         document.body.appendChild(bottomBar);
         
-        // Add bottom bar styles
-        addBottomBarStyles();
+    // Bottom bar styles come from addGlobalStyles()
         
         // Setup direct report button
         setTimeout(() => {
@@ -1492,47 +962,7 @@ function showDashboardBenhNhanIfNeeded() {
         })();
     }
 
-    // Helper function to add bottom bar styles
-    function addBottomBarStyles() {
-        const barStyle = document.createElement('style');
-        barStyle.textContent = `
-            .dr-bottom-bar {
-                position: fixed;
-                left: 0; right: 0; bottom: 0;
-                width: 100vw;
-                background: #fff;
-                border-top: 2px solid #90caf9;
-                box-shadow: 0 -2px 8px rgba(25,118,210,0.08);
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 0 24px;
-                height: 54px;
-                z-index: 99999;
-                font-size: 1.1em;
-            }
-            .dr-bottom-bar-left {
-                color: #1976d2;
-                font-weight: bold;
-                display: inline-flex;
-                align-items: center;
-                gap: 10px;
-            }
-            .dr-khoa-select { height: 32px; min-width: 180px; border:1px solid #cbd5e1; border-radius: 8px; padding: 0 8px; }
-            .dr-gear-btn { 
-                display:inline-flex; align-items:center; justify-content:center; 
-                width:32px; height:32px; border-radius:50%; 
-                color:#1976d2; border:1px solid rgba(25,118,210,0.25); 
-                text-decoration:none; background:#fff;
-            }
-            .dr-gear-btn i { font-size:16px; }
-            .dr-gear-btn:hover { background:#e3f2fd; box-shadow:0 0 0 2px rgba(25,118,210,0.15) inset; }
-            @media (max-width: 600px) {
-                .dr-bottom-bar { flex-direction: column; height: auto; padding: 8px 8px; }
-            }
-        `;
-        document.head.appendChild(barStyle);
-    }
+    // Bottom bar styling helper removed (centralized in dashboard.support.js)
     // Main logic
     async function initializeDashboard() {
         const data = await PatientService.loadPatientDataWithErrorHandling();

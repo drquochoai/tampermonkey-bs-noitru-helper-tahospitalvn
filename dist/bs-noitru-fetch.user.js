@@ -359,7 +359,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":26}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":27}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -722,7 +722,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":4,"./dashboard":12,"./googleAppsScript":14,"./services/checklistService":16,"./settings":22,"./utils":23}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":4,"./dashboard":13,"./googleAppsScript":15,"./services/checklistService":17,"./settings":23,"./utils":24}],4:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -885,6 +885,136 @@ const DialogManager = {
 module.exports = DialogManager;
 
 },{}],6:[function(require,module,exports){
+// components/listView.js - Rendering for list view rows and actions
+const Utils = require('../utils');
+const PatientDataMapper = require('../utils/patientDataMapper');
+const { createYLenhTags, hasMedsDoneToday } = require('../utils/tagUtils');
+
+async function openHSBAV2Link(mabn) {
+    try {
+        const response = await fetch('/ToDieuTri/LoadLinkHsba', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'include',
+            body: 'code=' + encodeURIComponent(mabn)
+        });
+        const result = await response.json();
+        if (result && result.data && result.data.link) {
+            window.open(result.data.link, '_blank');
+        } else {
+            // fallback to v1
+            window.open(`/hoso/${encodeURIComponent(String(mabn))}`, '_blank');
+        }
+    } catch (_) {
+        window.open(`/hoso/${encodeURIComponent(String(mabn))}`, '_blank');
+    }
+}
+
+function createListActions(item, onCopy) {
+    const wrap = document.createElement('div');
+    wrap.className = 'dr-list-actions';
+    
+
+    // Copy icon for single-patient report (left-most as requested)
+    const btnCopy = document.createElement('button');
+    btnCopy.className = 'dr-btn-icon';
+    btnCopy.title = 'Copy báo cáo (1 BN)';
+    btnCopy.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path fill="#fff" d="M16 1H4a2 2 0 0 0-2 2v12h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>';
+    btnCopy.onclick = (e) => {
+        e.stopPropagation();
+        if (typeof onCopy === 'function') onCopy();
+    };
+    wrap.appendChild(btnCopy);
+
+    // Document icon for Tờ điều trị
+    const btnToDieuTri = document.createElement('button');
+    btnToDieuTri.className = 'dr-btn-icon';
+    btnToDieuTri.title = 'Tờ điều trị';
+    btnToDieuTri.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path fill="#fff" d="M6 2h7l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm7 1v4h4l-4-4zM8 9h8v2H8V9zm0 4h8v2H8v-2zm0 4h5v2H8v-2z"/></svg>';
+    btnToDieuTri.onclick = (e) => {
+        e.stopPropagation();
+        if (item.mabn) window.open(`/to-dieu-tri?mabn=${encodeURIComponent(item.mabn)}`, '_blank');
+    };
+    wrap.appendChild(btnToDieuTri);
+
+    // Eye icon for HSBA V2 (right-most)
+    const btnHsba = document.createElement('button');
+    btnHsba.className = 'dr-btn-icon';
+    btnHsba.title = 'HSBA V2';
+    btnHsba.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"><path fill="#fff" d="M12 5C5 5 2 12 2 12s3 7 10 7 10-7 10-7-3-7-10-7zm0 12c-4.97 0-8.19-4.16-8.94-5C3.81 10.16 7.03 6 12 6s8.19 4.16 8.94 5c-.75.84-3.97 5-8.94 5zm0-8a3 3 0 100 6 3 3 0 000-6z"/></svg>';
+    btnHsba.onclick = (e) => {
+        e.stopPropagation();
+        openHSBAV2Link(item.mabn);
+    };
+    wrap.appendChild(btnHsba);
+
+    return wrap;
+}
+
+function createListRow(item, opts = {}) {
+    const row = document.createElement('div');
+    row.className = 'dr-list-row';
+    const age = Utils.calculateAge(item.ngaysinh);
+    const gender = item.phai === 1 ? 'Nữ' : 'Nam';
+    const formattedLocation = PatientDataMapper.formatRoomLocation(
+        item.teN_PHONG, item.teN_GIUONG, item.teN_TANG, item.teN_TOANHA
+    );
+    const icdSuffix = item.maicdvk ? ` (${String(item.maicdvk).trim()})` : '';
+    const dx = `${item.chandoanvk || ''}${icdSuffix}`;
+    const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
+
+    const left = document.createElement('div');
+    left.innerHTML = `
+        <div class="dr-list-title">${item.hoten || ''} <span style="color:#64748b;font-weight:600;">- ${age}t - ${gender}</span> • <span style="color:#334155;font-weight:700;">${item.mabn || ''}</span> • <span style="color:#64748b;">${formattedLocation}</span></div>
+        <div class="dr-list-dx">${dx}</div>
+        ${hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : ''}
+        ${createYLenhTags(item)}
+    `;
+
+    const onCopy = async () => {
+        try {
+            const ReportService = require('../services/reportService');
+            const ChecklistService = require('../services/checklistService');
+            const { copyReportToClipboardRich } = require('../dashboard.support');
+            const res = await ChecklistService.loadChecklistData(item);
+            const obj = ChecklistService.findChecklistObject(res);
+            const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
+            const html = ReportService.generateSingleHTML(item, state);
+            const text = ReportService.generateSingleText(item, state);
+            await copyReportToClipboardRich(html, text);
+        } catch (err) { console.error('Copy single-patient report failed:', err); }
+    };
+
+    const right = createListActions(item, onCopy);
+
+    row.appendChild(left);
+    row.appendChild(right);
+
+    if (typeof opts.onOpen === 'function') {
+        row.addEventListener('click', opts.onOpen);
+    }
+
+    return row;
+}
+
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/\n/g, '<br/>');
+}
+
+module.exports = {
+    createListRow
+};
+
+},{"../dashboard.support":14,"../services/checklistService":17,"../services/reportService":19,"../utils":24,"../utils/patientDataMapper":28,"../utils/tagUtils":30}],7:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -913,7 +1043,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 let SidebarSession = null;
 try { SidebarSession = require('./sidebarSession'); } catch(_) {}
@@ -984,7 +1114,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":10}],8:[function(require,module,exports){
+},{"./sidebarSession":11}],9:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -1246,7 +1376,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":16,"../services/reportService":18,"../utils":23,"./phauThuatHandlers":9,"./yLenhHandlers":11}],9:[function(require,module,exports){
+},{"../services/checklistService":17,"../services/reportService":19,"../utils":24,"./phauThuatHandlers":10,"./yLenhHandlers":12}],10:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1606,7 +1736,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":16,"../utils/surgeryUtils":28}],10:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":17,"../utils/surgeryUtils":29}],11:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -1641,7 +1771,7 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -2115,7 +2245,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":16}],12:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":17}],13:[function(require,module,exports){
 // dashboard.js
 
 const Utils = require('./utils');
@@ -2200,6 +2330,7 @@ function showDashboardBenhNhanIfNeeded() {
                 transition: all 0.18s ease;
             }
             .dr-sidebar-actions .dr-detail-btn svg { width: 18px; height: 18px; }
+            .dr-sidebar-actions .dr-detail-btn img { width: 18px; height: 18px; object-fit: contain; display: block; }
             .dr-sidebar-actions .dr-detail-btn:hover {
                 transform: translateY(-1px);
                 box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
@@ -2334,6 +2465,22 @@ function showDashboardBenhNhanIfNeeded() {
                 width: 18px;
                 height: 18px;
                 border-radius: 50%;
+
+            /* Mobile tweaks: reduce padding and icon size on narrow screens */
+            @media (max-width: 600px) {
+                .dr-sidebar-actions { gap: 6px !important; }
+                .dr-sidebar-actions .dr-detail-btn {
+                    gap: 6px;
+                    padding: 8px 10px;
+                    border-radius: 10px;
+                    font-size: 12px;
+                    line-height: 1.1;
+                }
+                .dr-sidebar-actions .dr-detail-btn svg,
+                .dr-sidebar-actions .dr-detail-btn img {
+                    width: 14px; height: 14px;
+                }
+            }
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -2989,17 +3136,28 @@ function showDashboardBenhNhanIfNeeded() {
             <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
                 <input id="dr-filter-rutodl" type="checkbox"> Rút ODL
             </label>
+            <button id="dr-view-toggle" title="Đổi chế độ hiển thị" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;white-space:nowrap;">Chế độ: <b><span id="dr-view-label"></span></b></button>
             <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
             <span id="dr-total-compact" style="color:#0f172a; font-weight:600; white-space:nowrap;"></span>
         `;
 
     const container = document.createElement('div');
-        container.className = 'dr-card-list';
-    // Safety padding in case styles load late
-    container.style.paddingBottom = '90px';
+        // View state
+        const VIEW_KEY = 'dr-card-view';
+        const view = (localStorage.getItem(VIEW_KEY) || 'grid');
+        const viewLabelEl = topBar.querySelector('#dr-view-label');
+        const setViewLabel = () => { if (viewLabelEl) viewLabelEl.textContent = (localStorage.getItem(VIEW_KEY) || 'grid') === 'list' ? 'Danh sách' : 'Lưới'; };
+        if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
+        container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
+        // Safety padding in case styles load late
+        container.style.paddingBottom = '90px';
         
+    const renderItemGrid = (item) => createPatientCard(item);
+    const { createListRow } = require('./components/listView');
+    const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
+        const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
-            const card = createPatientCard(item);
+            const card = renderer(item);
             // mark useful attributes for filtering
             if (item && item.mabn) card.setAttribute('data-mabn', item.mabn);
             if (item && item.hoten) card.setAttribute('data-name', (item.hoten || '').toLowerCase());
@@ -3041,7 +3199,7 @@ function showDashboardBenhNhanIfNeeded() {
             container.appendChild(card);
         });
         
-        // Append top bar then container
+    // Append top bar then container
         document.body.appendChild(topBar);
         document.body.appendChild(container);
         
@@ -3062,7 +3220,7 @@ function showDashboardBenhNhanIfNeeded() {
             const onlyODL = !!chkRutODL.checked;
             let visible = 0;
 
-            const cards = container.querySelectorAll('.dr-card');
+            const cards = container.querySelectorAll('.dr-card, .dr-list-row');
             cards.forEach(card => {
                 const txt = card.textContent.toLowerCase();
                 const matchesText = q === '' || txt.includes(q) ||
@@ -3090,7 +3248,8 @@ function showDashboardBenhNhanIfNeeded() {
     chkCanLamSang.addEventListener('change', applyFilter);
     chkRutODL.addEventListener('change', applyFilter);
 
-    // Initialize compact total and run first filter
+    // Initialize view label, compact total and run first filter
+    setViewLabel();
     const totalCompactInit = document.getElementById('dr-total-compact');
     if (totalCompactInit) totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
     applyFilter();
@@ -3105,7 +3264,7 @@ function showDashboardBenhNhanIfNeeded() {
             }
         } catch (_) {}
 
-        const refreshPatientCards = function(newData) {
+    const refreshPatientCards = function(newData) {
             const sortedNewData = PatientDataMapper.sortPatients([...newData]);
             
             // Update existing cards instead of full re-render to avoid interrupting user
@@ -3154,11 +3313,19 @@ function showDashboardBenhNhanIfNeeded() {
                             const div = document.createElement('div');
                             div.className = 'dr-value dr-hxt-block';
                             div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
-                            const ptInfoEl = card.querySelector('.dr-pt-info');
-                            const cdEl = card.querySelector('.dr-value');
-                            if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
-                            else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
-                            else card.insertAdjacentElement('afterbegin', div);
+                            if (card.classList.contains('dr-card')) {
+                                // Card view: after pt-info then after diagnosis
+                                const ptInfoEl = card.querySelector('.dr-pt-info');
+                                const cdEl = card.querySelector('.dr-diagnosis-line');
+                                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                                else card.insertAdjacentElement('afterbegin', div);
+                            } else {
+                                // List row: always under diagnosis
+                                const dxEl = card.querySelector('.dr-list-dx');
+                                if (dxEl) dxEl.insertAdjacentElement('afterend', div);
+                                else card.insertAdjacentElement('afterbegin', div);
+                            }
                         }
                     }
                     
@@ -3173,10 +3340,19 @@ function showDashboardBenhNhanIfNeeded() {
                         // Add new tags if any
                         const tagsHtml = createYLenhTags(item);
                         if (tagsHtml) {
-                            const btnGroup = card.querySelector('.dr-action-buttons');
-                            if (btnGroup) {
-                                btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
-                                console.log('Updated y lệnh tags for card:', item.mabn);
+                            // In card view, insert before action buttons; in list view, append after left block
+                            let inserted = false;
+                            if (card.classList.contains('dr-card')) {
+                                const btnGroup = card.querySelector('.dr-action-buttons');
+                                if (btnGroup) {
+                                    btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
+                                    inserted = true;
+                                }
+                            }
+                            if (!inserted) {
+                                const left = card.querySelector(':scope > div');
+                                if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
+                                else card.insertAdjacentHTML('beforeend', tagsHtml);
                             }
                         }
                         // Update meds-done badge on the card
@@ -3205,6 +3381,18 @@ function showDashboardBenhNhanIfNeeded() {
         } else {
             globalThis.refreshPatientCards = refreshPatientCards;
             globalThis.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
+        }
+
+        // Wire view toggle button
+        const toggleBtn = topBar.querySelector('#dr-view-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const cur = localStorage.getItem('dr-card-view') || 'grid';
+                const next = cur === 'list' ? 'grid' : 'list';
+                localStorage.setItem('dr-card-view', next);
+                setViewLabel();
+                try { window.location.reload(); } catch(_) { }
+            });
         }
     }
 
@@ -3267,6 +3455,8 @@ function showDashboardBenhNhanIfNeeded() {
         return card;
     }
 
+    // List view row now lives in components/listView.js
+
     // Safely escape HTML for rendering user-entered HXT
     function escapeHtml(str) {
         return String(str)
@@ -3282,10 +3472,11 @@ function showDashboardBenhNhanIfNeeded() {
     function updatePatientCardHXT(patient) {
         try {
             if (!patient || !patient.mabn) return;
-            // Prefer matching by data attribute for accuracy
-            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`);
+            // Prefer matching by data attribute for accuracy (card or list row)
+            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`) 
+                            || document.querySelector(`.dr-list-row[data-mabn="${patient.mabn}"]`);
             if (!targetCard) {
-                // Fallback: text search
+                // Fallback: text search in cards only
                 const allCards = document.querySelectorAll('.dr-card');
                 allCards.forEach(card => {
                     const txt = card.textContent || card.innerText || '';
@@ -3301,12 +3492,19 @@ function showDashboardBenhNhanIfNeeded() {
                 const div = document.createElement('div');
                 div.className = 'dr-value dr-hxt-block';
                 div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
-                // Insert after ptInfo if present, else after diagnosis
-                const ptInfoEl = targetCard.querySelector('.dr-pt-info');
-                const cdEl = targetCard.querySelector('.dr-value');
-                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
-                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
-                else targetCard.insertAdjacentElement('afterbegin', div);
+                if (targetCard.classList.contains('dr-card')) {
+                    // Card view: after ptInfo then after diagnosis line
+                    const ptInfoEl = targetCard.querySelector('.dr-pt-info');
+                    const cdEl = targetCard.querySelector('.dr-diagnosis-line');
+                    if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                    else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                    else targetCard.insertAdjacentElement('afterbegin', div);
+                } else {
+                    // List view: place under diagnosis summary
+                    const dxEl = targetCard.querySelector('.dr-list-dx');
+                    if (dxEl) dxEl.insertAdjacentElement('afterend', div);
+                    else targetCard.insertAdjacentElement('afterbegin', div);
+                }
             }
         } catch (_) {}
     }
@@ -3405,6 +3603,9 @@ function showDashboardBenhNhanIfNeeded() {
         btn.className = 'dr-detail-btn no-print';
         btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12c-4.97 0-8.19-4.16-8.94-5C3.81 10.16 7.03 6 12 6s8.19 4.16 8.94 5c-.75.84-3.97 5-8.94 5zm0-8a3 3 0 100 6 3 3 0 000-6zm0 4a1 1 0 110-2 1 1 0 010 2z"/></svg>Tờ điều trị`;
         btn.style.position = 'static';
+    // Mobile-friendly sizing via inline CSS var that can be overridden by media queries
+    btn.style.fontSize = '14px';
+    btn.style.padding = '8px 12px 8px 10px';
         btn.onclick = e => {
             e.stopPropagation();
             if (item.mabn) {
@@ -3420,6 +3621,8 @@ function showDashboardBenhNhanIfNeeded() {
         btnHsba2.className = 'dr-detail-btn no-print';
         btnHsba2.style.position = 'static';
         btnHsba2.style.marginLeft = '8px';
+    btnHsba2.style.fontSize = '14px';
+    btnHsba2.style.padding = '8px 12px 8px 10px';
         btnHsba2.textContent = 'HSBA V2';
         btnHsba2.onclick = async function (e) {
             e.stopPropagation();
@@ -3594,7 +3797,7 @@ module.exports = {
     showDashboardBenhNhanIfNeeded
 };
 
-},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/loginHandler":6,"./components/modalManager":7,"./components/patientInfoSection":8,"./components/phauThuatHandlers":9,"./components/sidebarSession":10,"./dashboard.support":13,"./services/apiService":15,"./services/checklistService":16,"./services/patientService":17,"./services/reportService":18,"./utils":23,"./utils/checklistUtils":24,"./utils/khoaUtils":26,"./utils/patientDataMapper":27,"./utils/surgeryUtils":28,"./utils/tagUtils":29,"./utils/uiUtils":30}],13:[function(require,module,exports){
+},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/listView":6,"./components/loginHandler":7,"./components/modalManager":8,"./components/patientInfoSection":9,"./components/phauThuatHandlers":10,"./components/sidebarSession":11,"./dashboard.support":14,"./services/apiService":16,"./services/checklistService":17,"./services/patientService":18,"./services/reportService":19,"./utils":24,"./utils/checklistUtils":25,"./utils/khoaUtils":27,"./utils/patientDataMapper":28,"./utils/surgeryUtils":29,"./utils/tagUtils":30,"./utils/uiUtils":31}],14:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('./services/reportService');
@@ -3914,20 +4117,150 @@ function addGlobalStyles() {
             /* Ensure content is not hidden behind fixed bottom bar */
             padding-bottom: 90px; 
         }
-        .dr-card { 
-            background: #fff; 
-            border-radius: 20px; 
-            box-shadow: 0 2px 12px rgba(0,0,0,0.10); 
-            padding: 24px 20px 50px 20px; 
-            min-width: 260px; 
-            max-width: 320px; 
-            flex: 1 1 260px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: flex-start; 
-            position: relative; 
-            border: 2px solid #e3e3e3; 
-            cursor: pointer; 
+        /* List view container and rows */
+        .dr-list-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            padding: 10px 12px 90px 12px; /* keep room for bottom bar */
+        }
+        @media (min-width: 1200px) {
+            .dr-list-container {
+                grid-template-columns: 1fr 1fr; /* 2 columns on large screens */
+            }
+        }
+        .dr-list-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 12px 10px 12px; /* extra top space for badge */
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+            cursor: pointer;
+            min-height: 60px;
+            position: relative; /* anchor for corner badges */
+        }
+        .dr-list-row:hover {
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.10);
+            border-color: #cbd5e1;
+        }
+        .dr-list-title {
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-bottom: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .dr-list-sub {
+            color: #64748b;
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .dr-list-dx {
+            color: #0f172a;
+            font-size: 13px;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            max-height: 2.8em;
+        }
+        /* Compact tags inside list rows */
+        .dr-list-row .ylenh-tags {
+            margin: 6px 0 0 0;
+            gap: 4px;
+        }
+        .dr-list-row .ylenh-tag {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            line-height: 1.15;
+        }
+        .dr-list-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 10px;
+            flex-shrink: 0;
+            position: relative; /* anchor for inline badge */
+        }
+        .dr-btn-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            background: linear-gradient(180deg, #1e88e5, #1976d2);
+            box-shadow: 0 1px 2px rgba(25, 118, 210, 0.15);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+        }
+        .dr-btn-icon:hover { transform: translateY(-1px); filter: brightness(1.03); box-shadow: 0 4px 10px rgba(25,118,210,0.22); }
+        .dr-btn-icon:active { transform: translateY(0); box-shadow: 0 2px 6px rgba(25,118,210,0.18); }
+        .dr-btn-icon svg { width: 16px; height: 16px; }
+        .dr-badge-meds-inline {
+            background: #16a34a;
+            color: #fff;
+            font-weight: 700;
+            font-size: 11px;
+            border-radius: 999px;
+            padding: 2px 8px;
+            line-height: 1.2;
+            box-shadow: 0 1px 2px rgba(22,163,74,0.2);
+            white-space: nowrap;
+            position: absolute;
+            top: -8px;
+            right: -6px;
+            pointer-events: none;
+        }
+        .dr-badge-meds-row-corner {
+            position: absolute;
+            top: -8px;
+            left: -6px;
+            background: #16a34a;
+            color: #fff;
+            font-weight: 800;
+            font-size: 10px;
+            border-radius: 999px;
+            padding: 3px 8px;
+            line-height: 1;
+            box-shadow: 0 1px 3px rgba(22,163,74,0.25);
+            pointer-events: none;
+            z-index: 2;
+        }
+        /* Unify HXT typography */
+        .dr-hxt-block { color: #0f172a; font-size: 13px; line-height: 1.35; }
+        .dr-hxt-block .dr-label { color: #0f172a; font-weight: 700; }
+        @media (max-width: 600px) {
+        .dr-list-row { padding: 12px 10px 8px 10px; gap: 10px; }
+            .dr-list-title { font-size: 14px; }
+            .dr-list-sub { font-size: 11px; }
+            .dr-list-dx { font-size: 12px; -webkit-line-clamp: 2; }
+            .dr-btn-icon { width: 30px; height: 30px; border-radius: 8px; }
+            .dr-btn-icon svg { width: 14px; height: 14px; }
+        }
+            .dr-card { 
+                background: #ffffff; 
+                border-radius: 20px; 
+                box-shadow: 0 2px 12px rgba(0,0,0,0.10); 
+                padding: 24px 20px 50px 20px; 
+                min-width: 260px; 
+                max-width: 320px; 
+                flex: 1 1 260px; 
+                display: flex; 
+                flex-direction: column; 
+                align-items: flex-start; 
+                position: relative; 
+                border: 2px solid #e3e3e3; 
+                cursor: pointer; 
         }
         .dr-card.dr-blue { 
             background: #e3f2fd; 
@@ -3967,10 +4300,12 @@ function addGlobalStyles() {
             display: flex; 
             align-items: center; 
             box-shadow: 0 2px 6px rgba(25,118,210,0.10); 
+            white-space: nowrap;
         }
-        .dr-card .dr-detail-btn svg { 
-            margin-right: 4px; 
-        }
+            .dr-card .dr-detail-btn svg { 
+                margin-right: 4px; 
+                width: 16px; height: 16px;
+            }
         .dr-total { 
             text-align: center; 
             font-size: 1.1em; 
@@ -4015,6 +4350,20 @@ function addGlobalStyles() {
                 flex-direction: column; 
                 align-items: center; 
             }
+            /* Card action buttons: smaller on phones */
+            .dr-card .dr-detail-btn {
+                padding: 6px 10px 6px 8px;
+                font-size: 12px;
+                border-radius: 16px;
+            }
+            .dr-card .dr-detail-btn svg { width: 14px; height: 14px; margin-right: 4px; }
+            /* Action group spacing and positioning */
+            .dr-action-buttons { gap: 6px !important; right: 10px !important; bottom: 8px !important; }
+            /* Icon-only copy button (inline style width/height) shrink */
+            .dr-action-buttons .dr-detail-btn[title="Copy báo cáo (1 BN)"] {
+                width: 30px !important; height: 30px !important; padding: 6px !important; border-radius: 8px !important;
+            }
+            .dr-action-buttons .dr-detail-btn[title="Copy báo cáo (1 BN)"] svg { width: 14px; height: 14px; }
         }
         #dr-sidebar-backdrop {
             position: fixed;
@@ -4200,7 +4549,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"./components/dialogManager":5,"./services/apiService":15,"./services/reportService":18,"./utils/dateUtils":25}],14:[function(require,module,exports){
+},{"./components/dialogManager":5,"./services/apiService":16,"./services/reportService":19,"./utils/dateUtils":26}],15:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -4286,7 +4635,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -4443,7 +4792,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":26}],16:[function(require,module,exports){
+},{"../utils/khoaUtils":27}],17:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -4711,7 +5060,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":25,"./apiService":15,"./saveQueue":19}],17:[function(require,module,exports){
+},{"../utils/dateUtils":26,"./apiService":16,"./saveQueue":20}],18:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../dashboard.support');
@@ -4940,7 +5289,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":6,"../dashboard.support":13,"../utils/patientDataMapper":27,"./checklistService":16}],18:[function(require,module,exports){
+},{"../components/loginHandler":7,"../dashboard.support":14,"../utils/patientDataMapper":28,"./checklistService":17}],19:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -5143,7 +5492,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":25,"../utils/patientDataMapper":27,"../utils/surgeryUtils":28,"./checklistService":16}],19:[function(require,module,exports){
+},{"../utils/dateUtils":26,"../utils/patientDataMapper":28,"../utils/surgeryUtils":29,"./checklistService":17}],20:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -5207,7 +5556,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -5349,7 +5698,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":26,"./apiService":15}],21:[function(require,module,exports){
+},{"../utils/khoaUtils":27,"./apiService":16}],22:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('./services/settingsService');
@@ -5504,7 +5853,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"./services/apiService":15,"./services/settingsService":20}],22:[function(require,module,exports){
+},{"./services/apiService":16,"./services/settingsService":21}],23:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('./services/settingsService');
@@ -5837,7 +6186,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"./components/autoLoginToggle":4,"./services/settingsService":20,"./settings-open-world":21}],23:[function(require,module,exports){
+},{"./components/autoLoginToggle":4,"./services/settingsService":21,"./settings-open-world":22}],24:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -5932,7 +6281,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -6092,7 +6441,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":16,"./uiUtils":30}],25:[function(require,module,exports){
+},{"../services/checklistService":17,"./uiUtils":31}],26:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -6172,7 +6521,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -6188,7 +6537,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -6426,7 +6775,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],28:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -6499,6 +6848,10 @@ function addSurgeryStatusIcon(card, item) {
     if (existingIcon) {
         existingIcon.remove();
     }
+    // Do not show icon for list view rows
+    try {
+        if (card && card.classList && card.classList.contains('dr-list-row')) return;
+    } catch (_) {}
     
     // Get surgery date from item
     let surgeryDate = null;
@@ -6695,7 +7048,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -6798,8 +7151,26 @@ function hasMedsDoneToday(patient) {
 function updateMedsDoneBadge(card, patient) {
     try {
         if (!card) return;
-        const existed = card.querySelector('.dr-badge-meds-done');
         const shouldShow = hasMedsDoneToday(patient);
+
+        // List view: manage inline badge inside actions, do not use absolute badge
+        if (card.classList.contains('dr-list-row')) {
+            let corner = card.querySelector('.dr-badge-meds-row-corner');
+            if (shouldShow) {
+                if (!corner) {
+                    corner = document.createElement('span');
+                    corner.className = 'dr-badge-meds-row-corner';
+                    corner.textContent = 'Đã đánh thuốc';
+                    card.appendChild(corner);
+                }
+            } else if (corner) {
+                corner.remove();
+            }
+            return;
+        }
+
+        // Card view: original absolute badge behavior
+        const existed = card.querySelector('.dr-badge-meds-done');
         if (shouldShow) {
             if (!existed) {
                 const badge = document.createElement('div');
@@ -6872,22 +7243,17 @@ function updatePatientCardTags(patientMabn) {
         return;
     }
 
-    // Try multiple selectors to find the patient card
-    console.log('Looking for patient card with mabn:', patientMabn);
-    
-    // Look for cards that contain this patient's mabn
-    const allCards = document.querySelectorAll('.dr-card');
-    console.log('Found total cards:', allCards.length);
-    
-    let targetCard = null;
-    allCards.forEach((card, index) => {
-        const cardText = card.textContent || card.innerText || '';
-        console.log(`Card ${index} text snippet:`, cardText.substring(0, 100));
-        if (cardText.includes(patientMabn)) {
-            targetCard = card;
-            console.log('Found matching card at index:', index);
-        }
-    });
+    // Prefer data-mabn matching on both card and list rows
+    console.log('Looking for patient element (card or row) with mabn:', patientMabn);
+    let targetCard = document.querySelector(`.dr-card[data-mabn="${patientMabn}"]`) || document.querySelector(`.dr-list-row[data-mabn="${patientMabn}"]`);
+    if (!targetCard) {
+        // Fallback: scan text in .dr-card only (legacy)
+        const allCards = document.querySelectorAll('.dr-card');
+        allCards.forEach((card) => {
+            const cardText = card.textContent || card.innerText || '';
+            if (cardText.includes(patientMabn)) targetCard = card;
+        });
+    }
 
     if (!targetCard) {
         console.log('Patient card not found in DOM for:', patientMabn);
@@ -6901,14 +7267,7 @@ function updatePatientCardTags(patientMabn) {
 
     console.log('Found patient card for:', patientMabn);
     
-    // Find the action buttons container within this card
-    const actionButtons = targetCard.querySelector('.dr-action-buttons');
-    if (!actionButtons) {
-        console.log('No .dr-action-buttons found in target card');
-        return;
-    }
-    
-    // Remove existing tags from anywhere in the card
+    // Remove existing tags from anywhere in the element
     const existingTags = targetCard.querySelector('.ylenh-tags');
     if (existingTags) {
         existingTags.remove();
@@ -6918,9 +7277,18 @@ function updatePatientCardTags(patientMabn) {
     // Create new tags
     const tagsHtml = createYLenhTags(patient);
     if (tagsHtml) {
-        // Insert tags before the action buttons
-        actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
-        console.log('Inserted new tags before actions container');
+        // Insert tags appropriately
+        let placed = false;
+        const actionButtons = targetCard.querySelector('.dr-action-buttons');
+        if (actionButtons) {
+            actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
+            placed = true;
+        }
+        if (!placed) {
+            const left = targetCard.querySelector(':scope > div');
+            if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
+            else targetCard.insertAdjacentHTML('beforeend', tagsHtml);
+        }
         // Update dataset flags for filters (today only)
         try {
             const today = new Date();
@@ -6975,7 +7343,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],30:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],31:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

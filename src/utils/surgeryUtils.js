@@ -70,6 +70,10 @@ function addSurgeryStatusIcon(card, item) {
     if (existingIcon) {
         existingIcon.remove();
     }
+    // Do not show icon for list view rows
+    try {
+        if (card && card.classList && card.classList.contains('dr-list-row')) return;
+    } catch (_) {}
     
     // Get surgery date from item
     let surgeryDate = null;

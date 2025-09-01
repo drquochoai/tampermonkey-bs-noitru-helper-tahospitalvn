@@ -100,8 +100,26 @@ function hasMedsDoneToday(patient) {
 function updateMedsDoneBadge(card, patient) {
     try {
         if (!card) return;
-        const existed = card.querySelector('.dr-badge-meds-done');
         const shouldShow = hasMedsDoneToday(patient);
+
+        // List view: manage inline badge inside actions, do not use absolute badge
+        if (card.classList.contains('dr-list-row')) {
+            let corner = card.querySelector('.dr-badge-meds-row-corner');
+            if (shouldShow) {
+                if (!corner) {
+                    corner = document.createElement('span');
+                    corner.className = 'dr-badge-meds-row-corner';
+                    corner.textContent = 'Đã đánh thuốc';
+                    card.appendChild(corner);
+                }
+            } else if (corner) {
+                corner.remove();
+            }
+            return;
+        }
+
+        // Card view: original absolute badge behavior
+        const existed = card.querySelector('.dr-badge-meds-done');
         if (shouldShow) {
             if (!existed) {
                 const badge = document.createElement('div');
@@ -174,22 +192,17 @@ function updatePatientCardTags(patientMabn) {
         return;
     }
 
-    // Try multiple selectors to find the patient card
-    console.log('Looking for patient card with mabn:', patientMabn);
-    
-    // Look for cards that contain this patient's mabn
-    const allCards = document.querySelectorAll('.dr-card');
-    console.log('Found total cards:', allCards.length);
-    
-    let targetCard = null;
-    allCards.forEach((card, index) => {
-        const cardText = card.textContent || card.innerText || '';
-        console.log(`Card ${index} text snippet:`, cardText.substring(0, 100));
-        if (cardText.includes(patientMabn)) {
-            targetCard = card;
-            console.log('Found matching card at index:', index);
-        }
-    });
+    // Prefer data-mabn matching on both card and list rows
+    console.log('Looking for patient element (card or row) with mabn:', patientMabn);
+    let targetCard = document.querySelector(`.dr-card[data-mabn="${patientMabn}"]`) || document.querySelector(`.dr-list-row[data-mabn="${patientMabn}"]`);
+    if (!targetCard) {
+        // Fallback: scan text in .dr-card only (legacy)
+        const allCards = document.querySelectorAll('.dr-card');
+        allCards.forEach((card) => {
+            const cardText = card.textContent || card.innerText || '';
+            if (cardText.includes(patientMabn)) targetCard = card;
+        });
+    }
 
     if (!targetCard) {
         console.log('Patient card not found in DOM for:', patientMabn);
@@ -203,14 +216,7 @@ function updatePatientCardTags(patientMabn) {
 
     console.log('Found patient card for:', patientMabn);
     
-    // Find the action buttons container within this card
-    const actionButtons = targetCard.querySelector('.dr-action-buttons');
-    if (!actionButtons) {
-        console.log('No .dr-action-buttons found in target card');
-        return;
-    }
-    
-    // Remove existing tags from anywhere in the card
+    // Remove existing tags from anywhere in the element
     const existingTags = targetCard.querySelector('.ylenh-tags');
     if (existingTags) {
         existingTags.remove();
@@ -220,9 +226,18 @@ function updatePatientCardTags(patientMabn) {
     // Create new tags
     const tagsHtml = createYLenhTags(patient);
     if (tagsHtml) {
-        // Insert tags before the action buttons
-        actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
-        console.log('Inserted new tags before actions container');
+        // Insert tags appropriately
+        let placed = false;
+        const actionButtons = targetCard.querySelector('.dr-action-buttons');
+        if (actionButtons) {
+            actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
+            placed = true;
+        }
+        if (!placed) {
+            const left = targetCard.querySelector(':scope > div');
+            if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
+            else targetCard.insertAdjacentHTML('beforeend', tagsHtml);
+        }
         // Update dataset flags for filters (today only)
         try {
             const today = new Date();

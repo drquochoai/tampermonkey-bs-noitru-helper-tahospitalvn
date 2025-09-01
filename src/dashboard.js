@@ -82,6 +82,7 @@ function showDashboardBenhNhanIfNeeded() {
                 transition: all 0.18s ease;
             }
             .dr-sidebar-actions .dr-detail-btn svg { width: 18px; height: 18px; }
+            .dr-sidebar-actions .dr-detail-btn img { width: 18px; height: 18px; object-fit: contain; display: block; }
             .dr-sidebar-actions .dr-detail-btn:hover {
                 transform: translateY(-1px);
                 box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
@@ -216,6 +217,22 @@ function showDashboardBenhNhanIfNeeded() {
                 width: 18px;
                 height: 18px;
                 border-radius: 50%;
+
+            /* Mobile tweaks: reduce padding and icon size on narrow screens */
+            @media (max-width: 600px) {
+                .dr-sidebar-actions { gap: 6px !important; }
+                .dr-sidebar-actions .dr-detail-btn {
+                    gap: 6px;
+                    padding: 8px 10px;
+                    border-radius: 10px;
+                    font-size: 12px;
+                    line-height: 1.1;
+                }
+                .dr-sidebar-actions .dr-detail-btn svg,
+                .dr-sidebar-actions .dr-detail-btn img {
+                    width: 14px; height: 14px;
+                }
+            }
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -871,17 +888,28 @@ function showDashboardBenhNhanIfNeeded() {
             <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
                 <input id="dr-filter-rutodl" type="checkbox"> Rút ODL
             </label>
+            <button id="dr-view-toggle" title="Đổi chế độ hiển thị" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;white-space:nowrap;">Chế độ: <b><span id="dr-view-label"></span></b></button>
             <span id="dr-filter-count" style="color:#1976d2; font-weight:bold;"></span>
             <span id="dr-total-compact" style="color:#0f172a; font-weight:600; white-space:nowrap;"></span>
         `;
 
     const container = document.createElement('div');
-        container.className = 'dr-card-list';
-    // Safety padding in case styles load late
-    container.style.paddingBottom = '90px';
+        // View state
+        const VIEW_KEY = 'dr-card-view';
+        const view = (localStorage.getItem(VIEW_KEY) || 'grid');
+        const viewLabelEl = topBar.querySelector('#dr-view-label');
+        const setViewLabel = () => { if (viewLabelEl) viewLabelEl.textContent = (localStorage.getItem(VIEW_KEY) || 'grid') === 'list' ? 'Danh sách' : 'Lưới'; };
+        if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
+        container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
+        // Safety padding in case styles load late
+        container.style.paddingBottom = '90px';
         
+    const renderItemGrid = (item) => createPatientCard(item);
+    const { createListRow } = require('./components/listView');
+    const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
+        const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
-            const card = createPatientCard(item);
+            const card = renderer(item);
             // mark useful attributes for filtering
             if (item && item.mabn) card.setAttribute('data-mabn', item.mabn);
             if (item && item.hoten) card.setAttribute('data-name', (item.hoten || '').toLowerCase());
@@ -923,7 +951,7 @@ function showDashboardBenhNhanIfNeeded() {
             container.appendChild(card);
         });
         
-        // Append top bar then container
+    // Append top bar then container
         document.body.appendChild(topBar);
         document.body.appendChild(container);
         
@@ -944,7 +972,7 @@ function showDashboardBenhNhanIfNeeded() {
             const onlyODL = !!chkRutODL.checked;
             let visible = 0;
 
-            const cards = container.querySelectorAll('.dr-card');
+            const cards = container.querySelectorAll('.dr-card, .dr-list-row');
             cards.forEach(card => {
                 const txt = card.textContent.toLowerCase();
                 const matchesText = q === '' || txt.includes(q) ||
@@ -972,7 +1000,8 @@ function showDashboardBenhNhanIfNeeded() {
     chkCanLamSang.addEventListener('change', applyFilter);
     chkRutODL.addEventListener('change', applyFilter);
 
-    // Initialize compact total and run first filter
+    // Initialize view label, compact total and run first filter
+    setViewLabel();
     const totalCompactInit = document.getElementById('dr-total-compact');
     if (totalCompactInit) totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
     applyFilter();
@@ -987,7 +1016,7 @@ function showDashboardBenhNhanIfNeeded() {
             }
         } catch (_) {}
 
-        const refreshPatientCards = function(newData) {
+    const refreshPatientCards = function(newData) {
             const sortedNewData = PatientDataMapper.sortPatients([...newData]);
             
             // Update existing cards instead of full re-render to avoid interrupting user
@@ -1036,11 +1065,19 @@ function showDashboardBenhNhanIfNeeded() {
                             const div = document.createElement('div');
                             div.className = 'dr-value dr-hxt-block';
                             div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
-                            const ptInfoEl = card.querySelector('.dr-pt-info');
-                            const cdEl = card.querySelector('.dr-value');
-                            if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
-                            else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
-                            else card.insertAdjacentElement('afterbegin', div);
+                            if (card.classList.contains('dr-card')) {
+                                // Card view: after pt-info then after diagnosis
+                                const ptInfoEl = card.querySelector('.dr-pt-info');
+                                const cdEl = card.querySelector('.dr-diagnosis-line');
+                                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                                else card.insertAdjacentElement('afterbegin', div);
+                            } else {
+                                // List row: always under diagnosis
+                                const dxEl = card.querySelector('.dr-list-dx');
+                                if (dxEl) dxEl.insertAdjacentElement('afterend', div);
+                                else card.insertAdjacentElement('afterbegin', div);
+                            }
                         }
                     }
                     
@@ -1055,10 +1092,19 @@ function showDashboardBenhNhanIfNeeded() {
                         // Add new tags if any
                         const tagsHtml = createYLenhTags(item);
                         if (tagsHtml) {
-                            const btnGroup = card.querySelector('.dr-action-buttons');
-                            if (btnGroup) {
-                                btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
-                                console.log('Updated y lệnh tags for card:', item.mabn);
+                            // In card view, insert before action buttons; in list view, append after left block
+                            let inserted = false;
+                            if (card.classList.contains('dr-card')) {
+                                const btnGroup = card.querySelector('.dr-action-buttons');
+                                if (btnGroup) {
+                                    btnGroup.insertAdjacentHTML('beforebegin', tagsHtml);
+                                    inserted = true;
+                                }
+                            }
+                            if (!inserted) {
+                                const left = card.querySelector(':scope > div');
+                                if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
+                                else card.insertAdjacentHTML('beforeend', tagsHtml);
                             }
                         }
                         // Update meds-done badge on the card
@@ -1087,6 +1133,18 @@ function showDashboardBenhNhanIfNeeded() {
         } else {
             globalThis.refreshPatientCards = refreshPatientCards;
             globalThis.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
+        }
+
+        // Wire view toggle button
+        const toggleBtn = topBar.querySelector('#dr-view-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const cur = localStorage.getItem('dr-card-view') || 'grid';
+                const next = cur === 'list' ? 'grid' : 'list';
+                localStorage.setItem('dr-card-view', next);
+                setViewLabel();
+                try { window.location.reload(); } catch(_) { }
+            });
         }
     }
 
@@ -1149,6 +1207,8 @@ function showDashboardBenhNhanIfNeeded() {
         return card;
     }
 
+    // List view row now lives in components/listView.js
+
     // Safely escape HTML for rendering user-entered HXT
     function escapeHtml(str) {
         return String(str)
@@ -1164,10 +1224,11 @@ function showDashboardBenhNhanIfNeeded() {
     function updatePatientCardHXT(patient) {
         try {
             if (!patient || !patient.mabn) return;
-            // Prefer matching by data attribute for accuracy
-            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`);
+            // Prefer matching by data attribute for accuracy (card or list row)
+            let targetCard = document.querySelector(`.dr-card[data-mabn="${patient.mabn}"]`) 
+                            || document.querySelector(`.dr-list-row[data-mabn="${patient.mabn}"]`);
             if (!targetCard) {
-                // Fallback: text search
+                // Fallback: text search in cards only
                 const allCards = document.querySelectorAll('.dr-card');
                 allCards.forEach(card => {
                     const txt = card.textContent || card.innerText || '';
@@ -1183,12 +1244,19 @@ function showDashboardBenhNhanIfNeeded() {
                 const div = document.createElement('div');
                 div.className = 'dr-value dr-hxt-block';
                 div.innerHTML = `<span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}`;
-                // Insert after ptInfo if present, else after diagnosis
-                const ptInfoEl = targetCard.querySelector('.dr-pt-info');
-                const cdEl = targetCard.querySelector('.dr-value');
-                if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
-                else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
-                else targetCard.insertAdjacentElement('afterbegin', div);
+                if (targetCard.classList.contains('dr-card')) {
+                    // Card view: after ptInfo then after diagnosis line
+                    const ptInfoEl = targetCard.querySelector('.dr-pt-info');
+                    const cdEl = targetCard.querySelector('.dr-diagnosis-line');
+                    if (ptInfoEl) ptInfoEl.insertAdjacentElement('afterend', div);
+                    else if (cdEl) cdEl.insertAdjacentElement('afterend', div);
+                    else targetCard.insertAdjacentElement('afterbegin', div);
+                } else {
+                    // List view: place under diagnosis summary
+                    const dxEl = targetCard.querySelector('.dr-list-dx');
+                    if (dxEl) dxEl.insertAdjacentElement('afterend', div);
+                    else targetCard.insertAdjacentElement('afterbegin', div);
+                }
             }
         } catch (_) {}
     }
@@ -1287,6 +1355,9 @@ function showDashboardBenhNhanIfNeeded() {
         btn.className = 'dr-detail-btn no-print';
         btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24"><path fill="#fff" d="M12 5c-7 0-10 7-10 7s3 7 10 7 10-7 10-7-3-7-10-7zm0 12c-4.97 0-8.19-4.16-8.94-5C3.81 10.16 7.03 6 12 6s8.19 4.16 8.94 5c-.75.84-3.97 5-8.94 5zm0-8a3 3 0 100 6 3 3 0 000-6zm0 4a1 1 0 110-2 1 1 0 010 2z"/></svg>Tờ điều trị`;
         btn.style.position = 'static';
+    // Mobile-friendly sizing via inline CSS var that can be overridden by media queries
+    btn.style.fontSize = '14px';
+    btn.style.padding = '8px 12px 8px 10px';
         btn.onclick = e => {
             e.stopPropagation();
             if (item.mabn) {
@@ -1302,6 +1373,8 @@ function showDashboardBenhNhanIfNeeded() {
         btnHsba2.className = 'dr-detail-btn no-print';
         btnHsba2.style.position = 'static';
         btnHsba2.style.marginLeft = '8px';
+    btnHsba2.style.fontSize = '14px';
+    btnHsba2.style.padding = '8px 12px 8px 10px';
         btnHsba2.textContent = 'HSBA V2';
         btnHsba2.onclick = async function (e) {
             e.stopPropagation();

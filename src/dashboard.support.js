@@ -317,20 +317,150 @@ function addGlobalStyles() {
             /* Ensure content is not hidden behind fixed bottom bar */
             padding-bottom: 90px; 
         }
-        .dr-card { 
-            background: #fff; 
-            border-radius: 20px; 
-            box-shadow: 0 2px 12px rgba(0,0,0,0.10); 
-            padding: 24px 20px 50px 20px; 
-            min-width: 260px; 
-            max-width: 320px; 
-            flex: 1 1 260px; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: flex-start; 
-            position: relative; 
-            border: 2px solid #e3e3e3; 
-            cursor: pointer; 
+        /* List view container and rows */
+        .dr-list-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            padding: 10px 12px 90px 12px; /* keep room for bottom bar */
+        }
+        @media (min-width: 1200px) {
+            .dr-list-container {
+                grid-template-columns: 1fr 1fr; /* 2 columns on large screens */
+            }
+        }
+        .dr-list-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 12px 10px 12px; /* extra top space for badge */
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.04);
+            cursor: pointer;
+            min-height: 60px;
+            position: relative; /* anchor for corner badges */
+        }
+        .dr-list-row:hover {
+            box-shadow: 0 4px 10px rgba(15, 23, 42, 0.10);
+            border-color: #cbd5e1;
+        }
+        .dr-list-title {
+            font-weight: 700;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-bottom: 2px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .dr-list-sub {
+            color: #64748b;
+            font-weight: 600;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        .dr-list-dx {
+            color: #0f172a;
+            font-size: 13px;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            max-height: 2.8em;
+        }
+        /* Compact tags inside list rows */
+        .dr-list-row .ylenh-tags {
+            margin: 6px 0 0 0;
+            gap: 4px;
+        }
+        .dr-list-row .ylenh-tag {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            line-height: 1.15;
+        }
+        .dr-list-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 10px;
+            flex-shrink: 0;
+            position: relative; /* anchor for inline badge */
+        }
+        .dr-btn-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1px solid #cbd5e1;
+            background: linear-gradient(180deg, #1e88e5, #1976d2);
+            box-shadow: 0 1px 2px rgba(25, 118, 210, 0.15);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+        }
+        .dr-btn-icon:hover { transform: translateY(-1px); filter: brightness(1.03); box-shadow: 0 4px 10px rgba(25,118,210,0.22); }
+        .dr-btn-icon:active { transform: translateY(0); box-shadow: 0 2px 6px rgba(25,118,210,0.18); }
+        .dr-btn-icon svg { width: 16px; height: 16px; }
+        .dr-badge-meds-inline {
+            background: #16a34a;
+            color: #fff;
+            font-weight: 700;
+            font-size: 11px;
+            border-radius: 999px;
+            padding: 2px 8px;
+            line-height: 1.2;
+            box-shadow: 0 1px 2px rgba(22,163,74,0.2);
+            white-space: nowrap;
+            position: absolute;
+            top: -8px;
+            right: -6px;
+            pointer-events: none;
+        }
+        .dr-badge-meds-row-corner {
+            position: absolute;
+            top: -8px;
+            left: -6px;
+            background: #16a34a;
+            color: #fff;
+            font-weight: 800;
+            font-size: 10px;
+            border-radius: 999px;
+            padding: 3px 8px;
+            line-height: 1;
+            box-shadow: 0 1px 3px rgba(22,163,74,0.25);
+            pointer-events: none;
+            z-index: 2;
+        }
+        /* Unify HXT typography */
+        .dr-hxt-block { color: #0f172a; font-size: 13px; line-height: 1.35; }
+        .dr-hxt-block .dr-label { color: #0f172a; font-weight: 700; }
+        @media (max-width: 600px) {
+        .dr-list-row { padding: 12px 10px 8px 10px; gap: 10px; }
+            .dr-list-title { font-size: 14px; }
+            .dr-list-sub { font-size: 11px; }
+            .dr-list-dx { font-size: 12px; -webkit-line-clamp: 2; }
+            .dr-btn-icon { width: 30px; height: 30px; border-radius: 8px; }
+            .dr-btn-icon svg { width: 14px; height: 14px; }
+        }
+            .dr-card { 
+                background: #ffffff; 
+                border-radius: 20px; 
+                box-shadow: 0 2px 12px rgba(0,0,0,0.10); 
+                padding: 24px 20px 50px 20px; 
+                min-width: 260px; 
+                max-width: 320px; 
+                flex: 1 1 260px; 
+                display: flex; 
+                flex-direction: column; 
+                align-items: flex-start; 
+                position: relative; 
+                border: 2px solid #e3e3e3; 
+                cursor: pointer; 
         }
         .dr-card.dr-blue { 
             background: #e3f2fd; 
@@ -370,10 +500,12 @@ function addGlobalStyles() {
             display: flex; 
             align-items: center; 
             box-shadow: 0 2px 6px rgba(25,118,210,0.10); 
+            white-space: nowrap;
         }
-        .dr-card .dr-detail-btn svg { 
-            margin-right: 4px; 
-        }
+            .dr-card .dr-detail-btn svg { 
+                margin-right: 4px; 
+                width: 16px; height: 16px;
+            }
         .dr-total { 
             text-align: center; 
             font-size: 1.1em; 
@@ -418,6 +550,20 @@ function addGlobalStyles() {
                 flex-direction: column; 
                 align-items: center; 
             }
+            /* Card action buttons: smaller on phones */
+            .dr-card .dr-detail-btn {
+                padding: 6px 10px 6px 8px;
+                font-size: 12px;
+                border-radius: 16px;
+            }
+            .dr-card .dr-detail-btn svg { width: 14px; height: 14px; margin-right: 4px; }
+            /* Action group spacing and positioning */
+            .dr-action-buttons { gap: 6px !important; right: 10px !important; bottom: 8px !important; }
+            /* Icon-only copy button (inline style width/height) shrink */
+            .dr-action-buttons .dr-detail-btn[title="Copy báo cáo (1 BN)"] {
+                width: 30px !important; height: 30px !important; padding: 6px !important; border-radius: 8px !important;
+            }
+            .dr-action-buttons .dr-detail-btn[title="Copy báo cáo (1 BN)"] svg { width: 14px; height: 14px; }
         }
         #dr-sidebar-backdrop {
             position: fixed;

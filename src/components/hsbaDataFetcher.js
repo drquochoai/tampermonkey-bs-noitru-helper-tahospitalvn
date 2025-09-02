@@ -19,6 +19,9 @@ Notes
 */
 
 const DialogManager = require('./dialogManager');
+const BS_CAI_DAT = (() => {
+	try { return require('../BS_CAI_DAT_GIAO_DIEN'); } catch(_) { return (typeof window !== 'undefined' && window.BS_CAI_DAT) ? window.BS_CAI_DAT : {}; }
+})();
 
 // Track opened HSBA tabs by patient id to auto-close after data arrives
 const HSBA_OPEN_TABS = new Map();
@@ -46,18 +49,8 @@ function closeOpenedTab(pid, reason = 'done') {
 	HSBA_OPEN_TABS.delete(pid);
 }
 
-// Allowed document names to keep from HSBA response
-const ALLOWED_TENMAU = new Set([
-	'Phiếu khám bệnh vào viện',
-	'Phiếu khám tiền mê',
-	'Biên bản hội chẩn duyệt mổ',
-	'Phiếu khám chuyên khoa',
-	'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí',
-	'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức',
-    'Phiếu tường trình phẫu thuật, thủ thuật',
-    'Phiếu khám bệnh',
-    'Toa thuốc ngoại trú'
-]);
+// Allowed document names to keep from HSBA response (configured in BS_CAI_DAT)
+const HSBA_ALLOWED_TENMAU = new Set(Array.isArray(BS_CAI_DAT.HSBA_ALLOWED_TENMAU) ? BS_CAI_DAT.HSBA_ALLOWED_TENMAU : []);
 
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
@@ -132,7 +125,7 @@ async function getHSBAV2Link(mabn) {
 	}
 }
 
-function renderResult(container, result) {
+function renderResult(container, result, ctx = {}) {
 	// Render only filtered data (documents with allowed "tenmau")
 	container.innerHTML = '';
 	try { console.log('[DR][HSBA] filtered result received:', result); } catch(_) {}
@@ -141,7 +134,9 @@ function renderResult(container, result) {
 		return;
 	}
 	const hs = result.data.hoSoBenhAns;
-	const items = Array.isArray(hs.items) ? hs.items : [];
+	const rawItems = Array.isArray(hs.items) ? hs.items : [];
+	// Filter: skip episodes with hoten === null (do not display)
+	const items = rawItems.filter(it => it && it.hoten != null);
 	// Count only valid, displayable docs (have tenfile or fileName)
 	const docCount = items.reduce((sum, it) => sum + (Array.isArray(it.hoSoChiTiet) ? it.hoSoChiTiet.reduce((s, g) => s + (Array.isArray(g.chiTiets) ? g.chiTiets.filter(x => (x && (x.tenfile || x.fileName) && x.tenmau)).length : 0), 0) : 0), 0);
 	const summary = createEl('div', { style: { marginBottom: '8px' } }, [
@@ -159,10 +154,10 @@ function renderResult(container, result) {
 	if (it.tenkp) headerParts.push(it.tenkp);
 	const ngayVaoDt = parseDateSafe(it.ngayvao);
 	const ngayVaoStr = formatDateDDMMYYYY(ngayVaoDt);
-	const header = createEl('div', { className: 'dr-hsba-episode-title', style: { fontWeight: '700', margin: '8px 0 6px', color: '#0f172a' } }, headerParts.concat(ngayVaoStr ? [ngayVaoStr] : []).join(' - '));
+	const header = createEl('div', { className: 'dr-hsba-episode-title', style: { fontWeight: '700', margin: '8px 0 6px', color: '#fff', background: '#1976d2' } }, headerParts.concat(ngayVaoStr ? [ngayVaoStr] : []).join(' - '));
 		outer.appendChild(header);
 		const groups = Array.isArray(it.hoSoChiTiet) ? it.hoSoChiTiet : [];
-		groups.forEach(g => {
+	groups.forEach(g => {
 			const rawDocs = Array.isArray(g.chiTiets) ? g.chiTiets : [];
 			if (!rawDocs.length) return;
 			const gTitle = createEl('div', { className: 'dr-hsba-group-title', style: { fontWeight: '600', margin: '4px 0', color: '#334155' } }, `${g.tengay || g.gayid || 'Mục'}:`);
@@ -177,7 +172,7 @@ function renderResult(container, result) {
 				}))
 				.filter(d => {
 					if (!d) return false;
-					if (!d.tenmau || !ALLOWED_TENMAU.has(d.tenmau)) {
+					if (!d.tenmau || !HSBA_ALLOWED_TENMAU.has(d.tenmau)) {
 						try { console.debug('[DR][HSBA] skip doc (tenmau not allowed):', d); } catch(_) {}
 						return false;
 					}
@@ -190,9 +185,32 @@ function renderResult(container, result) {
 				.sort((a, b) => {
 					const ta = a._date ? a._date.getTime() : -Infinity;
 					const tb = b._date ? b._date.getTime() : -Infinity;
-					return ta - tb; // ascending
+					return tb - ta; // descending (newest first)
 				});
 			try { console.log('[DR][HSBA] group sorted docs:', { group: g.tengay || g.gayid, count: docs.length }); } catch(_) {}
+
+	    const openViewer = async (tenfile, tenmau, ngayDisplay) => {
+				try {
+					const patient = ctx && ctx.patient;
+					const mabn = patient && (patient.pid || patient.mabn);
+					if (!mabn) {
+						console.error('[DR][HSBA] openViewer: missing mabn');
+						return;
+					}
+					// Get a fresh HSBA V2 link with tokens (pid/s/t/site) and append hash with file to view inline
+					const baseLink = await getHSBAV2Link(mabn);
+		    const parts = [];
+		    parts.push(`dr-viewer=${encodeURIComponent(tenfile)}`);
+		    if (tenmau) parts.push(`dr-name=${encodeURIComponent(tenmau)}`);
+		    if (ngayDisplay) parts.push(`dr-date=${encodeURIComponent(ngayDisplay)}`);
+		    const hash = parts.join('&');
+		    const url = `${baseLink}${baseLink.includes('#') ? '' : '#'}${baseLink.includes('#') ? '&' : ''}${hash}`;
+		    console.log('[DR][HSBA] opening inline viewer:', { mabn, tenfile, tenmau, ngayDisplay, url });
+					window.open(url, '_blank');
+				} catch (err) {
+					console.error('[DR][HSBA] openViewer error:', err);
+				}
+			};
 
 			docs.forEach(d => {
 				const nd = d._date || parseDateSafe(d && d.ngay);
@@ -205,18 +223,12 @@ function renderResult(container, result) {
 					style: { cursor: 'pointer', padding: '2px 0' }
 				}, label);
 				li.addEventListener('click', () => {
-					try {
-						const tf = li.dataset.tenfile || '';
-						if (!tf) {
-							console.error('[DR][HSBA] click but missing data-tenfile');
-							return;
-						}
-						const url = `https://hsba.tahospital.vn/api/hosobenhan/download?url=${encodeURIComponent(tf)}`;
-						console.log('[DR][HSBA] opening file:', { tenfile: tf, url });
-						window.open(url, '_blank');
-					} catch (err) {
-						console.error('[DR][HSBA] open file error:', err);
+					const tf = li.dataset.tenfile || '';
+					if (!tf) {
+						console.error('[DR][HSBA] click but missing data-tenfile');
+						return;
 					}
+					openViewer(tf, d.tenmau, ngayFmt);
 				});
 				ul.appendChild(li);
 			});
@@ -281,6 +293,15 @@ function addHSBATab(rootEl, patient) {
 			className: 'btn btn-primary',
 			style: { padding: '8px 14px', borderRadius: '8px', cursor: 'pointer' }
 		}, 'Lấy HSBA từ file');
+		// When clicking the HSBA tab, auto-fetch if there is no data yet
+		btn.addEventListener('click', () => {
+			try {
+				const empty = !resultBox || (!resultBox.firstChild && !String(resultBox.textContent || '').trim());
+				if (empty) {
+					btnFetch.click();
+				}
+			} catch (_) {}
+		});
 		btnFetch.addEventListener('click', async () => {
 			// Defensive: ensure patient exists
 			const mabn = patient && (patient.pid || patient.mabn);
@@ -310,7 +331,7 @@ function addHSBATab(rootEl, patient) {
 					try {
 						const payload = typeof newVal === 'string' ? JSON.parse(newVal) : newVal;
 						try { console.log('[DR][HSBA] payload received via listener:', payload); } catch(_) {}
-						renderResult(resultBox, payload);
+						renderResult(resultBox, payload, { patient });
 						status.textContent = 'Đã lấy HSBA.';
 			// Close the background tab for this patient
 			setTimeout(() => closeOpenedTab(String(mabn), 'listener'), 300);
@@ -332,7 +353,7 @@ function addHSBATab(rootEl, patient) {
 							clearInterval(iv);
 							const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
 							try { console.log('[DR][HSBA] payload received via polling:', payload); } catch(_) {}
-							renderResult(resultBox, payload);
+							renderResult(resultBox, payload, { patient });
 							status.textContent = 'Đã lấy HSBA.';
 							// Close the background tab for this patient
 							setTimeout(() => closeOpenedTab(String(mabn), 'polling'), 300);
@@ -512,7 +533,7 @@ async function hsbaBackgroundFetcherIfNeeded() {
 															if (Array.isArray(it.hoSoChiTiet)) {
 																it.hoSoChiTiet.forEach(g => {
 																	if (Array.isArray(g.chiTiets)) {
-																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : ALLOWED_TENMAU.has(x.tenmau));
+																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : HSBA_ALLOWED_TENMAU.has(x.tenmau));
 																	}
 																});
 															}
@@ -548,6 +569,104 @@ async function hsbaBackgroundFetcherIfNeeded() {
 							site: String(site),
 							t: t
 						};
+
+						// Inline viewer: if URL hash has dr-viewer, fetch the file and render via blob URL
+						const showInlineViewer = (filePath, docName, docDate) => {
+							try {
+								const overlay = document.createElement('div');
+								overlay.id = 'dr-hsba-viewer-overlay';
+								overlay.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.75);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:0;width:100vw;height:100vh;';
+								overlay.setAttribute('role', 'dialog');
+								overlay.setAttribute('aria-modal', 'true');
+								const frameWrap = document.createElement('div');
+								frameWrap.id = 'dr-hsba-viewer-framewrap';
+								frameWrap.style.cssText = 'background:#fff;width:100vw;height:100vh;box-shadow:0 10px 30px rgba(0,0,0,0.4);border-radius:8px;display:flex;flex-direction:column;overflow:hidden;margin:0;';
+								const bar = document.createElement('div');
+								bar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:#0ea5e9;color:#fff;font-weight:700;';
+								const title = document.createElement('span');
+								title.textContent = 'Xem tài liệu HSBA';
+								const actions = document.createElement('div');
+								actions.style.cssText = 'display:flex;gap:8px;align-items:center;';
+								const btnDownload = document.createElement('button');
+								btnDownload.id = 'dr-hsba-viewer-download';
+								btnDownload.textContent = 'Tải xuống';
+								btnDownload.style.cssText = 'background:#fff;color:#0f172a;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;';
+								const prevOverflow = document.body && document.body.style ? document.body.style.overflow : '';
+								let currentBlobUrl = null;
+								const revokeUrl = () => { try { if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; } } catch(_) {} };
+								const doClose = () => { try { revokeUrl(); if (document.body) document.body.style.overflow = prevOverflow || ''; overlay.remove(); } catch(_) {} };
+								actions.appendChild(btnDownload);
+								bar.appendChild(title);
+								bar.appendChild(actions);
+								const iframe = document.createElement('iframe');
+								iframe.id = 'dr-hsba-viewer-iframe';
+								iframe.style.cssText = 'flex:1;border:0;background:#1f2937';
+								frameWrap.appendChild(bar);
+								frameWrap.appendChild(iframe);
+								overlay.appendChild(frameWrap);
+								if (document && document.body) { document.body.style.overflow = 'hidden'; }
+								(document.body || document.documentElement).appendChild(overlay);
+				// ESC disabled per requirements
+				const getFileName = () => {
+									try {
+					const sanitize = (s) => (s || '').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim();
+					const namePart = sanitize(docName || 'HSBA');
+					const datePart = sanitize(docDate || '');
+					const combined = (namePart + (datePart ? ' - ' + datePart : '')).trim() || 'hsba-document';
+					return combined + '.pdf';
+									} catch(_) { return 'hsba-document.pdf'; }
+								};
+								const fileName = getFileName();
+								const triggerDownload = () => {
+									try {
+										if (currentBlobUrl) {
+											const a = document.createElement('a');
+											a.href = currentBlobUrl;
+											a.download = fileName;
+											document.body.appendChild(a);
+											a.click();
+											a.remove();
+										} else {
+											// Fallback: navigate to API to download with credentials
+											const a = document.createElement('a');
+											a.href = '/api/hosobenhan/download?url=' + encodeURIComponent(filePath);
+											a.target = '_blank';
+											a.rel = 'noopener';
+											document.body.appendChild(a);
+											a.click();
+											a.remove();
+										}
+									} catch(_) {}
+								};
+								btnDownload.onclick = () => triggerDownload();
+								fetch('/api/hosobenhan/download?url=' + encodeURIComponent(filePath), { credentials: 'include' })
+									.then(r => r.blob())
+									.then(blob => {
+										const u = URL.createObjectURL(blob);
+										currentBlobUrl = u;
+										iframe.src = u;
+									})
+									.catch(err => {
+										console.error('[DR][HSBA] viewer fetch error:', err);
+										doClose();
+									});
+							} catch (e) { console.error('[DR][HSBA] viewer error:', e); }
+						};
+
+						try {
+							const h = window.location.hash || '';
+							const m = h.match(/[#&]dr-viewer=([^&]+)/);
+							if (m && m[1]) {
+								const filePath = decodeURIComponent(m[1]);
+								console.log('[DR][HSBA] inline viewer param detected:', filePath);
+								let name = null, dateLabel = null;
+								const n = h.match(/[#&]dr-name=([^&]+)/);
+								if (n && n[1]) name = decodeURIComponent(n[1]);
+								const d2 = h.match(/[#&]dr-date=([^&]+)/);
+								if (d2 && d2[1]) dateLabel = decodeURIComponent(d2[1]);
+								showInlineViewer(filePath, name, dateLabel);
+							}
+						} catch(_) {}
 						fetch("/graphql", {
 							headers,
 			referrer: referrer,

@@ -3,6 +3,19 @@
 // Có thể chỉnh sửa các cài đặt này để tùy chỉnh giao diện
 
 const BS_CAI_DAT = {
+    // ================== CÀI ĐẶT HSBA ==================
+    // Danh sách tên mẫu tài liệu HSBA được phép hiển thị
+    HSBA_ALLOWED_TENMAU: [
+        'Phiếu khám bệnh vào viện',
+        'Phiếu khám tiền mê',
+        'Biên bản hội chẩn duyệt mổ',
+        'Phiếu khám chuyên khoa',
+        'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí',
+        'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức',
+        'Phiếu tường trình phẫu thuật, thủ thuật',
+        'Phiếu khám bệnh',
+        'Toa thuốc ngoại trú'
+    ],
     // ================== CÀI ĐẶT CHECKLIST ==================
     checklistItems: [
         'Phiếu Khám vào viện (hsoft)',

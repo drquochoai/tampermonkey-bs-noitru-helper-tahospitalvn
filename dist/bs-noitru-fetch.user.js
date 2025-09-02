@@ -1,13 +1,17 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.7.7
+// @version      1.8.1
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
 // @match        https://dd-noitru.tahospital.vn/*
 // @match        https://hsba.tahospital.vn/*
 // @grant        GM_xmlhttpRequest
+// @grant        GM_openInTab
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addValueChangeListener
 // @license      MIT
 // @connect      google.com
 // @connect      tahospital.vn
@@ -359,7 +363,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":30}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":32}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -401,10 +405,13 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     'use strict';
 
     const Utils = require('./utils');
+    // Ensure HSBA background worker runs on hsba.tahospital.vn when this bundle is injected there
+    try { require('./components/hsbaDataFetcher'); } catch(_) {}
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
     const { showSettingsIfNeeded } = require('./settings');
+    const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();
     showSettingsIfNeeded();
@@ -459,6 +466,9 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         }
     }
     autoClickCbTaCaIfNeeded();
+
+    // Initialize Copy Diễn Tiến button on /to-dieu-tri
+    try { initCopyDienTienAI(); } catch(_) {}
 
     // Auto-login on /Home/Login: always fill from default account; only auto-submit if enabled
     try {
@@ -741,7 +751,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./dashboard":14,"./googleAppsScript":16,"./services/checklistService":18,"./settings":24,"./utils":25}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./dashboard":16,"./googleAppsScript":18,"./services/checklistService":20,"./settings":26,"./utils":27}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -864,7 +874,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../dashboard.support":15,"../services/checklistService":18,"../services/reportService":20}],5:[function(require,module,exports){
+},{"../dashboard.support":17,"../services/checklistService":20,"../services/reportService":22}],5:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -908,6 +918,280 @@ function createAutoLoginToggle({ enabled, onToggle, onDblClick, title }) {
 module.exports = { createAutoLoginToggle, applyToggleStyles };
 
 },{}],6:[function(require,module,exports){
+// copyDienTienAI.js
+// Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
+
+function isToDieuTriPage() {
+    try {
+        return /\/to-dieu-tri(\?.*)?$/.test(window.location.pathname);
+    } catch (_) { return false; }
+}
+
+function getMabnFromUrl() {
+    try {
+        const u = new URL(window.location.href);
+        return u.searchParams.get('mabn') || '';
+    } catch (_) { return ''; }
+}
+
+function ensureStatusBar(container) {
+    let bar = document.getElementById('dr-copy-dien-tien-status');
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'dr-copy-dien-tien-status';
+        bar.style.cssText = 'margin-top:8px; font-size:12px; color:#0f172a;';
+        container.appendChild(bar);
+    }
+    return bar;
+}
+
+// Helper to set status text with optional auto-clear after 4s
+function setStatus(bar, text, color, autoClear = false) {
+    if (!bar) return;
+    try { if (bar.__statusTimer) { clearTimeout(bar.__statusTimer); bar.__statusTimer = null; } } catch(_) {}
+    if (typeof text === 'string') bar.textContent = text;
+    if (color) bar.style.color = color;
+    if (autoClear) {
+        bar.__statusTimer = setTimeout(() => {
+            try { bar.textContent = ''; } catch(_) {}
+        }, 4000);
+    }
+}
+
+async function loadPdfJsIfNeeded() {
+    const getLib = () => (window.pdfjsLib || (typeof unsafeWindow !== 'undefined' ? unsafeWindow.pdfjsLib : undefined));
+    if (getLib()) {
+        // worker may still need to be set
+        try {
+            const lib = getLib();
+            if (lib && lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+        } catch(_) {}
+        return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js';
+    script.referrerPolicy = 'no-referrer';
+    const p = new Promise((resolve, reject) => {
+        script.onload = () => {
+            try {
+                // bridge between page and userscript contexts
+                if (typeof unsafeWindow !== 'undefined' && unsafeWindow.pdfjsLib && !window.pdfjsLib) {
+                    try { window.pdfjsLib = unsafeWindow.pdfjsLib; } catch(_) {}
+                }
+                const lib = getLib();
+                if (lib && lib.GlobalWorkerOptions) lib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
+            } catch(_) {}
+            resolve();
+        };
+        script.onerror = () => reject(new Error('Không tải được pdf.js'));
+    });
+    document.head.appendChild(script);
+    await p;
+}
+
+async function fetchPatientInfo(mabn) {
+    const body = 'code=' + encodeURIComponent(mabn);
+    const res = await fetch('/ToDieuTri/GetPatient', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            'accept': '*/*'
+        },
+        credentials: 'include',
+        body
+    });
+    if (!res.ok) throw new Error('Lỗi GetPatient: ' + res.status);
+    const json = await res.json();
+    if (!json || json.isValid === false || !json.data || !json.data[0]) throw new Error('Dữ liệu GetPatient không hợp lệ');
+    return json.data[0];
+}
+
+function parseMMDDYYYYtoDDMMYYYY(dateTimeStr) {
+    if (!dateTimeStr) return '';
+    // Expect "MM/DD/YYYY HH:mm:ss" or "MM/DD/YYYY"
+    const [datePart] = String(dateTimeStr).split(' ');
+    const [mm, dd, yyyy] = datePart.split('/');
+    if (!mm || !dd || !yyyy) return '';
+    return `${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${yyyy}`;
+}
+
+function todayDDMMYYYY() {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+}
+
+async function fetchPdfArrayBuffer(url) {
+    const res = await fetch(url, { method: 'GET', credentials: 'include' });
+    if (!res.ok) throw new Error('Lỗi tải PDF: ' + res.status);
+    return await res.arrayBuffer();
+}
+
+async function extractAllTextFromPdfBuffer(buffer) {
+    await loadPdfJsIfNeeded();
+    const pdfjsLib = (window.pdfjsLib || (typeof unsafeWindow !== 'undefined' ? unsafeWindow.pdfjsLib : undefined));
+    if (!pdfjsLib || !pdfjsLib.getDocument) throw new Error('pdfjsLib chưa sẵn sàng');
+    const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+    const pdf = await loadingTask.promise;
+    let out = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map(it => it.str).filter(Boolean);
+        out.push(strings.join(' '));
+    }
+    return out.join('\n\n');
+}
+
+// Sanitize sensitive info before copying to clipboard
+function sanitizeCopiedText(text) {
+    if (!text) return '';
+    let t = String(text);
+    // Remove from "Họ và tên:" to the first '-' character (inclusive), not to newline
+    t = t.replace(/Họ\s+và\s+tên:\s*[^-]*-\s*/gi, '');
+    return t;
+}
+
+async function copyToClipboard(text) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch(_) {}
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return true;
+    } catch(_) { return false; }
+}
+
+function injectButton() {
+    if (!isToDieuTriPage()) return;
+    const host = document.getElementById('LoadToDieuTri');
+    if (!host) return;
+    if (document.getElementById('dr-copy-dien-tien-forAI')) return; // already added
+
+    const wrap = document.createElement('div');
+    wrap.style.margin = '6px 0 10px 0';
+
+    const btn = document.createElement('button');
+    btn.id = 'dr-copy-dien-tien-forAI';
+    btn.type = 'button';
+    btn.className = 'btn btn-sm btn-success';
+    btn.textContent = 'Copy diễn tiến';
+
+    // Secondary "copy again" icon button
+    const btnCopyAgain = document.createElement('button');
+    btnCopyAgain.type = 'button';
+    btnCopyAgain.title = 'Copy lại';
+    btnCopyAgain.className = 'btn btn-sm btn-outline-secondary';
+    btnCopyAgain.style.marginLeft = '6px';
+    btnCopyAgain.textContent = '📋';
+    btnCopyAgain.style.display = 'none';
+
+    wrap.appendChild(btn);
+    wrap.appendChild(btnCopyAgain);
+    host.prepend(wrap);
+
+    const statusBar = ensureStatusBar(wrap);
+
+    btn.addEventListener('click', async () => {
+        const mabn = getMabnFromUrl();
+        if (!mabn) {
+            setStatus(statusBar, 'Không tìm thấy MABN trong URL', '#b91c1c', true);
+            return;
+        }
+        try {
+            setStatus(statusBar, 'Đang lấy thông tin người bệnh...', '#0f172a', false);
+            const info = await fetchPatientInfo(mabn);
+            const mavaovien = info.maVaoVien || info.maVaoVien || info.mavaovien || '';
+            const ngayvv = parseMMDDYYYYtoDDMMYYYY(info.ngayVV || info.ngayvv || '');
+            const maql = info.maql || '';
+            if (!mavaovien || !ngayvv || !maql) {
+                setStatus(statusBar, 'Thiếu tham số (mã vào viện/ngày vào/maql)', '#b91c1c', true);
+                return;
+            }
+
+            const denngay = todayDDMMYYYY();
+            const pdfUrl = `/todieutri/DienBien/PrintPDF?id=&mabn=${encodeURIComponent(mabn)}&mavaovien=${encodeURIComponent(mavaovien)}&tungay=${encodeURIComponent(ngayvv)}&denngay=${encodeURIComponent(denngay)}&maql=${encodeURIComponent(maql)}`;
+
+            setStatus(statusBar, 'Đang tải và xử lý PDF...', '#0f172a', false);
+            const buf = await fetchPdfArrayBuffer(pdfUrl);
+            const rawText = await extractAllTextFromPdfBuffer(buf);
+            const text = sanitizeCopiedText(rawText);
+
+            setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+            const ok = await copyToClipboard(text);
+            if (ok) {
+                setStatus(statusBar, 'Đã copy toàn bộ diễn tiến vào clipboard.', '#166534', true);
+                // Enable copy-again with latest sanitized text
+                btnCopyAgain.dataset.clipboardText = text;
+                btnCopyAgain.style.display = 'inline-block';
+            } else {
+                setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+            }
+        } catch (err) {
+            console.error(err);
+            setStatus(statusBar, 'Lỗi: ' + (err && err.message ? err.message : 'Không rõ'), '#b91c1c', true);
+        }
+    });
+
+    // Copy-again action: copy last cached text without reloading PDF
+    btnCopyAgain.addEventListener('click', async () => {
+        const cached = btnCopyAgain.dataset.clipboardText || '';
+        if (!cached) {
+            setStatus(statusBar, 'Chưa có dữ liệu để copy lại.', '#b91c1c', true);
+            return;
+        }
+        try {
+            setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+            const ok = await copyToClipboard(cached);
+            if (ok) setStatus(statusBar, 'Đã copy lại vào clipboard.', '#166534', true);
+            else setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+        } catch (e) {
+            setStatus(statusBar, 'Lỗi: ' + (e && e.message ? e.message : 'Không rõ'), '#b91c1c', true);
+        }
+    });
+}
+
+function initCopyDienTienAI() {
+    if (!isToDieuTriPage()) return;
+    // Try immediately and a few retries in case DOM is populated later
+    const tryInject = () => {
+        injectButton();
+    };
+    tryInject();
+    let tries = 0;
+    const iv = setInterval(() => {
+        tries++;
+        injectButton();
+        if (document.getElementById('dr-copy-dien-tien-forAI') || tries > 20) clearInterval(iv);
+    }, 300);
+}
+
+module.exports = { 
+    initCopyDienTienAI,
+    fetchPatientInfo,
+    parseMMDDYYYYtoDDMMYYYY,
+    todayDDMMYYYY,
+    fetchPdfArrayBuffer,
+    extractAllTextFromPdfBuffer,
+    copyToClipboard,
+    sanitizeCopiedText,
+    setStatus
+};
+
+},{}],7:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -1026,7 +1310,622 @@ const DialogManager = {
 
 module.exports = DialogManager;
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
+// hsbaDataFetcher.js - Fetch HSBA V2 data via background tab and GraphQL
+
+/*
+Contract
+- addHSBATab(rootEl, patient):
+  - Adds a new tab button "HSBA Data" into `.checklist-tabs` within the provided rootEl (sidebar right column content)
+  - Renders a tab pane with a Fetch button (id: dr-hsb-fetch-btn) to trigger the flow
+  - Uses GM_openInTab to open the HSBA V2 link silently, waits for background tab to collect data on hsba.tahospital.vn, then displays results
+
+- Background (auto-run when host === hsba.tahospital.vn):
+  - Wait until the main grid appears (div.MuiGrid-root)
+  - Parse pid from URL (public?pid=<...>)
+  - Run fetch to /graphql using current domain’s cookies (no cross-origin hack)
+  - Store results via GM_setValue under key `dr_hsba_result_${pid}`
+
+Notes
+- Requires Tampermonkey grants: GM_openInTab, GM_setValue, GM_addValueChangeListener (already used in this repo for GM_xmlhttpRequest)
+- Falls back gracefully when grants aren’t available (opens in foreground and asks user to wait)
+*/
+
+const DialogManager = require('./dialogManager');
+
+// Track opened HSBA tabs by patient id to auto-close after data arrives
+const HSBA_OPEN_TABS = new Map();
+function registerOpenedTab(pid, ref) {
+	try {
+		const prev = HSBA_OPEN_TABS.get(pid);
+		if (prev && typeof prev.close === 'function') {
+			try { prev.close(); } catch(_) {}
+		}
+	} catch(_) {}
+	HSBA_OPEN_TABS.set(pid, ref);
+	try { console.log('[DR][HSBA] registered background tab for pid:', pid, ref); } catch(_) {}
+}
+function closeOpenedTab(pid, reason = 'done') {
+	try {
+		const ref = HSBA_OPEN_TABS.get(pid);
+		if (ref && typeof ref.close === 'function') {
+			try { ref.close(); console.log('[DR][HSBA] closed background tab (GM_openInTab) for pid:', pid, 'reason:', reason); } catch(e) { console.warn('[DR][HSBA] close tab error:', e); }
+		} else if (ref && typeof ref === 'object' && 'close' in ref) {
+			try { ref.close(); console.log('[DR][HSBA] closed background window for pid:', pid, 'reason:', reason); } catch(e) { console.warn('[DR][HSBA] close window error:', e); }
+		} else {
+			console.warn('[DR][HSBA] no tabRef to close for pid:', pid, 'reason:', reason);
+		}
+	} catch(e) { console.warn('[DR][HSBA] closeOpenedTab exception:', e); }
+	HSBA_OPEN_TABS.delete(pid);
+}
+
+// Allowed document names to keep from HSBA response
+const ALLOWED_TENMAU = new Set([
+	'Phiếu khám bệnh vào viện',
+	'Phiếu khám tiền mê',
+	'Biên bản hội chẩn duyệt mổ',
+	'Phiếu khám chuyên khoa',
+	'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí',
+	'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức',
+    'Phiếu tường trình phẫu thuật, thủ thuật',
+    'Phiếu khám bệnh',
+    'Toa thuốc ngoại trú'
+]);
+
+// Resolve HSBA V2 link for a given MABN via server endpoint; fall back to HSBA v1 URL
+async function getHSBAV2Link(mabn) {
+	try {
+		const res = await fetch('/ToDieuTri/LoadLinkHsba', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'X-Requested-With': 'XMLHttpRequest'
+			},
+			credentials: 'include',
+			body: 'code=' + encodeURIComponent(mabn)
+		});
+		const json = await res.json();
+		const link = json && json.data && json.data.link;
+		if (link) return link;
+	} catch (_) { /* ignore and use fallback */ }
+	return `/hoso/${encodeURIComponent(String(mabn))}`;
+}
+
+// Local date helpers for consistent formatting/parsing used in this module
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+function parseDateSafe(v) {
+	try {
+		if (!v) return null;
+		if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+		if (typeof v === 'number') {
+			const d = new Date(v);
+			return isNaN(d.getTime()) ? null : d;
+		}
+		if (typeof v === 'string') {
+			// ISO or RFC dates
+			const t = Date.parse(v);
+			if (!Number.isNaN(t)) return new Date(t);
+			// dd/mm/yyyy[ HH:mm]
+			const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
+			if (m) {
+				const dd = Number(m[1]);
+				const mm = Number(m[2]);
+				const yyyy = Number(m[3]);
+				const hh = m[4] != null ? Number(m[4]) : 0;
+				const mi = m[5] != null ? Number(m[5]) : 0;
+				const d = new Date(yyyy, mm - 1, dd, hh, mi);
+				return isNaN(d.getTime()) ? null : d;
+			}
+		}
+	} catch (_) {}
+	return null;
+}
+
+function formatDateDDMMYYYY(d) {
+	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+	return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+function formatDateTimeDDMMYYYYHHmm(d) {
+	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+	return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function formatDateYYYYMMDD(d) {
+	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function createEl(tag, attrs = {}, children = []) {
+	const el = document.createElement(tag);
+	Object.entries(attrs).forEach(([k, v]) => {
+		if (k === 'style' && typeof v === 'object') {
+			Object.assign(el.style, v);
+		} else if (k === 'dataset' && v && typeof v === 'object') {
+			Object.entries(v).forEach(([dk, dv]) => el.dataset[dk] = dv);
+		} else if (k in el) {
+			try { el[k] = v; } catch(_) { el.setAttribute(k, v); }
+		} else {
+			el.setAttribute(k, v);
+		}
+	});
+	if (Array.isArray(children)) {
+		children.forEach(c => {
+			if (c == null) return;
+			if (c instanceof Node) el.appendChild(c);
+			else el.appendChild(document.createTextNode(String(c)));
+		});
+	} else if (children != null) {
+		el.appendChild(document.createTextNode(String(children)));
+	}
+	return el;
+}
+
+function renderResult(container, result) {
+	// Render only filtered data (documents with allowed "tenmau")
+	container.innerHTML = '';
+	try { console.log('[DR][HSBA] filtered result received:', result); } catch(_) {}
+	if (!result || !result.data || !result.data.hoSoBenhAns) {
+		container.textContent = 'Không có dữ liệu HSBA.';
+		return;
+	}
+	const hs = result.data.hoSoBenhAns;
+	const items = Array.isArray(hs.items) ? hs.items : [];
+	// Count only valid, displayable docs (have tenfile or fileName)
+	const docCount = items.reduce((sum, it) => sum + (Array.isArray(it.hoSoChiTiet) ? it.hoSoChiTiet.reduce((s, g) => s + (Array.isArray(g.chiTiets) ? g.chiTiets.filter(x => (x && (x.tenfile || x.fileName) && x.tenmau)).length : 0), 0) : 0), 0);
+	const summary = createEl('div', { style: { marginBottom: '8px' } }, [
+		createEl('div', {}, `Tổng số đợt HSBA: ${hs.total != null ? hs.total : items.length}`),
+		createEl('div', {}, `Số tài liệu đã lọc: ${docCount}`)
+	]);
+	container.appendChild(summary);
+
+	if (items.length === 0) return;
+	const outer = createEl('div', { className: 'dr-hsba-container', style: { maxHeight: '320px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px' } });
+	items.forEach((it, idx) => {
+	const headerParts = [];
+	if (it.hoten) headerParts.push(it.hoten);
+	if (it.mabn) headerParts.push(it.mabn);
+	if (it.tenkp) headerParts.push(it.tenkp);
+	const ngayVaoDt = parseDateSafe(it.ngayvao);
+	const ngayVaoStr = formatDateDDMMYYYY(ngayVaoDt);
+	const header = createEl('div', { className: 'dr-hsba-episode-title', style: { fontWeight: '700', margin: '8px 0 6px', color: '#0f172a' } }, headerParts.concat(ngayVaoStr ? [ngayVaoStr] : []).join(' - '));
+		outer.appendChild(header);
+		const groups = Array.isArray(it.hoSoChiTiet) ? it.hoSoChiTiet : [];
+		groups.forEach(g => {
+			const rawDocs = Array.isArray(g.chiTiets) ? g.chiTiets : [];
+			if (!rawDocs.length) return;
+			const gTitle = createEl('div', { className: 'dr-hsba-group-title', style: { fontWeight: '600', margin: '4px 0', color: '#334155' } }, `${g.tengay || g.gayid || 'Mục'}:`);
+			outer.appendChild(gTitle);
+			const ul = createEl('ul', { className: 'dr-hsba-list', style: { margin: 0, paddingLeft: '18px', listStyle: 'disc' } });
+			// Build displayable docs: must have tenmau and tenfile/fileName
+			const docs = rawDocs
+				.map(d => ({
+					...d,
+					_tenfile: d && (d.tenfile || d.fileName) || '',
+					_date: parseDateSafe(d && d.ngay)
+				}))
+				.filter(d => {
+					if (!d) return false;
+					if (!d.tenmau || !ALLOWED_TENMAU.has(d.tenmau)) {
+						try { console.debug('[DR][HSBA] skip doc (tenmau not allowed):', d); } catch(_) {}
+						return false;
+					}
+					if (!d._tenfile) {
+						try { console.warn('[DR][HSBA] skip doc (missing tenfile):', d); } catch(_) {}
+						return false;
+					}
+					return true;
+				})
+				.sort((a, b) => {
+					const ta = a._date ? a._date.getTime() : -Infinity;
+					const tb = b._date ? b._date.getTime() : -Infinity;
+					return ta - tb; // ascending
+				});
+			try { console.log('[DR][HSBA] group sorted docs:', { group: g.tengay || g.gayid, count: docs.length }); } catch(_) {}
+
+			docs.forEach(d => {
+				const nd = d._date || parseDateSafe(d && d.ngay);
+				const ngayFmt = formatDateTimeDDMMYYYYHHmm(nd) || (d && d.ngay) || '';
+				const label = `${d.tenmau} - ${ngayFmt}`;
+				const li = createEl('li', {
+					className: 'dr-hsba-item',
+					title: 'Mở tài liệu ở tab mới',
+					dataset: { tenfile: d._tenfile },
+					style: { cursor: 'pointer', padding: '2px 0' }
+				}, label);
+		li.addEventListener('click', () => {
+					try {
+						const tf = li.dataset.tenfile || '';
+						if (!tf) {
+							console.error('[DR][HSBA] click but missing data-tenfile');
+							return;
+						}
+			// Open a lightweight viewer on hsba.tahospital.vn to render PDF inline using blob URL
+			const viewerUrl = `https://hsba.tahospital.vn/public?drpdf=${encodeURIComponent(tf)}`;
+			console.log('[DR][HSBA] opening PDF viewer:', { tenfile: tf, viewerUrl });
+			window.open(viewerUrl, '_blank');
+					} catch (err) {
+						console.error('[DR][HSBA] open file error:', err);
+					}
+				});
+				ul.appendChild(li);
+			});
+			outer.appendChild(ul);
+		});
+		if (idx < items.length - 1) outer.appendChild(createEl('hr', { style: { border: 'none', borderTop: '1px dashed #e5e7eb', margin: '8px 0' } }));
+	});
+	container.appendChild(outer);
+}
+
+function attachTabToggleBehavior(rootEl) {
+	const tabs = rootEl.querySelectorAll('.checklist-tabs .tab-btn');
+	const panes = rootEl.querySelectorAll('.tab-content .tab-pane');
+	tabs.forEach(btn => {
+		if (btn.__drBound) return;
+		btn.__drBound = true;
+		btn.addEventListener('click', function() {
+			const targetTab = this.getAttribute('data-tab');
+			tabs.forEach(b => { b.classList.remove('active'); b.style.background = 'transparent'; b.style.color = '#666'; b.style.fontWeight = 'normal'; });
+			this.classList.add('active');
+			this.style.background = '#0ea5e9';
+			this.style.color = '#fff';
+			this.style.fontWeight = 'bold';
+			panes.forEach(p => { p.classList.remove('active'); p.style.display = 'none'; });
+			const pane = rootEl.querySelector(`.tab-pane[data-tab="${targetTab}"]`);
+			if (pane) { pane.classList.add('active'); pane.style.display = 'block'; }
+		});
+	});
+}
+
+function addHSBATab(rootEl, patient) {
+	try {
+		if (!rootEl) return;
+		const tabsBar = rootEl.querySelector('.checklist-tabs');
+		const tabContent = rootEl.querySelector('.tab-content');
+		if (!tabsBar || !tabContent) return;
+
+		// Avoid duplicate
+		if (tabsBar.querySelector('#dr-hsba-tab-btn')) return;
+
+		const btn = createEl('button', {
+			id: 'dr-hsba-tab-btn',
+			className: 'tab-btn',
+			dataset: { tab: 'hsba' },
+			style: {
+				padding: '8px 16px', border: 'none', background: 'transparent', color: '#666',
+				borderRadius: '4px 4px 0 0', cursor: 'pointer', marginLeft: '4px'
+			}
+		}, 'HSBA Data');
+		tabsBar.appendChild(btn);
+
+		const pane = createEl('div', {
+			className: 'tab-pane',
+			dataset: { tab: 'hsba' },
+			style: { display: 'none' }
+		});
+
+		const status = createEl('div', { id: 'dr-hsba-status', style: { margin: '6px 0', color: '#0f172a' } });
+		const resultBox = createEl('div', { id: 'dr-hsba-result', style: { fontSize: '13px' } });
+		const btnFetch = createEl('button', {
+			id: 'dr-hsb-fetch-btn',
+			className: 'btn btn-primary',
+			style: { padding: '8px 14px', borderRadius: '8px', cursor: 'pointer' }
+		}, 'Lấy HSBA từ file');
+		btnFetch.addEventListener('click', async () => {
+			// Defensive: ensure patient exists
+			const mabn = patient && (patient.pid || patient.mabn);
+			if (!mabn) { status.textContent = 'Không tìm thấy MABN.'; return; }
+			status.textContent = 'Đang mở HSBA V2 trong nền...';
+			const link = await getHSBAV2Link(mabn);
+			let tabRef = null;
+			try {
+				if (typeof GM_openInTab === 'function') {
+					tabRef = GM_openInTab(link, { active: false, insert: true });
+					registerOpenedTab(String(mabn), tabRef);
+				} else {
+					const w = window.open(link, '_blank');
+					if (w) registerOpenedTab(String(mabn), w);
+				}
+			} catch(_) {
+				const w = window.open(link, '_blank');
+				if (w) registerOpenedTab(String(mabn), w);
+			}
+
+			// Result key for cross-tab delivery
+			const key = `dr_hsba_result_${mabn}`;
+			// 1) Realtime listener when supported
+			if (typeof GM_addValueChangeListener === 'function') {
+		GM_addValueChangeListener(key, function(name, oldVal, newVal, remote) {
+					if (!remote || !newVal) return;
+					try {
+						const payload = typeof newVal === 'string' ? JSON.parse(newVal) : newVal;
+						try { console.log('[DR][HSBA] payload received via listener:', payload); } catch(_) {}
+						renderResult(resultBox, payload);
+						status.textContent = 'Đã lấy HSBA.';
+			// Close the background tab for this patient
+			setTimeout(() => closeOpenedTab(String(mabn), 'listener'), 300);
+					} catch (e) {
+						status.textContent = 'Lỗi phân tích dữ liệu HSBA.';
+						console.warn(e);
+					}
+				});
+			}
+			// 2) Polling fallback when listener is unavailable or unreliable
+			let attempts = 0;
+			const maxAttempts = 60; // ~60s
+			if (typeof GM_getValue === 'function') {
+				const iv = setInterval(async () => {
+					try {
+						attempts++;
+						const raw = await GM_getValue(key, null);
+						if (raw) {
+							clearInterval(iv);
+							const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+							try { console.log('[DR][HSBA] payload received via polling:', payload); } catch(_) {}
+							renderResult(resultBox, payload);
+							status.textContent = 'Đã lấy HSBA.';
+							// Close the background tab for this patient
+							setTimeout(() => closeOpenedTab(String(mabn), 'polling'), 300);
+							return;
+						}
+						if (attempts === 5 && !resultBox.firstChild) {
+							status.textContent = 'Đang chờ HSBA tải xong... (có thể 5–15s)';
+						}
+						if (attempts >= maxAttempts) {
+							clearInterval(iv);
+							if (!resultBox.firstChild) status.textContent = 'Hết thời gian chờ HSBA.';
+						}
+					} catch (_) {}
+				}, 1000);
+			} else if (!resultBox.firstChild) {
+				status.textContent = 'Không hỗ trợ lắng nghe nền. Hãy chuyển sang tab HSBA để tải xong, rồi quay lại.';
+			}
+		});
+
+		pane.appendChild(btnFetch);
+		pane.appendChild(status);
+		pane.appendChild(resultBox);
+		tabContent.appendChild(pane);
+
+		// Bind toggle behavior (for newly added button)
+		attachTabToggleBehavior(rootEl);
+	} catch (e) {
+		console.warn('addHSBATab error', e);
+	}
+}
+
+// Background worker on hsba.tahospital.vn — auto-fetch GraphQL and publish via GM_setValue
+async function hsbaBackgroundFetcherIfNeeded() {
+	try {
+		if (typeof window === 'undefined') return;
+		if (window.location.hostname !== 'hsba.tahospital.vn') return;
+	const params = new URLSearchParams(window.location.search);
+	const pid = params.get('pid');
+	const drpdf = params.get('drpdf');
+	const s = params.get('s') || '';
+	const t = params.get('t') || '';
+	const site = params.get('site') || '1';
+		// If a PDF viewer is requested, replace the whole document to avoid host React errors.
+		if (drpdf) {
+			try {
+				const tf = decodeURIComponent(drpdf);
+				const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n<title>HSBA PDF Viewer</title>\n<style>html,body{height:100%;margin:0} .drv-wrap{position:fixed;inset:0;display:flex;flex-direction:column;background:#0f172a0d} .drv-bar{padding:8px 12px;background:#0f172a;color:#fff;display:flex;align-items:center;gap:8px;font:600 13px/1.4 system-ui,Segoe UI,Roboto} .drv-link{margin-left:auto;color:#93c5fd;text-decoration:underline} .drv-embed{flex:1;width:100%;height:100%;border:0}</style></head><body>\n<div class="drv-wrap"><div class="drv-bar">HSBA PDF Viewer<a class="drv-link" id="drv-dl" target="_blank" rel="noreferrer noopener">Tải xuống</a></div><embed id="drv-pdf" class="drv-embed" type="application/pdf"/></div>\n<script>(function(){\n  const tf = ${JSON.stringify(tf)};\n  const apiUrl = '/api/hosobenhan/download?url=' + encodeURIComponent(tf);\n  console.log('[DR][HSBA][VIEWER] fetching PDF as blob:', { tf, apiUrl });\n  fetch(apiUrl, { method: 'GET', credentials: 'include' })\n    .then(res => {\n      if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);\n      return res.blob();\n    })\n    .then(blob => {\n      const url = URL.createObjectURL(blob);\n      console.log('[DR][HSBA][VIEWER] blob URL created');\n      var e = document.getElementById('drv-pdf');\n      if (e) e.src = url;\n      var a = document.getElementById('drv-dl');\n      if (a) a.href = apiUrl;\n      try { window.addEventListener('beforeunload', function(){ try { URL.revokeObjectURL(url); } catch(_) {} }); } catch(_) {}\n    })\n    .catch(err => {\n      console.error('[DR][HSBA][VIEWER] error:', err);\n      document.body.innerHTML = '<div style=\\'padding:16px;color:#b91c1c;\\'>Không hiển thị được PDF. ' + (err && err.message ? err.message : '') + '</div>';\n    });\n})();<\/script>\n</body></html>`;
+				document.open();
+				document.write(html);
+				document.close();
+			} catch(_) {}
+			return;
+		}
+		if (!pid) return;
+
+		function waitForGrid() {
+			return new Promise(resolve => {
+				// Prefer the explicit container; fallback to generic grid if classnames change
+				const targetSelectors = [
+					'div.MuiGrid-root'
+				];
+				if (targetSelectors.some(q => document.querySelector(q))) return resolve(true);
+				const obs = new MutationObserver(() => {
+					if (targetSelectors.some(q => document.querySelector(q))) {
+						obs.disconnect();
+						resolve(true);
+					}
+				});
+				obs.observe(document.documentElement || document.body, { childList: true, subtree: true });
+				// Fallback timeout
+				setTimeout(() => { try { obs.disconnect(); } catch(_) {} resolve(true); }, 15000);
+			});
+		}
+
+		await waitForGrid();
+
+		const today = formatDateYYYYMMDD(new Date());
+		const body = {
+			operationName: 'hoSoBenhAns',
+			variables: {
+				mabn: String(pid),
+				tuNgay: '2024-01-01',
+				denNgay: today,
+				offset: 0,
+				limit: 1000
+			},
+			query: `query hoSoBenhAns($mabn: String, $tuNgay: DateTime, $denNgay: DateTime, $daKy: Boolean, $offset: Int, $limit: Int, $makp: String, $raVien: Boolean) {
+  hoSoBenhAns(
+	mabn: $mabn
+	tuNgay: $tuNgay
+	denNgay: $denNgay
+	daKy: $daKy
+	offset: $offset
+	limit: $limit
+	makp: $makp
+	raVien: $raVien
+  ) {
+	items {
+	  mabn
+	  hoten
+	  ngaysinh
+	  phai
+	  diachi
+	  mavaovien
+	  sovaovien
+	  doituong
+	  tenkp
+	  ngayvao
+	  ngayra
+	  chandoan
+	  tenba
+	  ngayky
+	  loai
+	  dienthoai
+	  tenfile
+	  fileName
+	  tuoi
+	  daky
+	  maql
+	  tennguoiky
+	  coTheKyTong
+	  ChiDinhNgoai
+	  nguoiky
+	  hoSoChiTiet {
+		stt
+		gayid
+		tengay
+		chiTiets {
+		  id
+		  tenfile
+		  fileName
+		  ngay
+		  tenmau
+		  daky
+		  coTheKyChiTiet
+		  congkhai
+		  maql
+		  BieuMau {
+			id
+			maphieu
+			stt
+			gayid
+			slkyso
+			ghichu
+			loaiphieu
+			trangthai
+			chophepxoa
+			congkhai
+			xemtomtat
+			NhomBieuMau {
+			  id
+			  ten
+			  __typename
+			}
+			__typename
+		  }
+		  __typename
+		}
+		__typename
+	  }
+	  loaidieutri
+	  __typename
+	}
+	total
+	offset
+	limit
+	__typename
+  }
+}`
+		};
+
+				// Inject a main-world script that performs the fetch with the exact headers and posts the result back
+				try {
+						if (!window.__dr_hsba_injected__) {
+								window.__dr_hsba_injected__ = true;
+								// Listen for result from main world and persist via GM_setValue
+								window.addEventListener('message', (ev) => {
+										try {
+												const d = ev && ev.data;
+												if (!d || d.type !== 'DR_HSBA_RESULT' || d.pid !== pid) return;
+												// Filter payload to only keep allowed tenmau docs
+												let filtered = d.payload || {};
+												try {
+													const src = d.payload;
+													if (src && src.data && src.data.hoSoBenhAns) {
+														const cloned = JSON.parse(JSON.stringify(src));
+														const items = Array.isArray(cloned.data.hoSoBenhAns.items) ? cloned.data.hoSoBenhAns.items : [];
+														items.forEach(it => {
+															if (Array.isArray(it.hoSoChiTiet)) {
+																it.hoSoChiTiet.forEach(g => {
+																	if (Array.isArray(g.chiTiets)) {
+																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : ALLOWED_TENMAU.has(x.tenmau));
+																	}
+																});
+															}
+														});
+														filtered = cloned;
+													}
+												} catch(_) {}
+												if (typeof GM_setValue === 'function') {
+														GM_setValue(`dr_hsba_result_${pid}`, JSON.stringify(filtered));
+												} else {
+														window.__dr_hsba_result__ = filtered;
+												}
+										} catch(_) {}
+								});
+												const refUrl = `${window.location.origin}/public?pid=${encodeURIComponent(pid)}&t=${encodeURIComponent(t)}&s=${encodeURIComponent(s)}&site=${encodeURIComponent(site)}`;
+								const script = document.createElement('script');
+								script.type = 'text/javascript';
+								script.textContent = `(() => {
+	try {
+		const pid = ${JSON.stringify(pid)};
+		const s = ${JSON.stringify(s)};
+		const t = ${JSON.stringify(t)};
+		const site = ${JSON.stringify(String(site))};
+		const body = ${JSON.stringify(body)};
+		const referrer = ${JSON.stringify(refUrl)};
+						const headers = {
+							"accept": "*/*",
+							"accept-language": "en-US,en;q=0.9,vi;q=0.8",
+							"content-type": "application/json",
+							pid: String(pid),
+							priority: "u=1, i",
+							s: s,
+							site: String(site),
+							t: t
+						};
+						fetch("/graphql", {
+							headers,
+			referrer: referrer,
+			body: JSON.stringify(body),
+			method: "POST",
+			mode: "cors",
+			credentials: "include"
+		}).then(r => r.json()).then(json => {
+			try { console.log('[DR][HSBA] raw API response:', json); } catch(_) {}
+			window.postMessage({ type: 'DR_HSBA_RESULT', pid, payload: json }, '*');
+		}).catch(err => {
+			window.postMessage({ type: 'DR_HSBA_RESULT', pid, payload: { error: String(err && err.message || err) } }, '*');
+		});
+	} catch (e) {
+		try { window.postMessage({ type: 'DR_HSBA_RESULT', pid: ${JSON.stringify(pid)}, payload: { error: String(e && e.message || e) } }, '*'); } catch(_) {}
+	}
+})();`;
+								(document.head || document.documentElement || document.body).appendChild(script);
+								// Optional: remove the script node after injected
+								setTimeout(() => { try { script.remove(); } catch(_) {} }, 1000);
+						}
+				} catch(_) {}
+	} catch (e) {
+		// Swallow errors to avoid impacting page
+		console.warn('hsbaBackgroundFetcherIfNeeded error', e);
+	}
+}
+
+// Run background fetcher immediately on hsba domain
+try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
+
+module.exports = { addHSBATab };
+
+
+},{"./dialogManager":7}],9:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -1106,7 +2005,7 @@ module.exports = {
     createListRow
 };
 
-},{"../dashboard.support":15,"../services/checklistService":18,"../services/reportService":20,"../utils":25,"../utils/domUpdaters":28,"../utils/htmlUtils":29,"../utils/patientDataMapper":31,"../utils/tagUtils":33,"./actionButtons":4}],8:[function(require,module,exports){
+},{"../dashboard.support":17,"../services/checklistService":20,"../services/reportService":22,"../utils":27,"../utils/domUpdaters":30,"../utils/htmlUtils":31,"../utils/patientDataMapper":33,"../utils/tagUtils":35,"./actionButtons":4}],10:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -1135,7 +2034,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],9:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 let SidebarSession = null;
 try { SidebarSession = require('./sidebarSession'); } catch(_) {}
@@ -1206,7 +2105,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":12}],10:[function(require,module,exports){
+},{"./sidebarSession":14}],12:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -1468,7 +2367,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":18,"../services/reportService":20,"../utils":25,"./phauThuatHandlers":11,"./yLenhHandlers":13}],11:[function(require,module,exports){
+},{"../services/checklistService":20,"../services/reportService":22,"../utils":27,"./phauThuatHandlers":13,"./yLenhHandlers":15}],13:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1828,7 +2727,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":18,"../utils/surgeryUtils":32}],12:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":20,"../utils/surgeryUtils":34}],14:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -1863,7 +2762,7 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],13:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -2337,7 +3236,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":18}],14:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":20}],16:[function(require,module,exports){
 // dashboard.js
 
 const Utils = require('./utils');
@@ -2819,9 +3718,95 @@ function showDashboardBenhNhanIfNeeded() {
         `;
     // Import shared action creators
     const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('./components/actionButtons');
+    const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
     sidebarActions.appendChild(createHsbaV1Button(patient));
     sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
+
+    // Copy diễn tiến button (AI) inside sidebar actions
+    try {
+        const btnCopy = document.createElement('button');
+        btnCopy.type = 'button';
+        btnCopy.className = 'btn btn-sm btn-success';
+        btnCopy.textContent = 'Copy diễn tiến';
+        // Copy-again icon button
+        const btnCopyAgain = document.createElement('button');
+        btnCopyAgain.type = 'button';
+        btnCopyAgain.title = 'Copy lại';
+        btnCopyAgain.className = 'btn btn-sm btn-outline-secondary';
+        btnCopyAgain.style.marginLeft = '6px';
+        btnCopyAgain.textContent = '📋';
+        btnCopyAgain.style.display = 'none';
+        btnCopy.addEventListener('click', async () => {
+            // Build a minimal runner that reuses CopyDienTienAI logic with explicit mabn
+            const mabn = (patient && (patient.pid || patient.mabn)) ? String(patient.pid || patient.mabn) : '';
+            const wrap = document.createElement('div');
+            const statusBar = document.createElement('div');
+            statusBar.id = 'dr-copy-dien-tien-status';
+            statusBar.style.cssText = 'margin-left:8px; font-size:12px; color:#0f172a;';
+            // Place status near the button
+            btnCopyAgain.insertAdjacentElement('afterend', statusBar);
+
+            if (!mabn) {
+                const mod = require('./components/copyDienTienAI');
+                mod.setStatus(statusBar, 'Không tìm thấy MABN (pid)', '#b91c1c', true);
+                return;
+            }
+
+            // Import functions from module
+            const mod = require('./components/copyDienTienAI');
+            const { fetchPatientInfo } = mod.__esModule ? mod : { fetchPatientInfo: undefined };
+            // Fallback: call via window by reusing internal helpers through duplicated minimal flow
+            try {
+                mod.setStatus(statusBar, 'Đang lấy thông tin người bệnh...', '#0f172a', false);
+                // use internal method via module reference already loaded in bundle
+                const info = await mod.fetchPatientInfo(mabn);
+                const mavaovien = info.maVaoVien || info.mavaovien || '';
+                const ngayvv = mod.parseMMDDYYYYtoDDMMYYYY(info.ngayVV || info.ngayvv || '');
+                const maql = info.maql || '';
+                if (!mavaovien || !ngayvv || !maql) {
+                    mod.setStatus(statusBar, 'Thiếu tham số (mã vào viện/ngày vào/maql)', '#b91c1c', true);
+                    return;
+                }
+                const denngay = mod.todayDDMMYYYY();
+                const pdfUrl = `/todieutri/DienBien/PrintPDF?id=&mabn=${encodeURIComponent(mabn)}&mavaovien=${encodeURIComponent(mavaovien)}&tungay=${encodeURIComponent(ngayvv)}&denngay=${encodeURIComponent(denngay)}&maql=${encodeURIComponent(maql)}`;
+
+                mod.setStatus(statusBar, 'Đang tải và xử lý PDF...', '#0f172a', false);
+                const buf = await mod.fetchPdfArrayBuffer(pdfUrl);
+                const rawText = await mod.extractAllTextFromPdfBuffer(buf);
+                const text = mod.sanitizeCopiedText(rawText);
+
+                mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+                const ok = await mod.copyToClipboard(text);
+                if (ok) {
+                    mod.setStatus(statusBar, 'Đã copy toàn bộ diễn tiến vào clipboard.', '#166534', true);
+                    btnCopyAgain.dataset.clipboardText = text;
+                    btnCopyAgain.style.display = 'inline-block';
+                } else {
+                    mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+                }
+            } catch (err) {
+                console.error(err);
+                mod.setStatus(statusBar, 'Lỗi: ' + (err && err.message ? err.message : 'Không rõ'), '#b91c1c', true);
+            }
+        });
+        // Copy-again behavior
+        btnCopyAgain.addEventListener('click', async () => {
+            const mod = require('./components/copyDienTienAI');
+            const cached = btnCopyAgain.dataset.clipboardText || '';
+            const statusBar = document.getElementById('dr-copy-dien-tien-status') || document.createElement('div');
+            if (!cached) {
+                mod.setStatus(statusBar, 'Chưa có dữ liệu để copy lại.', '#b91c1c', true);
+                return;
+            }
+            mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+            const ok = await mod.copyToClipboard(cached);
+            if (ok) mod.setStatus(statusBar, 'Đã copy lại vào clipboard.', '#166534', true);
+            else mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+        });
+        sidebarActions.appendChild(btnCopy);
+        sidebarActions.appendChild(btnCopyAgain);
+    } catch(_) {}
     // HSBAv1 button now comes from components/actionButtons.js
         leftColumn.appendChild(sidebarActions);
 
@@ -2843,6 +3828,11 @@ function showDashboardBenhNhanIfNeeded() {
         
         const checklistDiv = createChecklistSection(patient);
         rightColumn.appendChild(checklistDiv);
+        // Add HSBA Data tab into the same tabs bar
+        try {
+            const { addHSBATab } = require('./components/hsbaDataFetcher');
+            addHSBATab(checklistDiv, patient);
+        } catch (e) { console.warn('HSBA tab init failed', e); }
         
         // Add columns to container
         container.appendChild(leftColumn);
@@ -3319,7 +4309,7 @@ module.exports = {
     showDashboardBenhNhanIfNeeded
 };
 
-},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/actionButtons":4,"./components/listView":7,"./components/loginHandler":8,"./components/modalManager":9,"./components/patientInfoSection":10,"./components/phauThuatHandlers":11,"./components/sidebarSession":12,"./dashboard.support":15,"./services/apiService":17,"./services/checklistService":18,"./services/patientService":19,"./utils":25,"./utils/checklistUtils":26,"./utils/domUpdaters":28,"./utils/htmlUtils":29,"./utils/khoaUtils":30,"./utils/patientDataMapper":31,"./utils/surgeryUtils":32,"./utils/tagUtils":33,"./utils/uiUtils":34}],15:[function(require,module,exports){
+},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/actionButtons":4,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./components/listView":9,"./components/loginHandler":10,"./components/modalManager":11,"./components/patientInfoSection":12,"./components/phauThuatHandlers":13,"./components/sidebarSession":14,"./dashboard.support":17,"./services/apiService":19,"./services/checklistService":20,"./services/patientService":21,"./utils":27,"./utils/checklistUtils":28,"./utils/domUpdaters":30,"./utils/htmlUtils":31,"./utils/khoaUtils":32,"./utils/patientDataMapper":33,"./utils/surgeryUtils":34,"./utils/tagUtils":35,"./utils/uiUtils":36}],17:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('./services/reportService');
@@ -4152,7 +5142,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"./components/dialogManager":6,"./services/apiService":17,"./services/reportService":20,"./utils/dateUtils":27}],16:[function(require,module,exports){
+},{"./components/dialogManager":7,"./services/apiService":19,"./services/reportService":22,"./utils/dateUtils":29}],18:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -4238,7 +5228,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],17:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -4395,7 +5385,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":30}],18:[function(require,module,exports){
+},{"../utils/khoaUtils":32}],20:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -4663,7 +5653,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":27,"./apiService":17,"./saveQueue":21}],19:[function(require,module,exports){
+},{"../utils/dateUtils":29,"./apiService":19,"./saveQueue":23}],21:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../dashboard.support');
@@ -4892,7 +5882,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":8,"../dashboard.support":15,"../utils/patientDataMapper":31,"./checklistService":18}],20:[function(require,module,exports){
+},{"../components/loginHandler":10,"../dashboard.support":17,"../utils/patientDataMapper":33,"./checklistService":20}],22:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -5095,7 +6085,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":27,"../utils/patientDataMapper":31,"../utils/surgeryUtils":32,"./checklistService":18}],21:[function(require,module,exports){
+},{"../utils/dateUtils":29,"../utils/patientDataMapper":33,"../utils/surgeryUtils":34,"./checklistService":20}],23:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -5159,7 +6149,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -5301,7 +6291,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":30,"./apiService":17}],23:[function(require,module,exports){
+},{"../utils/khoaUtils":32,"./apiService":19}],25:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('./services/settingsService');
@@ -5456,7 +6446,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"./services/apiService":17,"./services/settingsService":22}],24:[function(require,module,exports){
+},{"./services/apiService":19,"./services/settingsService":24}],26:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('./services/settingsService');
@@ -5789,7 +6779,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"./components/autoLoginToggle":5,"./services/settingsService":22,"./settings-open-world":23}],25:[function(require,module,exports){
+},{"./components/autoLoginToggle":5,"./services/settingsService":24,"./settings-open-world":25}],27:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -5884,7 +6874,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],26:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -6044,7 +7034,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":18,"./uiUtils":34}],27:[function(require,module,exports){
+},{"../services/checklistService":20,"./uiUtils":36}],29:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -6124,7 +7114,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],28:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -6241,7 +7231,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":29,"./surgeryUtils":32,"./tagUtils":33}],29:[function(require,module,exports){
+},{"./htmlUtils":31,"./surgeryUtils":34,"./tagUtils":35}],31:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -6256,7 +7246,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],30:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -6272,7 +7262,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],31:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -6510,7 +7500,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],32:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -6783,7 +7773,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],33:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -7076,7 +8066,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],34:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],36:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

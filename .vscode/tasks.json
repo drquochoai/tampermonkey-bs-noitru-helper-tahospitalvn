@@ -1,19 +1,25 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Build and Copy (npm)",
-      "type": "shell",
-      "command": "npm run build-and-copy",
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "shared"
-      },
-      "problemMatcher": []
-    }
-  ]
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build and Copy (npm)",
+			"type": "shell",
+			"command": "npm run build-and-copy",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"presentation": {
+				"reveal": "always",
+				"panel": "shared"
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Build and Copy (npm)",
+			"type": "shell",
+			"command": "npm run build-and-copy",
+			"group": "build"
+		}
+	]
 }

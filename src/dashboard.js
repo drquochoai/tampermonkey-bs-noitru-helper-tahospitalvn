@@ -479,9 +479,95 @@ function showDashboardBenhNhanIfNeeded() {
         `;
     // Import shared action creators
     const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('./components/actionButtons');
+    const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
     sidebarActions.appendChild(createHsbaV1Button(patient));
     sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
+
+    // Copy diễn tiến button (AI) inside sidebar actions
+    try {
+        const btnCopy = document.createElement('button');
+        btnCopy.type = 'button';
+        btnCopy.className = 'btn btn-sm btn-success';
+        btnCopy.textContent = 'Copy diễn tiến';
+        // Copy-again icon button
+        const btnCopyAgain = document.createElement('button');
+        btnCopyAgain.type = 'button';
+        btnCopyAgain.title = 'Copy lại';
+        btnCopyAgain.className = 'btn btn-sm btn-outline-secondary';
+        btnCopyAgain.style.marginLeft = '6px';
+        btnCopyAgain.textContent = '📋';
+        btnCopyAgain.style.display = 'none';
+        btnCopy.addEventListener('click', async () => {
+            // Build a minimal runner that reuses CopyDienTienAI logic with explicit mabn
+            const mabn = (patient && (patient.pid || patient.mabn)) ? String(patient.pid || patient.mabn) : '';
+            const wrap = document.createElement('div');
+            const statusBar = document.createElement('div');
+            statusBar.id = 'dr-copy-dien-tien-status';
+            statusBar.style.cssText = 'margin-left:8px; font-size:12px; color:#0f172a;';
+            // Place status near the button
+            btnCopyAgain.insertAdjacentElement('afterend', statusBar);
+
+            if (!mabn) {
+                const mod = require('./components/copyDienTienAI');
+                mod.setStatus(statusBar, 'Không tìm thấy MABN (pid)', '#b91c1c', true);
+                return;
+            }
+
+            // Import functions from module
+            const mod = require('./components/copyDienTienAI');
+            const { fetchPatientInfo } = mod.__esModule ? mod : { fetchPatientInfo: undefined };
+            // Fallback: call via window by reusing internal helpers through duplicated minimal flow
+            try {
+                mod.setStatus(statusBar, 'Đang lấy thông tin người bệnh...', '#0f172a', false);
+                // use internal method via module reference already loaded in bundle
+                const info = await mod.fetchPatientInfo(mabn);
+                const mavaovien = info.maVaoVien || info.mavaovien || '';
+                const ngayvv = mod.parseMMDDYYYYtoDDMMYYYY(info.ngayVV || info.ngayvv || '');
+                const maql = info.maql || '';
+                if (!mavaovien || !ngayvv || !maql) {
+                    mod.setStatus(statusBar, 'Thiếu tham số (mã vào viện/ngày vào/maql)', '#b91c1c', true);
+                    return;
+                }
+                const denngay = mod.todayDDMMYYYY();
+                const pdfUrl = `/todieutri/DienBien/PrintPDF?id=&mabn=${encodeURIComponent(mabn)}&mavaovien=${encodeURIComponent(mavaovien)}&tungay=${encodeURIComponent(ngayvv)}&denngay=${encodeURIComponent(denngay)}&maql=${encodeURIComponent(maql)}`;
+
+                mod.setStatus(statusBar, 'Đang tải và xử lý PDF...', '#0f172a', false);
+                const buf = await mod.fetchPdfArrayBuffer(pdfUrl);
+                const rawText = await mod.extractAllTextFromPdfBuffer(buf);
+                const text = mod.sanitizeCopiedText(rawText);
+
+                mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+                const ok = await mod.copyToClipboard(text);
+                if (ok) {
+                    mod.setStatus(statusBar, 'Đã copy toàn bộ diễn tiến vào clipboard.', '#166534', true);
+                    btnCopyAgain.dataset.clipboardText = text;
+                    btnCopyAgain.style.display = 'inline-block';
+                } else {
+                    mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+                }
+            } catch (err) {
+                console.error(err);
+                mod.setStatus(statusBar, 'Lỗi: ' + (err && err.message ? err.message : 'Không rõ'), '#b91c1c', true);
+            }
+        });
+        // Copy-again behavior
+        btnCopyAgain.addEventListener('click', async () => {
+            const mod = require('./components/copyDienTienAI');
+            const cached = btnCopyAgain.dataset.clipboardText || '';
+            const statusBar = document.getElementById('dr-copy-dien-tien-status') || document.createElement('div');
+            if (!cached) {
+                mod.setStatus(statusBar, 'Chưa có dữ liệu để copy lại.', '#b91c1c', true);
+                return;
+            }
+            mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+            const ok = await mod.copyToClipboard(cached);
+            if (ok) mod.setStatus(statusBar, 'Đã copy lại vào clipboard.', '#166534', true);
+            else mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+        });
+        sidebarActions.appendChild(btnCopy);
+        sidebarActions.appendChild(btnCopyAgain);
+    } catch(_) {}
     // HSBAv1 button now comes from components/actionButtons.js
         leftColumn.appendChild(sidebarActions);
 
@@ -503,6 +589,11 @@ function showDashboardBenhNhanIfNeeded() {
         
         const checklistDiv = createChecklistSection(patient);
         rightColumn.appendChild(checklistDiv);
+        // Add HSBA Data tab into the same tabs bar
+        try {
+            const { addHSBATab } = require('./components/hsbaDataFetcher');
+            addHSBATab(checklistDiv, patient);
+        } catch (e) { console.warn('HSBA tab init failed', e); }
         
         // Add columns to container
         container.appendChild(leftColumn);

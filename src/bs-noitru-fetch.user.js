@@ -39,10 +39,13 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     'use strict';
 
     const Utils = require('./utils');
+    // Ensure HSBA background worker runs on hsba.tahospital.vn when this bundle is injected there
+    try { require('./components/hsbaDataFetcher'); } catch(_) {}
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
     const { showSettingsIfNeeded } = require('./settings');
+    const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();
     showSettingsIfNeeded();
@@ -97,6 +100,9 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
         }
     }
     autoClickCbTaCaIfNeeded();
+
+    // Initialize Copy Diễn Tiến button on /to-dieu-tri
+    try { initCopyDienTienAI(); } catch(_) {}
 
     // Auto-login on /Home/Login: always fill from default account; only auto-submit if enabled
     try {

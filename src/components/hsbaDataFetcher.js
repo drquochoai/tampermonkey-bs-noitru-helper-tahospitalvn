@@ -59,71 +59,6 @@ const ALLOWED_TENMAU = new Set([
     'Toa thuốc ngoại trú'
 ]);
 
-// Resolve HSBA V2 link for a given MABN via server endpoint; fall back to HSBA v1 URL
-async function getHSBAV2Link(mabn) {
-	try {
-		const res = await fetch('/ToDieuTri/LoadLinkHsba', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/x-www-form-urlencoded',
-				'X-Requested-With': 'XMLHttpRequest'
-			},
-			credentials: 'include',
-			body: 'code=' + encodeURIComponent(mabn)
-		});
-		const json = await res.json();
-		const link = json && json.data && json.data.link;
-		if (link) return link;
-	} catch (_) { /* ignore and use fallback */ }
-	return `/hoso/${encodeURIComponent(String(mabn))}`;
-}
-
-// Local date helpers for consistent formatting/parsing used in this module
-function pad2(n) { return String(n).padStart(2, '0'); }
-
-function parseDateSafe(v) {
-	try {
-		if (!v) return null;
-		if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
-		if (typeof v === 'number') {
-			const d = new Date(v);
-			return isNaN(d.getTime()) ? null : d;
-		}
-		if (typeof v === 'string') {
-			// ISO or RFC dates
-			const t = Date.parse(v);
-			if (!Number.isNaN(t)) return new Date(t);
-			// dd/mm/yyyy[ HH:mm]
-			const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2}))?/);
-			if (m) {
-				const dd = Number(m[1]);
-				const mm = Number(m[2]);
-				const yyyy = Number(m[3]);
-				const hh = m[4] != null ? Number(m[4]) : 0;
-				const mi = m[5] != null ? Number(m[5]) : 0;
-				const d = new Date(yyyy, mm - 1, dd, hh, mi);
-				return isNaN(d.getTime()) ? null : d;
-			}
-		}
-	} catch (_) {}
-	return null;
-}
-
-function formatDateDDMMYYYY(d) {
-	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
-	return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
-function formatDateTimeDDMMYYYYHHmm(d) {
-	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
-	return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function formatDateYYYYMMDD(d) {
-	if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
-	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
 	Object.entries(attrs).forEach(([k, v]) => {
@@ -137,16 +72,64 @@ function createEl(tag, attrs = {}, children = []) {
 			el.setAttribute(k, v);
 		}
 	});
-	if (Array.isArray(children)) {
-		children.forEach(c => {
-			if (c == null) return;
-			if (c instanceof Node) el.appendChild(c);
-			else el.appendChild(document.createTextNode(String(c)));
-		});
-	} else if (children != null) {
-		el.appendChild(document.createTextNode(String(children)));
-	}
+	(Array.isArray(children) ? children : [children]).forEach(c => {
+		if (c == null) return;
+		if (typeof c === 'string') el.appendChild(document.createTextNode(c));
+		else el.appendChild(c);
+	});
 	return el;
+}
+
+function formatDateYYYYMMDD(d = new Date()) {
+	const yyyy = d.getFullYear();
+	const mm = String(d.getMonth() + 1).padStart(2, '0');
+	const dd = String(d.getDate()).padStart(2, '0');
+	return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseDateSafe(s) {
+	if (!s || typeof s !== 'string') return null;
+	// Try ISO first; fallback to replace spaces
+	let dt = new Date(s);
+	if (isNaN(dt.getTime())) {
+		try { dt = new Date(s.replace(' ', 'T')); } catch(_) {}
+	}
+	return isNaN(dt.getTime()) ? null : dt;
+}
+
+function formatDateDDMMYYYY(dt) {
+	if (!(dt instanceof Date) || isNaN(dt.getTime())) return '';
+	const dd = String(dt.getDate()).padStart(2, '0');
+	const mm = String(dt.getMonth() + 1).padStart(2, '0');
+	const yyyy = dt.getFullYear();
+	return `${dd}/${mm}/${yyyy}`;
+}
+
+function formatDateTimeDDMMYYYYHHmm(dt) {
+	if (!(dt instanceof Date) || isNaN(dt.getTime())) return '';
+	const ddmmyyyy = formatDateDDMMYYYY(dt);
+	const hh = String(dt.getHours()).padStart(2, '0');
+	const mi = String(dt.getMinutes()).padStart(2, '0');
+	return `${ddmmyyyy} ${hh}:${mi}`;
+}
+
+async function getHSBAV2Link(mabn) {
+	try {
+		const res = await fetch('/ToDieuTri/LoadLinkHsba', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'X-Requested-With': 'XMLHttpRequest'
+			},
+			credentials: 'include',
+			body: 'code=' + encodeURIComponent(mabn)
+		});
+		const json = await res.json();
+		if (json && json.data && json.data.link) return json.data.link;
+		return `/hoso/${encodeURIComponent(String(mabn))}`; // fallback v1
+	} catch (e) {
+		return `/hoso/${encodeURIComponent(String(mabn))}`; // fallback v1
+	}
 }
 
 function renderResult(container, result) {
@@ -221,17 +204,16 @@ function renderResult(container, result) {
 					dataset: { tenfile: d._tenfile },
 					style: { cursor: 'pointer', padding: '2px 0' }
 				}, label);
-		li.addEventListener('click', () => {
+				li.addEventListener('click', () => {
 					try {
 						const tf = li.dataset.tenfile || '';
 						if (!tf) {
 							console.error('[DR][HSBA] click but missing data-tenfile');
 							return;
 						}
-			// Open a lightweight viewer on hsba.tahospital.vn to render PDF inline using blob URL
-			const viewerUrl = `https://hsba.tahospital.vn/public?drpdf=${encodeURIComponent(tf)}`;
-			console.log('[DR][HSBA] opening PDF viewer:', { tenfile: tf, viewerUrl });
-			window.open(viewerUrl, '_blank');
+						const url = `https://hsba.tahospital.vn/api/hosobenhan/download?url=${encodeURIComponent(tf)}`;
+						console.log('[DR][HSBA] opening file:', { tenfile: tf, url });
+						window.open(url, '_blank');
 					} catch (err) {
 						console.error('[DR][HSBA] open file error:', err);
 					}
@@ -389,21 +371,9 @@ async function hsbaBackgroundFetcherIfNeeded() {
 		if (window.location.hostname !== 'hsba.tahospital.vn') return;
 	const params = new URLSearchParams(window.location.search);
 	const pid = params.get('pid');
-	const drpdf = params.get('drpdf');
 	const s = params.get('s') || '';
 	const t = params.get('t') || '';
 	const site = params.get('site') || '1';
-		// If a PDF viewer is requested, replace the whole document to avoid host React errors.
-		if (drpdf) {
-			try {
-				const tf = decodeURIComponent(drpdf);
-				const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">\n<title>HSBA PDF Viewer</title>\n<style>html,body{height:100%;margin:0} .drv-wrap{position:fixed;inset:0;display:flex;flex-direction:column;background:#0f172a0d} .drv-bar{padding:8px 12px;background:#0f172a;color:#fff;display:flex;align-items:center;gap:8px;font:600 13px/1.4 system-ui,Segoe UI,Roboto} .drv-link{margin-left:auto;color:#93c5fd;text-decoration:underline} .drv-embed{flex:1;width:100%;height:100%;border:0}</style></head><body>\n<div class="drv-wrap"><div class="drv-bar">HSBA PDF Viewer<a class="drv-link" id="drv-dl" target="_blank" rel="noreferrer noopener">Tải xuống</a></div><embed id="drv-pdf" class="drv-embed" type="application/pdf"/></div>\n<script>(function(){\n  const tf = ${JSON.stringify(tf)};\n  const apiUrl = '/api/hosobenhan/download?url=' + encodeURIComponent(tf);\n  console.log('[DR][HSBA][VIEWER] fetching PDF as blob:', { tf, apiUrl });\n  fetch(apiUrl, { method: 'GET', credentials: 'include' })\n    .then(res => {\n      if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + res.statusText);\n      return res.blob();\n    })\n    .then(blob => {\n      const url = URL.createObjectURL(blob);\n      console.log('[DR][HSBA][VIEWER] blob URL created');\n      var e = document.getElementById('drv-pdf');\n      if (e) e.src = url;\n      var a = document.getElementById('drv-dl');\n      if (a) a.href = apiUrl;\n      try { window.addEventListener('beforeunload', function(){ try { URL.revokeObjectURL(url); } catch(_) {} }); } catch(_) {}\n    })\n    .catch(err => {\n      console.error('[DR][HSBA][VIEWER] error:', err);\n      document.body.innerHTML = '<div style=\\'padding:16px;color:#b91c1c;\\'>Không hiển thị được PDF. ' + (err && err.message ? err.message : '') + '</div>';\n    });\n})();<\/script>\n</body></html>`;
-				document.open();
-				document.write(html);
-				document.close();
-			} catch(_) {}
-			return;
-		}
 		if (!pid) return;
 
 		function waitForGrid() {

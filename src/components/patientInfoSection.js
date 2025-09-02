@@ -17,10 +17,12 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
         <div><b>DOB:</b> ${dob} (${age}) - ${gender} - ${room} - ${bed}</div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
-        <div style="margin-top:8px;">
-            <h3 style="margin-bottom:6px;">Chẩn đoán kèm theo</h3>
-            <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:10px;border:1px solid #eee;border-radius:6px;resize:vertical;"></textarea>
-            <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;margin-top:4px;">Đã lưu</div>
+        <div style="margin-top:8px; display:grid; grid-template-columns:max-content 1fr; align-items:start; column-gap:10px;">
+            <label for="dr-chandoan-kemtheo" style="margin:0;font-weight:600;line-height:1.4;font-size:12px;color:#555;">Bệnh đi kèm</label>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+                <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:6px 8px;border:1px solid #90caf9;border-radius:4px;resize:vertical;font-size:12px;line-height:1.3;min-height:44px;box-shadow:0 0 0 2px rgba(25,118,210,0.12);outline:none;"></textarea>
+                <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;">Đã lưu</div>
+            </div>
         </div>
         
         <div style="margin-top:20px;">

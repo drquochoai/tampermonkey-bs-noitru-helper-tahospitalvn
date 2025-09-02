@@ -29,17 +29,32 @@
 
 const BS_CAI_DAT = {
     // ================== CÀI ĐẶT HSBA ==================
-    // Danh sách tên mẫu tài liệu HSBA được phép hiển thị
-    HSBA_ALLOWED_TENMAU: [
-        'Phiếu khám bệnh vào viện',
-        'Phiếu khám tiền mê',
-        'Biên bản hội chẩn duyệt mổ',
-        'Phiếu khám chuyên khoa',
-        'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí',
-        'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức',
-        'Phiếu tường trình phẫu thuật, thủ thuật',
-        'Phiếu khám bệnh',
-        'Toa thuốc ngoại trú'
+    // Quy tắc xử lý tài liệu HSBA.
+    // - tenmau: Tên mẫu tài liệu gốc từ HSBA V2
+    // - show: true nếu muốn hiển thị trong danh sách "dr-hsba-item"
+    // - sync: true nếu muốn dùng tài liệu này để đồng bộ với checklist bộ mổ
+    // - checklist: (tùy chọn) Nhãn checklist mục tiêu khi sync === true
+    // Lưu ý: Một mục có thể chỉ show (hiển thị) hoặc chỉ sync (đồng bộ) hoặc cả hai.
+    HSBA_CHECKLIST_MAP: [
+        // Hiển thị + Đồng bộ vào checklist
+        { tenmau: 'Phiếu khám bệnh vào viện', show: true, sync: true, checklist: 'Phiếu Khám vào viện (hsoft)' },
+        { tenmau: 'Biên bản hội chẩn duyệt mổ', show: true, sync: true, checklist: 'Tạo Biên bản Hội chẩn duyệt mổ (web)' },
+        { tenmau: 'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí', show: true, sync: true, checklist: 'Phiếu cung cấp thông tin, chẩn đoán và điều trị (hsoft)' },
+        { tenmau: 'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức', show: true, sync: true, checklist: '57. Cam kết phẫu thuật thủ thuật (hsoft)' },
+        { tenmau: 'Phiếu khai thác tiền sử dị ứng', show: true, sync: true, checklist: 'Phiếu khai thác tiền sử dị ứng (hsoft)' },
+        { tenmau: 'Phiếu HKTT trên bệnh người Phẫu thuật', show: false, sync: true, checklist: 'Đánh giá nguy cơ huyết khối (web)' },
+        { tenmau: 'Phiếu khám tiền mê', show: true, sync: true, checklist: 'ĐÃ khám tiền mê CHƯA?' },
+
+        // Chỉ hiển thị (không sync checklist)
+        { tenmau: 'Phiếu khám chuyên khoa', show: true, sync: false },
+        { tenmau: 'Phiếu tường trình phẫu thuật, thủ thuật', show: true, sync: false },
+        { tenmau: 'Phiếu khám bệnh', show: true, sync: false },
+        { tenmau: 'Toa thuốc ngoại trú', show: true, sync: false },
+
+        // Không hiển thị (chỉ sync checklist)
+        { tenmau: 'Phiếu Theo dõi điều trị', show: true, sync: true, checklist: 'Tờ điều trị (web)' },
+
+        // Có thể bổ sung thêm nếu cần
     ],
     // ================== CÀI ĐẶT CHECKLIST ==================
     checklistItems: [
@@ -1345,6 +1360,7 @@ Notes
 */
 
 const DialogManager = require('./dialogManager');
+const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = (() => {
 	try { return require('../BS_CAI_DAT_GIAO_DIEN'); } catch(_) { return (typeof window !== 'undefined' && window.BS_CAI_DAT) ? window.BS_CAI_DAT : {}; }
 })();
@@ -1375,8 +1391,14 @@ function closeOpenedTab(pid, reason = 'done') {
 	HSBA_OPEN_TABS.delete(pid);
 }
 
-// Allowed document names to keep from HSBA response (configured in BS_CAI_DAT)
-const HSBA_ALLOWED_TENMAU = new Set(Array.isArray(BS_CAI_DAT.HSBA_ALLOWED_TENMAU) ? BS_CAI_DAT.HSBA_ALLOWED_TENMAU : []);
+// Build rules from BS_CAI_DAT.HSBA_CHECKLIST_MAP (array of rule objects)
+const __HSBA_RULES__ = Array.isArray(BS_CAI_DAT.HSBA_CHECKLIST_MAP) ? BS_CAI_DAT.HSBA_CHECKLIST_MAP : [];
+const HSBA_SHOW_SET = new Set(__HSBA_RULES__.filter(r => r && r.tenmau && r.show).map(r => r.tenmau));
+const HSBA_SYNC_SET = new Set(__HSBA_RULES__.filter(r => r && r.tenmau && r.sync).map(r => r.tenmau));
+const HSBA_TENMAU_TO_CHECKLIST = __HSBA_RULES__.reduce((acc, r) => {
+	if (r && r.sync && r.tenmau && r.checklist) acc[r.tenmau] = r.checklist;
+	return acc;
+}, {});
 
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
@@ -1472,6 +1494,76 @@ function renderResult(container, result, ctx = {}) {
 	container.appendChild(summary);
 
 	if (items.length === 0) return;
+
+	// Determine current episode: prefer one with ngayra null, otherwise the latest by ngayvao
+	const pickEpisode = () => {
+		const open = items.filter(it => !it.ngayra);
+		const arr = (open.length ? open : items).slice();
+		arr.sort((a,b) => {
+			const ta = parseDateSafe(a.ngayvao)?.getTime() || 0;
+			const tb = parseDateSafe(b.ngayvao)?.getTime() || 0;
+			return tb - ta; // newest first
+		});
+		return arr[0] || null;
+	};
+	const currentEpisode = pickEpisode();
+
+	// From current episode, compute HSBA doc matches and persist to checklist state
+	try {
+		if (currentEpisode && Array.isArray(currentEpisode.hoSoChiTiet)) {
+			const epStart = parseDateSafe(currentEpisode.ngayvao);
+			const epEnd = parseDateSafe(currentEpisode.ngayra);
+			const startTs = epStart ? epStart.getTime() : -Infinity;
+			const endTs = epEnd ? epEnd.getTime() : Infinity;
+			const docSet = new Set();
+			let latestDocDates = {};
+			currentEpisode.hoSoChiTiet.forEach(g => {
+				(Array.isArray(g.chiTiets) ? g.chiTiets : []).forEach(d => {
+					if (!d || !d.tenmau) return;
+					if (!HSBA_SYNC_SET.has(d.tenmau)) return;
+					// Only consider documents within the current episode date range
+					const dDate = parseDateSafe(d.ngay);
+					if (!dDate) return;
+					const ts = dDate.getTime();
+					if (ts < startTs || ts > endTs) return;
+					docSet.add(d.tenmau);
+					const prev = latestDocDates[d.tenmau] || 0;
+					if (ts > prev) latestDocDates[d.tenmau] = ts;
+				});
+			});
+			const map = HSBA_TENMAU_TO_CHECKLIST;
+			const nowIso = new Date().toISOString();
+			const hsbaSynced = Object.create(null);
+			for (const tenmau of docSet) {
+				const target = map[tenmau];
+				if (!target) continue;
+				const dateTs = latestDocDates[tenmau] || 0;
+				hsbaSynced[target] = {
+					matched: true,
+					source: 'hsba',
+					docName: tenmau,
+					docDate: dateTs ? new Date(dateTs).toISOString() : null,
+					updatedAt: nowIso
+				};
+			}
+			if (Object.keys(hsbaSynced).length) {
+				// Merge into window.checklistState and persist
+				if (!window.checklistState) window.checklistState = {};
+				const prev = window.checklistState.hsbaSynced || {};
+				window.checklistState.hsbaSynced = { ...prev, ...hsbaSynced, __lastSyncAt: nowIso };
+				if (window.checklistObj && ChecklistService && typeof ChecklistService.updateChecklistState === 'function') {
+					ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) })
+						.then(() => {
+							// Ask dashboard to refresh checklist badges if function exists
+							try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+						})
+						.catch(() => {});
+				} else {
+					try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+				}
+			}
+		}
+	} catch(_) {}
 	const outer = createEl('div', { className: 'dr-hsba-container', style: { maxHeight: '320px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px' } });
 	items.forEach((it, idx) => {
 	const headerParts = [];
@@ -1498,7 +1590,7 @@ function renderResult(container, result, ctx = {}) {
 				}))
 				.filter(d => {
 					if (!d) return false;
-					if (!d.tenmau || !HSBA_ALLOWED_TENMAU.has(d.tenmau)) {
+					if (!d.tenmau || !HSBA_SHOW_SET.has(d.tenmau)) {
 						try { console.debug('[DR][HSBA] skip doc (tenmau not allowed):', d); } catch(_) {}
 						return false;
 					}
@@ -1859,7 +1951,7 @@ async function hsbaBackgroundFetcherIfNeeded() {
 															if (Array.isArray(it.hoSoChiTiet)) {
 																it.hoSoChiTiet.forEach(g => {
 																	if (Array.isArray(g.chiTiets)) {
-																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : HSBA_ALLOWED_TENMAU.has(x.tenmau));
+																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : HSBA_SHOW_SET.has(x.tenmau));
 																	}
 																});
 															}
@@ -2027,7 +2119,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"./dialogManager":7}],9:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":20,"./dialogManager":7}],9:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -2227,10 +2319,12 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
         <div><b>DOB:</b> ${dob} (${age}) - ${gender} - ${room} - ${bed}</div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
-        <div style="margin-top:8px;">
-            <h3 style="margin-bottom:6px;">Chẩn đoán kèm theo</h3>
-            <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:10px;border:1px solid #eee;border-radius:6px;resize:vertical;"></textarea>
-            <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;margin-top:4px;">Đã lưu</div>
+        <div style="margin-top:8px; display:grid; grid-template-columns:max-content 1fr; align-items:start; column-gap:10px;">
+            <label for="dr-chandoan-kemtheo" style="margin:0;font-weight:600;line-height:1.4;font-size:12px;color:#555;">Bệnh đi kèm</label>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+                <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:6px 8px;border:1px solid #90caf9;border-radius:4px;resize:vertical;font-size:12px;line-height:1.3;min-height:44px;box-shadow:0 0 0 2px rgba(25,118,210,0.12);outline:none;"></textarea>
+                <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;">Đã lưu</div>
+            </div>
         </div>
         
         <div style="margin-top:20px;">
@@ -3755,30 +3849,67 @@ function showDashboardBenhNhanIfNeeded() {
         }
     }
 
-    // Helper function to render checklist items
+    // Helper function to render checklist items with HSBA badges and sync note
     function renderChecklistItems(checklistUl) {
+        checklistUl.innerHTML = '';
+        const hsbaSynced = (window.checklistState && window.checklistState.hsbaSynced) || {};
+        const lastSyncAt = hsbaSynced.__lastSyncAt || null;
         checklistItems.forEach((item, idx) => {
             const li = document.createElement('li');
-            li.style = 'margin-bottom:8px;';
+            // No margin/padding; keep optional background and radius only
+            let liStyle = 'border-radius:6px;';
             const id = 'dr-checklist-' + idx;
-            li.innerHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${window.checklistState[item] ? 'checked' : ''}>${item}</label>`;
+            const isChecked = !!(window.checklistState && window.checklistState[item]);
+            const auto = hsbaSynced[item] && hsbaSynced[item].matched === true;
+            const badge = auto ? `<span class="dr-hsba-badge" title="Đã có trong HSBA" style="color:#16a34a; font-weight:700;">✔</span>` : '';
+            const hint = auto ? `<span class="dr-hsba-hint" style="color:#16a34a; font-size:12px;">(HSBA)</span>` : '';
+            if (auto) {
+                const hl = (BS_CAI_DAT && BS_CAI_DAT.colors && BS_CAI_DAT.colors.blueCardBackground) ? BS_CAI_DAT.colors.blueCardBackground : '#e3f2fd';
+                liStyle += `background:${hl};`;
+            }
+            li.style = liStyle;
+            li.innerHTML = `<label style="display:flex;align-items:center;gap:0;min-height:28px;"><input type="checkbox" id="${id}" ${isChecked ? 'checked' : ''}>${item}${auto ? ' ' : ''}${badge}${auto ? ' ' : ''}${hint}</label>`;
             checklistUl.appendChild(li);
         });
+
+        // Add sync note under list
+        const note = document.createElement('div');
+        note.className = 'dr-hsba-sync-note';
+        note.style.cssText = 'margin-top:6px; font-size:12px; color:#64748b;';
+        if (lastSyncAt) {
+            const dt = new Date(lastSyncAt);
+            const dd = String(dt.getDate()).padStart(2,'0');
+            const mm = String(dt.getMonth()+1).padStart(2,'0');
+            const yyyy = dt.getFullYear();
+            const hh = String(dt.getHours()).padStart(2,'0');
+            const mi = String(dt.getMinutes()).padStart(2,'0');
+            note.textContent = `Đồng bộ HSBA: ${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+        } else {
+                    li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
+        }
+        checklistUl.parentElement.appendChild(note);
 
         // Setup checkbox change handlers
         setTimeout(() => {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
                 cb.addEventListener('change', async function () {
                     window.checklistState[this.parentNode.textContent.trim()] = this.checked;
-                    
-                    const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                    if (!success) {
+                    const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                    if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist thất bại!');
                     }
                 });
             });
         }, 10);
     }
+
+    // Public refresh to update HSBA badges and note after sync
+    window.dr_refreshChecklistBadges = function () {
+        try {
+            const ul = document.querySelector('#checklist-bomo');
+            if (ul) renderChecklistItems(ul);
+        } catch(_) {}
+    };
 
     function showSidebar(patient) {
         const backdrop = ModalManager.getOrCreateBackdrop();

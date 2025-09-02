@@ -19,6 +19,7 @@ Notes
 */
 
 const DialogManager = require('./dialogManager');
+const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = (() => {
 	try { return require('../BS_CAI_DAT_GIAO_DIEN'); } catch(_) { return (typeof window !== 'undefined' && window.BS_CAI_DAT) ? window.BS_CAI_DAT : {}; }
 })();
@@ -49,8 +50,14 @@ function closeOpenedTab(pid, reason = 'done') {
 	HSBA_OPEN_TABS.delete(pid);
 }
 
-// Allowed document names to keep from HSBA response (configured in BS_CAI_DAT)
-const HSBA_ALLOWED_TENMAU = new Set(Array.isArray(BS_CAI_DAT.HSBA_ALLOWED_TENMAU) ? BS_CAI_DAT.HSBA_ALLOWED_TENMAU : []);
+// Build rules from BS_CAI_DAT.HSBA_CHECKLIST_MAP (array of rule objects)
+const __HSBA_RULES__ = Array.isArray(BS_CAI_DAT.HSBA_CHECKLIST_MAP) ? BS_CAI_DAT.HSBA_CHECKLIST_MAP : [];
+const HSBA_SHOW_SET = new Set(__HSBA_RULES__.filter(r => r && r.tenmau && r.show).map(r => r.tenmau));
+const HSBA_SYNC_SET = new Set(__HSBA_RULES__.filter(r => r && r.tenmau && r.sync).map(r => r.tenmau));
+const HSBA_TENMAU_TO_CHECKLIST = __HSBA_RULES__.reduce((acc, r) => {
+	if (r && r.sync && r.tenmau && r.checklist) acc[r.tenmau] = r.checklist;
+	return acc;
+}, {});
 
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
@@ -146,6 +153,76 @@ function renderResult(container, result, ctx = {}) {
 	container.appendChild(summary);
 
 	if (items.length === 0) return;
+
+	// Determine current episode: prefer one with ngayra null, otherwise the latest by ngayvao
+	const pickEpisode = () => {
+		const open = items.filter(it => !it.ngayra);
+		const arr = (open.length ? open : items).slice();
+		arr.sort((a,b) => {
+			const ta = parseDateSafe(a.ngayvao)?.getTime() || 0;
+			const tb = parseDateSafe(b.ngayvao)?.getTime() || 0;
+			return tb - ta; // newest first
+		});
+		return arr[0] || null;
+	};
+	const currentEpisode = pickEpisode();
+
+	// From current episode, compute HSBA doc matches and persist to checklist state
+	try {
+		if (currentEpisode && Array.isArray(currentEpisode.hoSoChiTiet)) {
+			const epStart = parseDateSafe(currentEpisode.ngayvao);
+			const epEnd = parseDateSafe(currentEpisode.ngayra);
+			const startTs = epStart ? epStart.getTime() : -Infinity;
+			const endTs = epEnd ? epEnd.getTime() : Infinity;
+			const docSet = new Set();
+			let latestDocDates = {};
+			currentEpisode.hoSoChiTiet.forEach(g => {
+				(Array.isArray(g.chiTiets) ? g.chiTiets : []).forEach(d => {
+					if (!d || !d.tenmau) return;
+					if (!HSBA_SYNC_SET.has(d.tenmau)) return;
+					// Only consider documents within the current episode date range
+					const dDate = parseDateSafe(d.ngay);
+					if (!dDate) return;
+					const ts = dDate.getTime();
+					if (ts < startTs || ts > endTs) return;
+					docSet.add(d.tenmau);
+					const prev = latestDocDates[d.tenmau] || 0;
+					if (ts > prev) latestDocDates[d.tenmau] = ts;
+				});
+			});
+			const map = HSBA_TENMAU_TO_CHECKLIST;
+			const nowIso = new Date().toISOString();
+			const hsbaSynced = Object.create(null);
+			for (const tenmau of docSet) {
+				const target = map[tenmau];
+				if (!target) continue;
+				const dateTs = latestDocDates[tenmau] || 0;
+				hsbaSynced[target] = {
+					matched: true,
+					source: 'hsba',
+					docName: tenmau,
+					docDate: dateTs ? new Date(dateTs).toISOString() : null,
+					updatedAt: nowIso
+				};
+			}
+			if (Object.keys(hsbaSynced).length) {
+				// Merge into window.checklistState and persist
+				if (!window.checklistState) window.checklistState = {};
+				const prev = window.checklistState.hsbaSynced || {};
+				window.checklistState.hsbaSynced = { ...prev, ...hsbaSynced, __lastSyncAt: nowIso };
+				if (window.checklistObj && ChecklistService && typeof ChecklistService.updateChecklistState === 'function') {
+					ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) })
+						.then(() => {
+							// Ask dashboard to refresh checklist badges if function exists
+							try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+						})
+						.catch(() => {});
+				} else {
+					try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+				}
+			}
+		}
+	} catch(_) {}
 	const outer = createEl('div', { className: 'dr-hsba-container', style: { maxHeight: '320px', overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '8px', padding: '8px' } });
 	items.forEach((it, idx) => {
 	const headerParts = [];
@@ -172,7 +249,7 @@ function renderResult(container, result, ctx = {}) {
 				}))
 				.filter(d => {
 					if (!d) return false;
-					if (!d.tenmau || !HSBA_ALLOWED_TENMAU.has(d.tenmau)) {
+					if (!d.tenmau || !HSBA_SHOW_SET.has(d.tenmau)) {
 						try { console.debug('[DR][HSBA] skip doc (tenmau not allowed):', d); } catch(_) {}
 						return false;
 					}
@@ -533,7 +610,7 @@ async function hsbaBackgroundFetcherIfNeeded() {
 															if (Array.isArray(it.hoSoChiTiet)) {
 																it.hoSoChiTiet.forEach(g => {
 																	if (Array.isArray(g.chiTiets)) {
-																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : HSBA_ALLOWED_TENMAU.has(x.tenmau));
+																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : HSBA_SHOW_SET.has(x.tenmau));
 																	}
 																});
 															}

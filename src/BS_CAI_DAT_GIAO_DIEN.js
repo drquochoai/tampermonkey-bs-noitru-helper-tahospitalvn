@@ -4,17 +4,32 @@
 
 const BS_CAI_DAT = {
     // ================== CÀI ĐẶT HSBA ==================
-    // Danh sách tên mẫu tài liệu HSBA được phép hiển thị
-    HSBA_ALLOWED_TENMAU: [
-        'Phiếu khám bệnh vào viện',
-        'Phiếu khám tiền mê',
-        'Biên bản hội chẩn duyệt mổ',
-        'Phiếu khám chuyên khoa',
-        'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí',
-        'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức',
-        'Phiếu tường trình phẫu thuật, thủ thuật',
-        'Phiếu khám bệnh',
-        'Toa thuốc ngoại trú'
+    // Quy tắc xử lý tài liệu HSBA.
+    // - tenmau: Tên mẫu tài liệu gốc từ HSBA V2
+    // - show: true nếu muốn hiển thị trong danh sách "dr-hsba-item"
+    // - sync: true nếu muốn dùng tài liệu này để đồng bộ với checklist bộ mổ
+    // - checklist: (tùy chọn) Nhãn checklist mục tiêu khi sync === true
+    // Lưu ý: Một mục có thể chỉ show (hiển thị) hoặc chỉ sync (đồng bộ) hoặc cả hai.
+    HSBA_CHECKLIST_MAP: [
+        // Hiển thị + Đồng bộ vào checklist
+        { tenmau: 'Phiếu khám bệnh vào viện', show: true, sync: true, checklist: 'Phiếu Khám vào viện (hsoft)' },
+        { tenmau: 'Biên bản hội chẩn duyệt mổ', show: true, sync: true, checklist: 'Tạo Biên bản Hội chẩn duyệt mổ (web)' },
+        { tenmau: 'Phiếu cung cấp thông tin chẩn đoán, điều trị và chi phí', show: true, sync: true, checklist: 'Phiếu cung cấp thông tin, chẩn đoán và điều trị (hsoft)' },
+        { tenmau: 'Giấy cam đoan thực hiện Phẫu thuật, Thủ thuật và Gây mê hồi sức', show: true, sync: true, checklist: '57. Cam kết phẫu thuật thủ thuật (hsoft)' },
+        { tenmau: 'Phiếu khai thác tiền sử dị ứng', show: true, sync: true, checklist: 'Phiếu khai thác tiền sử dị ứng (hsoft)' },
+        { tenmau: 'Phiếu HKTT trên bệnh người Phẫu thuật', show: false, sync: true, checklist: 'Đánh giá nguy cơ huyết khối (web)' },
+        { tenmau: 'Phiếu khám tiền mê', show: true, sync: true, checklist: 'ĐÃ khám tiền mê CHƯA?' },
+
+        // Chỉ hiển thị (không sync checklist)
+        { tenmau: 'Phiếu khám chuyên khoa', show: true, sync: false },
+        { tenmau: 'Phiếu tường trình phẫu thuật, thủ thuật', show: true, sync: false },
+        { tenmau: 'Phiếu khám bệnh', show: true, sync: false },
+        { tenmau: 'Toa thuốc ngoại trú', show: true, sync: false },
+
+        // Không hiển thị (chỉ sync checklist)
+        { tenmau: 'Phiếu Theo dõi điều trị', show: true, sync: true, checklist: 'Tờ điều trị (web)' },
+
+        // Có thể bổ sung thêm nếu cần
     ],
     // ================== CÀI ĐẶT CHECKLIST ==================
     checklistItems: [

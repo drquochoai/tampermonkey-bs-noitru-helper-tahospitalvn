@@ -414,30 +414,67 @@ function showDashboardBenhNhanIfNeeded() {
         }
     }
 
-    // Helper function to render checklist items
+    // Helper function to render checklist items with HSBA badges and sync note
     function renderChecklistItems(checklistUl) {
+        checklistUl.innerHTML = '';
+        const hsbaSynced = (window.checklistState && window.checklistState.hsbaSynced) || {};
+        const lastSyncAt = hsbaSynced.__lastSyncAt || null;
         checklistItems.forEach((item, idx) => {
             const li = document.createElement('li');
-            li.style = 'margin-bottom:8px;';
+            // No margin/padding; keep optional background and radius only
+            let liStyle = 'border-radius:6px;';
             const id = 'dr-checklist-' + idx;
-            li.innerHTML = `<label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="${id}" ${window.checklistState[item] ? 'checked' : ''}>${item}</label>`;
+            const isChecked = !!(window.checklistState && window.checklistState[item]);
+            const auto = hsbaSynced[item] && hsbaSynced[item].matched === true;
+            const badge = auto ? `<span class="dr-hsba-badge" title="Đã có trong HSBA" style="color:#16a34a; font-weight:700;">✔</span>` : '';
+            const hint = auto ? `<span class="dr-hsba-hint" style="color:#16a34a; font-size:12px;">(HSBA)</span>` : '';
+            if (auto) {
+                const hl = (BS_CAI_DAT && BS_CAI_DAT.colors && BS_CAI_DAT.colors.blueCardBackground) ? BS_CAI_DAT.colors.blueCardBackground : '#e3f2fd';
+                liStyle += `background:${hl};`;
+            }
+            li.style = liStyle;
+            li.innerHTML = `<label style="display:flex;align-items:center;gap:0;min-height:28px;"><input type="checkbox" id="${id}" ${isChecked ? 'checked' : ''}>${item}${auto ? ' ' : ''}${badge}${auto ? ' ' : ''}${hint}</label>`;
             checklistUl.appendChild(li);
         });
+
+        // Add sync note under list
+        const note = document.createElement('div');
+        note.className = 'dr-hsba-sync-note';
+        note.style.cssText = 'margin-top:6px; font-size:12px; color:#64748b;';
+        if (lastSyncAt) {
+            const dt = new Date(lastSyncAt);
+            const dd = String(dt.getDate()).padStart(2,'0');
+            const mm = String(dt.getMonth()+1).padStart(2,'0');
+            const yyyy = dt.getFullYear();
+            const hh = String(dt.getHours()).padStart(2,'0');
+            const mi = String(dt.getMinutes()).padStart(2,'0');
+            note.textContent = `Đồng bộ HSBA: ${dd}/${mm}/${yyyy} ${hh}:${mi}`;
+        } else {
+                    li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
+        }
+        checklistUl.parentElement.appendChild(note);
 
         // Setup checkbox change handlers
         setTimeout(() => {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
                 cb.addEventListener('change', async function () {
                     window.checklistState[this.parentNode.textContent.trim()] = this.checked;
-                    
-                    const success = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState);
-                    if (!success) {
+                    const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                    if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist thất bại!');
                     }
                 });
             });
         }, 10);
     }
+
+    // Public refresh to update HSBA badges and note after sync
+    window.dr_refreshChecklistBadges = function () {
+        try {
+            const ul = document.querySelector('#checklist-bomo');
+            if (ul) renderChecklistItems(ul);
+        } catch(_) {}
+    };
 
     function showSidebar(patient) {
         const backdrop = ModalManager.getOrCreateBackdrop();

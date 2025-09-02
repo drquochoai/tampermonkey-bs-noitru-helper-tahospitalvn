@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.8.3
+// @version      1.8.4
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -3885,7 +3885,7 @@ function showDashboardBenhNhanIfNeeded() {
             const mi = String(dt.getMinutes()).padStart(2,'0');
             note.textContent = `Đồng bộ HSBA: ${dd}/${mm}/${yyyy} ${hh}:${mi}`;
         } else {
-                    li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
+            note.textContent = 'Đồng bộ HSBA: chưa có';
         }
         checklistUl.parentElement.appendChild(note);
 

@@ -450,7 +450,7 @@ function showDashboardBenhNhanIfNeeded() {
             const mi = String(dt.getMinutes()).padStart(2,'0');
             note.textContent = `Đồng bộ HSBA: ${dd}/${mm}/${yyyy} ${hh}:${mi}`;
         } else {
-                    li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
+            note.textContent = 'Đồng bộ HSBA: chưa có';
         }
         checklistUl.parentElement.appendChild(note);
 

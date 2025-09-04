@@ -21,7 +21,6 @@ const header = `// ==UserScript==
 // @connect      bs-noitru.tahospital.vn
 // @connect      script.google.com
 // @connect      googleusercontent.com
-// @connect      *
 // @sandbox      MAIN_WORLD
 // ==/UserScript==
 `;

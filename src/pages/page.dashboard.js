@@ -186,6 +186,31 @@ function showDashboardBenhNhanIfNeeded() {
             // Parse into a fresh object; avoid leaking prior patient's HXT into others
             const parsedState = ChecklistService.parseChecklistState(checklistObj) || {};
             window.checklistState = { ...parsedState };
+            // Merge standardized OTM surgeries (if any) for this patient into state (append-only)
+            try {
+                const otmLogs = Array.isArray(patient && patient._otmPhauThuatLog) ? patient._otmPhauThuatLog : [];
+                if (otmLogs.length > 0) {
+                    if (!Array.isArray(window.checklistState.phauThuatLog)) window.checklistState.phauThuatLog = [];
+                    const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+                    const existingKeys = new Set(window.checklistState.phauThuatLog.map(keyOf));
+                    let added = 0;
+                    for (const e of otmLogs) {
+                        const k = keyOf(e);
+                        if (!existingKeys.has(k)) {
+                            window.checklistState.phauThuatLog.push({ ...e });
+                            existingKeys.add(k);
+                            added++;
+                        }
+                    }
+                    if (added > 0) {
+                        const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
+                        const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+                        window.checklistState.phauThuatLog.sort((a,b) => toTs(b)-toTs(a));
+                        // Persist silently in background
+                        try { ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) {}
+                    }
+                }
+            } catch (e) { console.warn('OTM merge into checklistState failed', e); }
             
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
@@ -1274,6 +1299,174 @@ function showDashboardBenhNhanIfNeeded() {
     initializeDashboard();
 }
 
+// Helpers to integrate standardized OTM surgery data
+function dr_normalizePid(val) {
+    if (val == null) return '';
+    const s = String(val).trim();
+    const digits = s.replace(/\D+/g, '');
+    return digits.replace(/^0+/, '');
+}
+
+function dr_formatVNDateTime(date) {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    const HH = String(date.getHours()).padStart(2, '0');
+    const MM = String(date.getMinutes()).padStart(2, '0');
+    return { date: `${dd}/${mm}/${yyyy}`, time: `${HH}:${MM}` };
+}
+
+function dr_otmToLogEntry(otmItem) {
+    try {
+        const startIso = otmItem && otmItem.start;
+        if (!startIso) return null;
+        const d = new Date(startIso);
+        if (isNaN(d.getTime())) return null;
+        const { date, time } = dr_formatVNDateTime(d);
+        const method = (otmItem.surgerymethod || '').trim();
+        // Collect doctors from userexec + userassistant
+        const names = [];
+        const pushNames = (arr) => {
+            if (Array.isArray(arr)) {
+                for (const u of arr) {
+                    const n = (u && u.fullname ? String(u.fullname) : '').trim();
+                    if (n && !names.includes(n)) names.push(n);
+                }
+            }
+        };
+        pushNames(otmItem.userexec);
+        pushNames(otmItem.userassistant);
+        const doctors = names.join(', ');
+        return { date, time, method, doctors, id: `otm-${startIso}` };
+    } catch (_) { return null; }
+}
+
+function dr_integrateOTMSurgeryData(otmList) {
+    const res = { updatedPatients: 0, addedLogs: 0, updated: [] };
+    if (!Array.isArray(otmList) || !Array.isArray(window.dr_data)) return res;
+    // Build map pid -> log entries
+    const map = new Map();
+    for (const it of otmList) {
+        const pid = dr_normalizePid(it && it.customer && it.customer.pid);
+        if (!pid) continue;
+        const entry = dr_otmToLogEntry(it);
+        if (!entry) continue;
+        if (!map.has(pid)) map.set(pid, []);
+        map.get(pid).push(entry);
+    }
+    if (map.size === 0) return res;
+
+    // Attach and merge to in-memory patient data
+    for (const p of window.dr_data) {
+        const mabnNorm = dr_normalizePid(p && p.mabn);
+        if (!mabnNorm) continue;
+        const entries = map.get(mabnNorm);
+        if (!entries || entries.length === 0) continue;
+
+        // Keep original for sidebar merge
+        p._otmPhauThuatLog = entries.slice();
+
+        // Merge into patient.checklistState for UI display (append-only, no overwrite)
+        if (!p.checklistState) p.checklistState = {};
+        if (!Array.isArray(p.checklistState.phauThuatLog)) p.checklistState.phauThuatLog = [];
+        const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+        const existingKeys = new Set(p.checklistState.phauThuatLog.map(keyOf));
+        let added = 0;
+        for (const e of entries) {
+            const k = keyOf(e);
+            if (!existingKeys.has(k)) {
+                p.checklistState.phauThuatLog.push({ ...e });
+                existingKeys.add(k);
+                added++;
+            }
+        }
+        if (added > 0) {
+            res.updatedPatients++;
+            res.addedLogs += added;
+            res.updated.push({ patient: p, added });
+            // Sort newest first
+            const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
+            const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+            p.checklistState.phauThuatLog.sort((a,b) => toTs(b)-toTs(a));
+            // Also reflect latest to phauThuatInfo for formatSurgeryInfo compatibility
+            const latest = p.checklistState.phauThuatLog[0];
+            if (latest) {
+                p.phauThuatInfo = { date: latest.date, time: latest.time, method: latest.method, doctors: latest.doctors, ngayPhauThuat: latest.date, gioPhauThuat: latest.time, pppt: latest.method };
+            }
+            // Update card/list row if present
+            try {
+                const DomUpdaters = require('../utils/domUpdaters');
+                const el = DomUpdaters.findPatientElement(p.mabn);
+                if (el) {
+                    DomUpdaters.updateSurgeryInfo(el, p);
+                    DomUpdaters.updateSurgeryIcon(el, p);
+                }
+            } catch (_) {}
+        }
+    }
+    return res;
+}
+
+async function dr_fetchChecklistObjForPatient(patient) {
+    try {
+        const res = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
+        let obj = ChecklistService.findChecklistObject(res);
+        if (!obj) {
+            const created = await ChecklistService.createNewChecklist(patient);
+            if (created) {
+                const res2 = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
+                obj = ChecklistService.findChecklistObject(res2);
+            }
+        }
+        return obj || null;
+    } catch (_) { return null; }
+}
+
+async function dr_persistMergedOTMSurgeries(updatedEntries, { concurrency = 2 } = {}) {
+    if (!Array.isArray(updatedEntries) || updatedEntries.length === 0) return { saved: 0, queued: 0, failed: 0 };
+    const queue = updatedEntries.slice();
+    let saved = 0, queued = 0, failed = 0;
+
+    const worker = async () => {
+        while (queue.length) {
+            const entry = queue.shift();
+            const p = entry && entry.patient;
+            if (!p) { failed++; continue; }
+            try {
+                const checklistObj = await dr_fetchChecklistObjForPatient(p);
+                if (!checklistObj) { failed++; continue; }
+                // Merge server state with current in-memory state (append-only)
+                const serverState = ChecklistService.parseChecklistState(checklistObj) || {};
+                const ensureArr = (arr) => Array.isArray(arr) ? arr : [];
+                const merged = ensureArr(serverState.phauThuatLog).slice();
+                const fromMem = ensureArr(p.checklistState && p.checklistState.phauThuatLog);
+                const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+                const existing = new Set(merged.map(keyOf));
+                for (const e of fromMem) {
+                    const k = keyOf(e);
+                    if (!existing.has(k)) { merged.push({ ...e }); existing.add(k); }
+                }
+                // Sort newest first
+                const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
+                const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+                merged.sort((a,b) => toTs(b)-toTs(a));
+
+                const newState = { ...(serverState || {}), phauThuatLog: merged };
+                const r = await ChecklistService.updateChecklistState(checklistObj, newState, { enqueueOnOffline: true });
+                if (r && (r.ok || r.queued)) {
+                    if (r.queued) queued++; else saved++;
+                } else {
+                    failed++;
+                }
+            } catch (_) { failed++; }
+        }
+    };
+
+    const workers = Array.from({ length: Math.max(1, Math.min(6, concurrency)) }, () => worker());
+    await Promise.all(workers);
+    return { saved, queued, failed };
+}
+
 // Handle OTM progress messages
 function handleOTMProgress(name, oldValue, newValue, remote) {
     try {
@@ -1292,17 +1485,22 @@ function handleOTMSuccess(name, oldValue, newValue, remote) {
         showToast(`✅ ${data.data.count} ca mổ đã được tải về!`, 'success', 5000);
         console.log('[OTM Success]', data.data);
 
-        // Log detailed surgery data
+        // Log full dataset once (no per-patient logs)
         if (data.data.surgeryData && data.data.surgeryData.length > 0) {
-            console.log('=== SURGERY DATA RECEIVED ===');
-            data.data.surgeryData.forEach((item, index) => {
-                console.log(`${index + 1}. ${item.customer?.fullname || 'N/A'} - ${item.surgerymethod || 'N/A'}`);
-                console.log(`   Time: ${item.start || 'N/A'}`);
-                console.log(`   Room: ${item.room?.displayname || 'N/A'}`);
-                console.log(`   Department: ${item.department?.displayname || 'N/A'}`);
-                console.log(`   Status: ${item.status || 'N/A'}`);
-                console.log('---');
-            });
+            console.log('=== SURGERY DATA RECEIVED (FULL) ===', data.data.surgeryData);
+            // Merge into in-memory patients and update UI
+            const mergeRes = dr_integrateOTMSurgeryData(data.data.surgeryData);
+            const { updatedPatients, addedLogs } = mergeRes;
+            if (updatedPatients > 0) {
+                try { showToast(`🧩 Đã cập nhật PT cho ${updatedPatients} BN (${addedLogs} mục).`, 'success', 4000); } catch (_) {}
+                // Persist to server in background (append-only)
+                (async () => {
+                    const res = await dr_persistMergedOTMSurgeries(mergeRes.updated, { concurrency: 2 });
+                    if ((res.saved + res.queued) > 0) {
+                        try { showToast(`💾 Lưu ${res.saved} | Hàng đợi ${res.queued} | Lỗi ${res.failed}`, 'info', 4000); } catch (_) {}
+                    }
+                })();
+            }
         }
     } catch (error) {
         console.error('Error handling OTM success:', error);

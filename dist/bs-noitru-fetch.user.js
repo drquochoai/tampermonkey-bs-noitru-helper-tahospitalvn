@@ -3685,57 +3685,45 @@ module.exports = {
     // Always check existing token first
     console.log('[OTM Debug] Will check existing token first');
     debugLog('Checking for existing token...');
-    // Add a small delay to ensure page is ready
+    // Schedule immediately (next tick) to start as soon as possible
     setTimeout(() => {
-        console.log('[OTM Debug] Calling checkExistingToken after delay');
+        console.log('[OTM Debug] Calling checkExistingToken ASAP');
         checkExistingToken();
-    }, 1000);
+    }, 0);
 
     // Function to check existing token and start appropriate flow
     async function checkExistingToken() {
         const savedToken = getSavedBearerToken();
         console.log('[OTM Debug] Checking existing token...');
         if (savedToken) {
-            console.log('[OTM Debug] Found saved token, testing validity...');
-            sendMessageToParent('progress', { step: 'token_check', message: 'Đang kiểm tra token OTM đã lưu...' });
-            const isValid = await testTokenValidity(savedToken);
-            console.log('[OTM Debug] Token validity result:', isValid);
-            if (isValid) {
-                debugLog('Existing token is valid');
-                sendMessageToParent('progress', { step: 'token_valid', message: 'Token OTM hợp lệ, không cần tự động hóa' });
-                
-                // Check if we have otmFetchParam to proceed with automation
-                if (otmFetchParam) {
-                    console.log('[OTM Debug] Token valid and otmFetchParam exists, proceeding to direct API fetch');
-                    // Parse the fetch parameters and fetch directly without UI automation
-                    try {
-                        const data = JSON.parse(decodeURIComponent(otmFetchParam));
-                        fromDate = data.fromDate;
-                        toDate = data.toDate;
-                        console.log('Starting direct API fetch for dates:', fromDate, 'to', toDate);
-                        await fetchSurgeryData(fromDate, toDate);
-                        return;
-                    } catch (error) {
-                        console.error('Failed to parse OTM fetch data from URL:', error);
-                        sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + error.message });
-                        closeTab();
-                        return;
-                    }
-                } else {
-                    // No otmFetchParam, default to today's date and fetch directly
-                    const today = new Date();
-                    const yyyy = today.getFullYear();
-                    const mm = String(today.getMonth() + 1).padStart(2, '0');
-                    const dd = String(today.getDate()).padStart(2, '0');
-                    fromDate = `${yyyy}-${mm}-${dd}`;
-                    toDate = fromDate;
-                    console.log('[OTM Debug] Token valid, no otmFetchParam; defaulting to today and fetching:', fromDate);
+            console.log('[OTM Debug] Found saved token, using it immediately');
+            sendMessageToParent('progress', { step: 'token_found', message: 'Đã có token OTM, bắt đầu lấy dữ liệu...' });
+            // Skip pre-validation to save time; fetch will detect 401/403 and fallback
+            if (otmFetchParam) {
+                try {
+                    const data = JSON.parse(decodeURIComponent(otmFetchParam));
+                    fromDate = data.fromDate;
+                    toDate = data.toDate;
+                    console.log('Starting direct API fetch for dates:', fromDate, 'to', toDate);
                     await fetchSurgeryData(fromDate, toDate);
+                    return;
+                } catch (error) {
+                    console.error('Failed to parse OTM fetch data from URL:', error);
+                    sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + error.message });
+                    closeTab();
                     return;
                 }
             } else {
-                debugLog('Existing token is invalid, starting automation to get new token');
-                sendMessageToParent('progress', { step: 'token_invalid', message: 'Token OTM không hợp lệ, bắt đầu tự động hóa để lấy token mới...' });
+                // Default to today
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                fromDate = `${yyyy}-${mm}-${dd}`;
+                toDate = fromDate;
+                console.log('[OTM Debug] No URL param; defaulting to today and fetching:', fromDate);
+                await fetchSurgeryData(fromDate, toDate);
+                return;
             }
         } else {
             console.log('[OTM Debug] No saved token found');
@@ -3878,14 +3866,50 @@ module.exports = {
         });
     }
 
+    // Transform raw surgery records into a lean structure required by the main UI
+    function filterSurgeryData(records) {
+        if (!Array.isArray(records)) return [];
+        const result = [];
+        for (const r of records) {
+            const item = {
+                customer: {
+                    fullname: r?.customer?.fullname ?? null,
+                    pid: r?.customer?.code ?? null,
+                    dob: r?.customer?.dob ?? null,
+                },
+                diagnose: r?.diagnose ?? null,
+                surgerymethod: r?.surgerymethod ?? null,
+                start: r?.start ?? null,
+                end: r?.end ?? null,
+                // Optional treatment info
+                khoaLuuTri: r?.khoaLuuTri ?? null,
+                khoaDieuTri: r?.khoaDieuTri ?? null,
+                phongDieuTri: r?.phongDieuTri ?? null,
+                giuongDieuTri: r?.giuongDieuTri ?? null,
+                // Operating room name only
+                operating_room: r?.room?.name ?? null,
+                status: r?.status ?? null,
+                // Surgeons
+                userexec: Array.isArray(r?.userexec)
+                    ? r.userexec.map(u => ({ fullname: u?.fullname ?? null, taid: u?.taid ?? null }))
+                    : [],
+                userassistant: Array.isArray(r?.userassistant)
+                    ? r.userassistant.map(u => ({ fullname: u?.fullname ?? null, taid: u?.taid ?? null }))
+                    : [],
+            };
+            result.push(item);
+        }
+        return result;
+    }
+
     // Main automation function
     async function startAutomation() {
         try {
             debugLog('=== STARTING OTM AUTOMATION ===');
             sendMessageToParent('progress', { step: 'start', message: 'Bắt đầu tự động hóa OTM...' });
 
-            // Wait for page to load (reduced from 3000ms)
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // Wait for page to load (reduced)
+            await new Promise(resolve => setTimeout(resolve, 500));
             sendMessageToParent('progress', { step: 'page_loaded', message: 'Trang OTM đã tải xong' });
 
             // Step 1: Find and hover over "Quản lý Phẫu thuật"
@@ -4028,114 +4052,126 @@ module.exports = {
             const allSurgeryData = [];
             let totalSurgeries = 0;
 
-            // Fetch data for each date
-            for (let i = 0; i < dates.length; i++) {
-                const currentDate = dates[i];
-                sendMessageToParent('progress', { 
-                    step: 'api_call', 
-                    message: `Đang gọi API cho ngày ${currentDate}... (${i + 1}/${dates.length})` 
+            const getConcurrencyLimit = () => {
+                const raw = localStorage.getItem('dr_otm_concurrency');
+                const n = parseInt(raw ?? '3', 10);
+                return isNaN(n) ? 3 : Math.min(Math.max(n, 1), 6);
+            };
+
+            async function fetchDateData(currentDate) {
+                sendMessageToParent('progress', {
+                    step: 'api_call',
+                    message: `Đang gọi API cho ngày ${currentDate}...`
                 });
 
-                try {
-                    // Convert date to ISO format with 17:00:00.000Z (next day at 00:00 Vietnam time)
-                    const dateObj = new Date(currentDate);
-                    dateObj.setDate(dateObj.getDate() + 1); // Next day
-                    const isoDate = dateObj.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+                // Convert date to ISO format with 17:00:00.000Z (next day at 00:00 Vietnam time)
+                const dateObj = new Date(currentDate);
+                dateObj.setDate(dateObj.getDate() + 1); // Next day
+                const isoDate = dateObj.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
 
-                    debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
+                debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
 
-                    // Make the API request
-                    const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
-                        headers: {
-                            "accept": "application/json, text/plain, */*",
-                            "accept-language": "en-US,en;q=0.9,vi;q=0.8",
-                            "authorization": `Bearer ${bearerToken}`,
-                            "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
-                            "logintype": "2",
-                            "priority": "u=1, i",
-                            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
-                            "sec-ch-ua-mobile": "?0",
-                            "sec-ch-ua-platform": "\"Windows\"",
-                            "sec-fetch-dest": "empty",
-                            "sec-fetch-mode": "cors",
-                            "sec-fetch-site": "same-origin",
-                            "siteid": "1"
-                        },
-                        referrer: "https://otm.tahospital.vn/surgery/booking",
-                        body: null,
-                        method: "GET",
-                        mode: "cors",
-                        credentials: "include"
-                    });
+                const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
+                    headers: {
+                        "accept": "application/json, text/plain, */*",
+                        "accept-language": "en-US,en;q=0.9,vi;q=0.8",
+                        "authorization": `Bearer ${bearerToken}`,
+                        "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
+                        "logintype": "2",
+                        "priority": "u=1, i",
+                        "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": "\"Windows\"",
+                        "sec-fetch-dest": "empty",
+                        "sec-fetch-mode": "cors",
+                        "sec-fetch-site": "same-origin",
+                        "siteid": "1"
+                    },
+                    referrer: "https://otm.tahospital.vn/surgery/booking",
+                    body: null,
+                    method: "GET",
+                    mode: "cors",
+                    credentials: "include"
+                });
 
-                    if (!response.ok) {
-                        debugLog(`HTTP error for ${currentDate}: ${response.status}`);
-                        continue; // Skip this date and continue with others
+                if (!response.ok) {
+                    debugLog(`HTTP error for ${currentDate}: ${response.status}`);
+                    if (response.status === 401 || response.status === 403) {
+                        const err = new Error('Unauthorized');
+                        err.__unauthorized = true;
+                        throw err;
                     }
+                    return { surgeriesWithDate: [], count: 0 };
+                }
 
-                    const data = await response.json();
-                    debugLog(`Surgery data received for ${currentDate}:`, data);
+                const data = await response.json();
+                debugLog(`Surgery data received for ${currentDate}:`, data);
+                if (!Array.isArray(data) || data.length === 0) return { surgeriesWithDate: [], count: 0 };
 
-                    // Process the data for this date
-                    if (data && Array.isArray(data)) {
-                        const surgeryCount = data.length;
-                        totalSurgeries += surgeryCount;
-                        
-                        // Add date information to each surgery
-                        const surgeriesWithDate = data.map(surgery => ({
-                            ...surgery,
-                            fetchDate: currentDate
-                        }));
-                        
-                        allSurgeryData.push(...surgeriesWithDate);
-                        
-                        debugLog(`Found ${surgeryCount} surgeries for ${currentDate}`);
-                        console.log(`=== SURGERY DATA FOR ${currentDate} ===`);
-                        data.forEach((item, index) => {
-                            console.log(`${index + 1}. Patient: ${item.customer?.fullname || 'N/A'}`);
-                            console.log(`   Surgery: ${item.surgerymethod || 'N/A'}`);
-                            console.log(`   Start Time: ${item.start || 'N/A'}`);
-                            console.log(`   End Time: ${item.end || 'N/A'}`);
-                            console.log(`   Room: ${item.room?.displayname || 'N/A'}`);
-                            console.log(`   Department: ${item.department?.displayname || 'N/A'}`);
-                            console.log(`   Status: ${item.status || 'N/A'}`);
-                            console.log(`   Diagnosis: ${item.diagnose || 'N/A'}`);
-                            console.log('---');
-                        });
+                const surgeriesWithDate = data.map(surgery => ({ ...surgery, fetchDate: currentDate }));
+                console.log(`=== SURGERY DATA FOR ${currentDate} (FULL) ===`, data);
+                return { surgeriesWithDate, count: data.length };
+            }
+
+            const concurrency = getConcurrencyLimit();
+            let unauthorizedDetected = false;
+            for (let i = 0; i < dates.length; i += concurrency) {
+                const batch = dates.slice(i, i + concurrency);
+                const results = await Promise.allSettled(batch.map(d => fetchDateData(d)));
+
+                for (const res of results) {
+                    if (res.status === 'rejected') {
+                        if (res.reason && res.reason.__unauthorized) {
+                            unauthorizedDetected = true;
+                            break;
+                        } else {
+                            debugLog('Batch fetch error:', res.reason);
+                        }
+                    } else if (res.value) {
+                        const { surgeriesWithDate, count } = res.value;
+                        if (count > 0) {
+                            totalSurgeries += count;
+                            allSurgeryData.push(...surgeriesWithDate);
+                        }
                     }
+                }
 
-                    // Add a small delay between requests to avoid rate limiting
-                    if (i < dates.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
+                if (unauthorizedDetected) {
+                    sendMessageToParent('progress', { step: 'token_invalid', message: 'Token hết hạn, chuyển sang tự động hóa để lấy token mới...' });
+                    startAutomation();
+                    return;
+                }
 
-                } catch (dateError) {
-                    debugLog(`Error fetching data for ${currentDate}:`, dateError);
-                    // Continue with next date
+                // Small delay between batches to avoid rate limiting
+                if (i + concurrency < dates.length) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
                 }
             }
 
             sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API' });
 
-            // Send success data to parent with all collected data
-            if (allSurgeryData.length > 0) {
+            // Send success data to parent with all collected data (raw + filtered)
+            const filteredSurgeryData = filterSurgeryData(allSurgeryData);
+            if (filteredSurgeryData.length > 0) {
                 const message = `Tìm thấy tổng cộng ${totalSurgeries} ca mổ từ ${requestedFrom} đến ${requestedTo}:\n\n` +
                     allSurgeryData.map((item, index) => 
                         `${index + 1}. ${item.customer?.fullname || 'N/A'} - ${item.surgerymethod || 'N/A'} (${item.fetchDate})`
                     ).join('\n');
 
                 sendMessageToParent('success', {
-                    surgeryData: allSurgeryData,
-                    count: totalSurgeries,
+                    surgeryData: filteredSurgeryData,
+                    surgeryDataRaw: allSurgeryData,
+                    count: filteredSurgeryData.length,
                     dateRange: { from: requestedFrom, to: requestedTo },
                     summary: message
                 });
 
                 debugLog('=== SURGERY DATA FETCH COMPLETED SUCCESSFULLY ===');
-                debugLog(`Total surgeries found: ${totalSurgeries}`);
+                debugLog(`Total surgeries found (filtered): ${filteredSurgeryData.length}`);
             } else {
                 sendMessageToParent('success', {
                     surgeryData: [],
+                    surgeryDataRaw: allSurgeryData,
                     count: 0,
                     dateRange: { from: requestedFrom, to: requestedTo },
                     summary: `Không tìm thấy dữ liệu mổ từ ${requestedFrom} đến ${requestedTo}`
@@ -4356,6 +4392,31 @@ function showDashboardBenhNhanIfNeeded() {
             // Parse into a fresh object; avoid leaking prior patient's HXT into others
             const parsedState = ChecklistService.parseChecklistState(checklistObj) || {};
             window.checklistState = { ...parsedState };
+            // Merge standardized OTM surgeries (if any) for this patient into state (append-only)
+            try {
+                const otmLogs = Array.isArray(patient && patient._otmPhauThuatLog) ? patient._otmPhauThuatLog : [];
+                if (otmLogs.length > 0) {
+                    if (!Array.isArray(window.checklistState.phauThuatLog)) window.checklistState.phauThuatLog = [];
+                    const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+                    const existingKeys = new Set(window.checklistState.phauThuatLog.map(keyOf));
+                    let added = 0;
+                    for (const e of otmLogs) {
+                        const k = keyOf(e);
+                        if (!existingKeys.has(k)) {
+                            window.checklistState.phauThuatLog.push({ ...e });
+                            existingKeys.add(k);
+                            added++;
+                        }
+                    }
+                    if (added > 0) {
+                        const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
+                        const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+                        window.checklistState.phauThuatLog.sort((a,b) => toTs(b)-toTs(a));
+                        // Persist silently in background
+                        try { ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) {}
+                    }
+                }
+            } catch (e) { console.warn('OTM merge into checklistState failed', e); }
             
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
@@ -5444,6 +5505,174 @@ function showDashboardBenhNhanIfNeeded() {
     initializeDashboard();
 }
 
+// Helpers to integrate standardized OTM surgery data
+function dr_normalizePid(val) {
+    if (val == null) return '';
+    const s = String(val).trim();
+    const digits = s.replace(/\D+/g, '');
+    return digits.replace(/^0+/, '');
+}
+
+function dr_formatVNDateTime(date) {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    const HH = String(date.getHours()).padStart(2, '0');
+    const MM = String(date.getMinutes()).padStart(2, '0');
+    return { date: `${dd}/${mm}/${yyyy}`, time: `${HH}:${MM}` };
+}
+
+function dr_otmToLogEntry(otmItem) {
+    try {
+        const startIso = otmItem && otmItem.start;
+        if (!startIso) return null;
+        const d = new Date(startIso);
+        if (isNaN(d.getTime())) return null;
+        const { date, time } = dr_formatVNDateTime(d);
+        const method = (otmItem.surgerymethod || '').trim();
+        // Collect doctors from userexec + userassistant
+        const names = [];
+        const pushNames = (arr) => {
+            if (Array.isArray(arr)) {
+                for (const u of arr) {
+                    const n = (u && u.fullname ? String(u.fullname) : '').trim();
+                    if (n && !names.includes(n)) names.push(n);
+                }
+            }
+        };
+        pushNames(otmItem.userexec);
+        pushNames(otmItem.userassistant);
+        const doctors = names.join(', ');
+        return { date, time, method, doctors, id: `otm-${startIso}` };
+    } catch (_) { return null; }
+}
+
+function dr_integrateOTMSurgeryData(otmList) {
+    const res = { updatedPatients: 0, addedLogs: 0, updated: [] };
+    if (!Array.isArray(otmList) || !Array.isArray(window.dr_data)) return res;
+    // Build map pid -> log entries
+    const map = new Map();
+    for (const it of otmList) {
+        const pid = dr_normalizePid(it && it.customer && it.customer.pid);
+        if (!pid) continue;
+        const entry = dr_otmToLogEntry(it);
+        if (!entry) continue;
+        if (!map.has(pid)) map.set(pid, []);
+        map.get(pid).push(entry);
+    }
+    if (map.size === 0) return res;
+
+    // Attach and merge to in-memory patient data
+    for (const p of window.dr_data) {
+        const mabnNorm = dr_normalizePid(p && p.mabn);
+        if (!mabnNorm) continue;
+        const entries = map.get(mabnNorm);
+        if (!entries || entries.length === 0) continue;
+
+        // Keep original for sidebar merge
+        p._otmPhauThuatLog = entries.slice();
+
+        // Merge into patient.checklistState for UI display (append-only, no overwrite)
+        if (!p.checklistState) p.checklistState = {};
+        if (!Array.isArray(p.checklistState.phauThuatLog)) p.checklistState.phauThuatLog = [];
+        const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+        const existingKeys = new Set(p.checklistState.phauThuatLog.map(keyOf));
+        let added = 0;
+        for (const e of entries) {
+            const k = keyOf(e);
+            if (!existingKeys.has(k)) {
+                p.checklistState.phauThuatLog.push({ ...e });
+                existingKeys.add(k);
+                added++;
+            }
+        }
+        if (added > 0) {
+            res.updatedPatients++;
+            res.addedLogs += added;
+            res.updated.push({ patient: p, added });
+            // Sort newest first
+            const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
+            const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+            p.checklistState.phauThuatLog.sort((a,b) => toTs(b)-toTs(a));
+            // Also reflect latest to phauThuatInfo for formatSurgeryInfo compatibility
+            const latest = p.checklistState.phauThuatLog[0];
+            if (latest) {
+                p.phauThuatInfo = { date: latest.date, time: latest.time, method: latest.method, doctors: latest.doctors, ngayPhauThuat: latest.date, gioPhauThuat: latest.time, pppt: latest.method };
+            }
+            // Update card/list row if present
+            try {
+                const DomUpdaters = require('../utils/domUpdaters');
+                const el = DomUpdaters.findPatientElement(p.mabn);
+                if (el) {
+                    DomUpdaters.updateSurgeryInfo(el, p);
+                    DomUpdaters.updateSurgeryIcon(el, p);
+                }
+            } catch (_) {}
+        }
+    }
+    return res;
+}
+
+async function dr_fetchChecklistObjForPatient(patient) {
+    try {
+        const res = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
+        let obj = ChecklistService.findChecklistObject(res);
+        if (!obj) {
+            const created = await ChecklistService.createNewChecklist(patient);
+            if (created) {
+                const res2 = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
+                obj = ChecklistService.findChecklistObject(res2);
+            }
+        }
+        return obj || null;
+    } catch (_) { return null; }
+}
+
+async function dr_persistMergedOTMSurgeries(updatedEntries, { concurrency = 2 } = {}) {
+    if (!Array.isArray(updatedEntries) || updatedEntries.length === 0) return { saved: 0, queued: 0, failed: 0 };
+    const queue = updatedEntries.slice();
+    let saved = 0, queued = 0, failed = 0;
+
+    const worker = async () => {
+        while (queue.length) {
+            const entry = queue.shift();
+            const p = entry && entry.patient;
+            if (!p) { failed++; continue; }
+            try {
+                const checklistObj = await dr_fetchChecklistObjForPatient(p);
+                if (!checklistObj) { failed++; continue; }
+                // Merge server state with current in-memory state (append-only)
+                const serverState = ChecklistService.parseChecklistState(checklistObj) || {};
+                const ensureArr = (arr) => Array.isArray(arr) ? arr : [];
+                const merged = ensureArr(serverState.phauThuatLog).slice();
+                const fromMem = ensureArr(p.checklistState && p.checklistState.phauThuatLog);
+                const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+                const existing = new Set(merged.map(keyOf));
+                for (const e of fromMem) {
+                    const k = keyOf(e);
+                    if (!existing.has(k)) { merged.push({ ...e }); existing.add(k); }
+                }
+                // Sort newest first
+                const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
+                const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+                merged.sort((a,b) => toTs(b)-toTs(a));
+
+                const newState = { ...(serverState || {}), phauThuatLog: merged };
+                const r = await ChecklistService.updateChecklistState(checklistObj, newState, { enqueueOnOffline: true });
+                if (r && (r.ok || r.queued)) {
+                    if (r.queued) queued++; else saved++;
+                } else {
+                    failed++;
+                }
+            } catch (_) { failed++; }
+        }
+    };
+
+    const workers = Array.from({ length: Math.max(1, Math.min(6, concurrency)) }, () => worker());
+    await Promise.all(workers);
+    return { saved, queued, failed };
+}
+
 // Handle OTM progress messages
 function handleOTMProgress(name, oldValue, newValue, remote) {
     try {
@@ -5462,17 +5691,22 @@ function handleOTMSuccess(name, oldValue, newValue, remote) {
         showToast(`✅ ${data.data.count} ca mổ đã được tải về!`, 'success', 5000);
         console.log('[OTM Success]', data.data);
 
-        // Log detailed surgery data
+        // Log full dataset once (no per-patient logs)
         if (data.data.surgeryData && data.data.surgeryData.length > 0) {
-            console.log('=== SURGERY DATA RECEIVED ===');
-            data.data.surgeryData.forEach((item, index) => {
-                console.log(`${index + 1}. ${item.customer?.fullname || 'N/A'} - ${item.surgerymethod || 'N/A'}`);
-                console.log(`   Time: ${item.start || 'N/A'}`);
-                console.log(`   Room: ${item.room?.displayname || 'N/A'}`);
-                console.log(`   Department: ${item.department?.displayname || 'N/A'}`);
-                console.log(`   Status: ${item.status || 'N/A'}`);
-                console.log('---');
-            });
+            console.log('=== SURGERY DATA RECEIVED (FULL) ===', data.data.surgeryData);
+            // Merge into in-memory patients and update UI
+            const mergeRes = dr_integrateOTMSurgeryData(data.data.surgeryData);
+            const { updatedPatients, addedLogs } = mergeRes;
+            if (updatedPatients > 0) {
+                try { showToast(`🧩 Đã cập nhật PT cho ${updatedPatients} BN (${addedLogs} mục).`, 'success', 4000); } catch (_) {}
+                // Persist to server in background (append-only)
+                (async () => {
+                    const res = await dr_persistMergedOTMSurgeries(mergeRes.updated, { concurrency: 2 });
+                    if ((res.saved + res.queued) > 0) {
+                        try { showToast(`💾 Lưu ${res.saved} | Hàng đợi ${res.queued} | Lỗi ${res.failed}`, 'info', 4000); } catch (_) {}
+                    }
+                })();
+            }
         }
     } catch (error) {
         console.error('Error handling OTM success:', error);

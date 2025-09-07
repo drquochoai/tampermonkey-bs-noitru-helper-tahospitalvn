@@ -1,7 +1,7 @@
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
-const SettingsService = require('./services/settingsService');
-const ApiService = require('./services/apiService');
+const SettingsService = require('../services/settingsService');
+const ApiService = require('../services/apiService');
 
 function createStylesOnce() {
     if (document.getElementById('dr-openworld-styles')) return;

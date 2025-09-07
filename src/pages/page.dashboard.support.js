@@ -1,9 +1,9 @@
 // dashboard.support.js - Refactored with modular architecture
 
-const ReportService = require('./services/reportService');
-const ApiService = require('./services/apiService');
-const DialogManager = require('./components/dialogManager');
-const DateUtils = require('./utils/dateUtils');
+const ReportService = require('../services/reportService');
+const ApiService = require('../services/apiService');
+const DialogManager = require('../components/dialogManager');
+const DateUtils = require('../utils/dateUtils');
 
 /**
  * Create direct report generation dialog

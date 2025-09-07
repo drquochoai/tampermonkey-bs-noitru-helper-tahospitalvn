@@ -42,11 +42,11 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     // Ensure HSBA background worker runs on hsba.tahospital.vn when this bundle is injected there
     try { require('./components/hsbaDataFetcher'); } catch(_) {}
     // Ensure OTM entry runs on otm.tahospital.vn when this bundle is injected there
-    try { require('./otm-entry'); } catch(_) {}
+    try { require('./pages/otm-entry'); } catch(_) {}
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
-    const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
-    const { showSettingsIfNeeded } = require('./settings');
+    const { showDashboardBenhNhanIfNeeded } = require('./pages/page.dashboard');
+    const { showSettingsIfNeeded } = require('./pages/page.settings');
     const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();

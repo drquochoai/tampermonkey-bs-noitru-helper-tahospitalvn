@@ -1,33 +1,33 @@
 // dashboard.js
 
-const Utils = require('./utils');
+const Utils = require('../utils');
 const {
     createDirectReportGeneration,
     addGlobalStyles
-} = require('./dashboard.support');
+} = require('./page.dashboard.support');
 
 // Import cài đặt giao diện
-const BS_CAI_DAT = require('./BS_CAI_DAT_GIAO_DIEN');
+const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 // Import refactored modules
-const PatientService = require('./services/patientService');
-const ChecklistService = require('./services/checklistService');
-const PatientDataMapper = require('./utils/patientDataMapper');
-const ModalManager = require('./components/modalManager');
-const LoginHandler = require('./components/loginHandler');
+const PatientService = require('../services/patientService');
+const ChecklistService = require('../services/checklistService');
+const PatientDataMapper = require('../utils/patientDataMapper');
+const ModalManager = require('../components/modalManager');
+const LoginHandler = require('../components/loginHandler');
 
 // Import newly refactored components
-const { createPatientInfoSection } = require('./components/patientInfoSection');
-const SidebarSession = require('./components/sidebarSession');
-const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('./utils/tagUtils');
-const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
+const { createPatientInfoSection } = require('../components/patientInfoSection');
+const SidebarSession = require('../components/sidebarSession');
+const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
+const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
 
 // Import utility functions
-const { showToast, copyToClipboard } = require('./utils/uiUtils');
-const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('./utils/surgeryUtils');
-const { escapeHtml } = require('./utils/htmlUtils');
-const DomUpdaters = require('./utils/domUpdaters');
-const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('./utils/checklistUtils');
+const { showToast, copyToClipboard } = require('../utils/uiUtils');
+const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('../utils/surgeryUtils');
+const { escapeHtml } = require('../utils/htmlUtils');
+const DomUpdaters = require('../utils/domUpdaters');
+const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('../utils/checklistUtils');
 
 // Global variable for OTM tabs
 if (typeof window !== 'undefined') {
@@ -528,8 +528,8 @@ function showDashboardBenhNhanIfNeeded() {
             margin-bottom: 12px; flex-wrap: wrap;
         `;
     // Import shared action creators
-    const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('./components/actionButtons');
-    const { initCopyDienTienAI } = require('./components/copyDienTienAI');
+    const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('../components/actionButtons');
+    const { initCopyDienTienAI } = require('../components/copyDienTienAI');
     sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
     sidebarActions.appendChild(createHsbaV1Button(patient));
     sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
@@ -559,13 +559,13 @@ function showDashboardBenhNhanIfNeeded() {
             btnCopyAgain.insertAdjacentElement('afterend', statusBar);
 
             if (!mabn) {
-                const mod = require('./components/copyDienTienAI');
+                const mod = require('../components/copyDienTienAI');
                 mod.setStatus(statusBar, 'Không tìm thấy MABN (pid)', '#b91c1c', true);
                 return;
             }
 
             // Import functions from module
-            const mod = require('./components/copyDienTienAI');
+            const mod = require('../components/copyDienTienAI');
             const { fetchPatientInfo } = mod.__esModule ? mod : { fetchPatientInfo: undefined };
             // Fallback: call via window by reusing internal helpers through duplicated minimal flow
             try {
@@ -603,7 +603,7 @@ function showDashboardBenhNhanIfNeeded() {
         });
         // Copy-again behavior
         btnCopyAgain.addEventListener('click', async () => {
-            const mod = require('./components/copyDienTienAI');
+            const mod = require('../components/copyDienTienAI');
             const cached = btnCopyAgain.dataset.clipboardText || '';
             const statusBar = document.getElementById('dr-copy-dien-tien-status') || document.createElement('div');
             if (!cached) {
@@ -641,7 +641,7 @@ function showDashboardBenhNhanIfNeeded() {
         rightColumn.appendChild(checklistDiv);
         // Add HSBA Data tab into the same tabs bar
         try {
-            const { addHSBATab } = require('./components/hsbaDataFetcher');
+            const { addHSBATab } = require('../components/hsbaDataFetcher');
             addHSBATab(checklistDiv, patient);
         } catch (e) { console.warn('HSBA tab init failed', e); }
         
@@ -725,7 +725,7 @@ function showDashboardBenhNhanIfNeeded() {
         container.style.paddingBottom = '90px';
         
     const renderItemGrid = (item) => createPatientCard(item);
-    const { createListRow } = require('./components/listView');
+    const { createListRow } = require('../components/listView');
     const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
         const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
@@ -1024,7 +1024,7 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create action buttons
     function createActionButtons(item) {
-    const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('./components/actionButtons');
+    const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('../components/actionButtons');
     const btnToDieuTri = createToDieuTriButton({ item, variant: 'full' });
     const btnHsba2 = createHsbaButton({ item, variant: 'full' });
     const btnCopyOne = createCopyOneButton({ item, variant: 'icon' });
@@ -1050,8 +1050,8 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create bottom bar
     function createBottomBar() {
-        const ApiService = require('./services/apiService');
-        const { getSelectedKhoa } = require('./utils/khoaUtils');
+        const ApiService = require('../services/apiService');
+        const { getSelectedKhoa } = require('../utils/khoaUtils');
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
@@ -1337,7 +1337,7 @@ function addOTMButtonsToBottomBar(bottomBar) {
     console.log('OTM button added to dashboard');
 
     function handleOTMDateClick() {
-        const DialogManager = require('./components/dialogManager');
+        const DialogManager = require('../components/dialogManager');
         const dialog = DialogManager.createDialog('otm-date-dialog');
         
         // Get today's date in YYYY-MM-DD format

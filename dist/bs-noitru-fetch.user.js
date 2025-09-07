@@ -436,11 +436,11 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     // Ensure HSBA background worker runs on hsba.tahospital.vn when this bundle is injected there
     try { require('./components/hsbaDataFetcher'); } catch(_) {}
     // Ensure OTM entry runs on otm.tahospital.vn when this bundle is injected there
-    try { require('./otm-entry'); } catch(_) {}
+    try { require('./pages/otm-entry'); } catch(_) {}
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
-    const { showDashboardBenhNhanIfNeeded } = require('./dashboard');
-    const { showSettingsIfNeeded } = require('./settings');
+    const { showDashboardBenhNhanIfNeeded } = require('./pages/page.dashboard');
+    const { showSettingsIfNeeded } = require('./pages/page.settings');
     const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();
@@ -781,7 +781,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./dashboard":16,"./googleAppsScript":18,"./otm-entry":19,"./services/checklistService":22,"./settings":28,"./utils":29}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":16,"./pages/otm-entry":17,"./pages/page.dashboard":19,"./pages/page.settings":22,"./services/checklistService":24,"./utils":29}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -825,7 +825,7 @@ function createCopyOneButton({ item, variant = 'icon' }) {
     btn.onclick = async (e) => {
         e.stopPropagation();
         try {
-            const { copyReportToClipboardRich } = require('../dashboard.support');
+            const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
             const res = await ChecklistService.loadChecklistData(item);
             const obj = ChecklistService.findChecklistObject(res);
             const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
@@ -904,7 +904,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../dashboard.support":17,"../services/checklistService":22,"../services/reportService":24}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":20,"../services/checklistService":24,"../services/reportService":26}],5:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -2121,7 +2121,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":22,"./dialogManager":7}],9:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":24,"./dialogManager":7}],9:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -2173,7 +2173,7 @@ function createListRow(item, opts = {}) {
         try {
             const ReportService = require('../services/reportService');
             const ChecklistService = require('../services/checklistService');
-            const { copyReportToClipboardRich } = require('../dashboard.support');
+            const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
             const res = await ChecklistService.loadChecklistData(item);
             const obj = ChecklistService.findChecklistObject(res);
             const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
@@ -2201,7 +2201,7 @@ module.exports = {
     createListRow
 };
 
-},{"../dashboard.support":17,"../services/checklistService":22,"../services/reportService":24,"../utils":29,"../utils/domUpdaters":32,"../utils/htmlUtils":33,"../utils/patientDataMapper":35,"../utils/tagUtils":37,"./actionButtons":4}],10:[function(require,module,exports){
+},{"../pages/page.dashboard.support":20,"../services/checklistService":24,"../services/reportService":26,"../utils":29,"../utils/domUpdaters":32,"../utils/htmlUtils":33,"../utils/patientDataMapper":35,"../utils/tagUtils":37,"./actionButtons":4}],10:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -2565,7 +2565,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":22,"../services/reportService":24,"../utils":29,"./phauThuatHandlers":13,"./yLenhHandlers":15}],13:[function(require,module,exports){
+},{"../services/checklistService":24,"../services/reportService":26,"../utils":29,"./phauThuatHandlers":13,"./yLenhHandlers":15}],13:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -2925,7 +2925,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":22,"../utils/surgeryUtils":36}],14:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":24,"../utils/surgeryUtils":36}],14:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -3434,38 +3434,770 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":22}],16:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":24}],16:[function(require,module,exports){
+// googleAppsScript.js
+
+function GoogleAppsScriptUploader(googleAppsScriptUrl) {
+    this.url = googleAppsScriptUrl;
+}
+
+GoogleAppsScriptUploader.prototype.uploadPatientList = function () {
+    if (!window.dr_data || !Array.isArray(window.dr_data) || window.dr_data.length === 0) {
+        console.error('Không có dữ liệu bệnh nhân để upload lên Google Apps Script!');
+        return;
+    }
+    console.log('Đang tải dữ liệu bệnh nhân lên Google Apps Script (sử dụng GM_xmlhttpRequest để xử lý CORS)...');
+    var requestBody = {
+        function: 'doPost',
+        parameters: [window.dr_data],
+    };
+    var self = this;
+    return new Promise(function (resolve, reject) {
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: self.url,
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            redirects: 'follow',
+            data: JSON.stringify(requestBody),
+            onload: function (response) {
+                try {
+                    console.log('Phản hồi từ Google Apps Script:', response);
+                    var result = JSON.parse(response.responseText);
+                    if (response.status >= 200 && response.status < 300) {
+                        console.log('Đã gửi danh sách bệnh nhân lên Google Apps Script thành công!');
+                        console.log('Kết quả từ Google Apps Script:', result);
+                        resolve(result);
+                    } else {
+                        console.error('Lỗi khi gửi lên Google Apps Script: ' + (result.error && result.error.message ? result.error.message : 'HTTP Status ' + response.status));
+                        console.error('Lỗi từ Google Apps Script:', result);
+                        reject(new Error(result.error && result.error.message ? result.error.message : 'HTTP Status ' + response.status));
+                    }
+                } catch (e) {
+                    console.error('Lỗi phân tích phản hồi từ Google Apps Script: ' + e.message);
+                    console.error('Lỗi phân tích phản hồi:', e, response.responseText);
+                    reject(new Error('Failed to parse response from Google Apps Script.'));
+                }
+            },
+            onerror: function (error) {
+                console.error('Lỗi mạng khi gửi lên Google Apps Script: ' + error.statusText);
+                console.error('Lỗi mạng (GM_xmlhttpRequest):', error);
+                reject(new Error('Network error or failed to connect to Google Apps Script.'));
+            },
+            ontimeout: function (error) {
+                console.error('Yêu cầu tới Google Apps Script bị hết thời gian: ' + error.statusText);
+                console.error('Yêu cầu hết thời gian (GM_xmlhttpRequest):', error);
+                reject(new Error('Request to Google Apps Script timed out.'));
+            }
+        });
+    });
+};
+
+GoogleAppsScriptUploader.prototype.addUploadButton = function () {
+    var btn = document.createElement('button');
+    btn.innerText = 'Đăng lên Google Sheet';
+    btn.style.position = 'fixed';
+    btn.style.left = '20px';
+    btn.style.bottom = '70px';
+    btn.style.background = '#4285F4';
+    btn.style.color = '#fff';
+    btn.style.padding = '10px 18px';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '5px';
+    btn.style.fontSize = '14px';
+    btn.style.cursor = 'pointer';
+    btn.style.zIndex = 9999;
+    btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    btn.onclick = this.uploadPatientList.bind(this);
+    document.body.appendChild(btn);
+};
+
+var GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz48_viXo1mjhk-W2CsDbxLuFLFHyD2I7k2UchSmZROjqRC9S4hCRvbNmNOY5nP8HVBnA/exec';
+
+module.exports = {
+    GoogleAppsScriptUploader: GoogleAppsScriptUploader,
+    GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
+};
+
+},{}],17:[function(require,module,exports){
+// otm-entry.js - Entry point for OTM content script
+(function() {
+    'use strict';
+
+    // Only run on OTM domain
+    if (window.location.hostname !== 'otm.tahospital.vn') {
+        return;
+    }
+
+    console.log('OTM Entry Script loaded');
+
+    // Load the content script
+    try {
+        require('./otm.content.script');
+    } catch (error) {
+        console.error('Failed to load OTM content script:', error);
+    }
+
+})();
+
+},{"./otm.content.script":18}],18:[function(require,module,exports){
+// otm.content.js - Content script for OTM surgery data fetching
+(function() {
+    'use strict';
+
+    console.log('OTM Content Script loaded');
+
+    // Function to check if debug is enabled
+    function isDebugEnabled() {
+        return localStorage.getItem('dr_debug_otm') === 'true';
+    }
+
+    // Function to log debug messages
+    function debugLog(message, ...args) {
+        if (isDebugEnabled()) {
+            console.log('[OTM Debug]', message, ...args);
+        }
+    }
+
+    // Function to save bearer token to localStorage
+    function saveBearerToken(token) {
+        try {
+            localStorage.setItem('otm_bearer_token', token);
+            debugLog('Bearer token saved to localStorage');
+        } catch (error) {
+            debugLog('Error saving bearer token:', error);
+        }
+    }
+
+    // Function to get bearer token from localStorage
+    function getSavedBearerToken() {
+        try {
+            const token = localStorage.getItem('otm_bearer_token');
+            if (token) {
+                debugLog('Found saved bearer token');
+                return token;
+            }
+        } catch (error) {
+            debugLog('Error getting saved bearer token:', error);
+        }
+        return null;
+    }
+
+    // Function to send message to parent using GM storage
+    function sendMessageToParent(type, data) {
+        debugLog('Sending message to parent via GM storage:', type, data);
+        try {
+            const key = `otm_${type}`;
+            const value = JSON.stringify({
+                data: data,
+                timestamp: Date.now(),
+                tabId: Math.random().toString(36).substr(2, 9)
+            });
+
+            if (typeof GM !== 'undefined' && GM.setValue) {
+                GM.setValue(key, value);
+                debugLog(`Stored ${key} in GM storage`);
+            } else {
+                debugLog('GM.setValue not available, falling back to localStorage');
+                localStorage.setItem(key, value);
+            }
+        } catch (error) {
+            debugLog('Error storing message:', error);
+        }
+    }
+
+    // Function to close this tab
+    function closeTab() {
+        debugLog('Requesting parent to close OTM tab');
+        try {
+            // Send message to parent to close this tab
+            sendMessageToParent('close_tab', {
+                message: 'Please close the OTM tab',
+                reason: 'Automation completed'
+            });
+        } catch (error) {
+            debugLog('Error requesting tab close:', error);
+        }
+    }
+
+    // Function to test if bearer token is still valid
+    async function testTokenValidity(token) {
+        try {
+            debugLog('Testing token validity...');
+            // Use a future date for testing (next week)
+            const testDate = new Date();
+            testDate.setDate(testDate.getDate() + 7); // 7 days from now
+            const isoDate = testDate.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+
+            debugLog('Test date for token validation:', isoDate);
+
+            const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
+                headers: {
+                    "accept": "application/json, text/plain, */*",
+                    "accept-language": "en-US,en;q=0.9,vi;q=0.8",
+                    "authorization": `Bearer ${token}`,
+                    "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
+                    "logintype": "2",
+                    "priority": "u=1, i",
+                    "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": "\"Windows\"",
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "same-origin",
+                    "siteid": "1"
+                },
+                method: "GET",
+                mode: "cors",
+                credentials: "include"
+            });
+
+            debugLog('Token validation response status:', response.status);
+            debugLog('Token validation response ok:', response.ok);
+
+            if (!response.ok) {
+                debugLog('Token validation failed - response not ok');
+                return false;
+            }
+
+            // Try to parse the response
+            const data = await response.json();
+            debugLog('Token validation response data:', data);
+
+            return true;
+        } catch (error) {
+            debugLog('Token validity test failed with error:', error);
+            debugLog('Error details:', error.message);
+            return false;
+        }
+    }
+
+    // Check if we should run automation - read from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const otmFetchParam = urlParams.get('otm-fetch');
+    // Date range for fetching (filled from URL or defaulted later)
+    let fromDate = null;
+    let toDate = null;
+    
+    console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam);
+    
+    // Always check existing token first
+    console.log('[OTM Debug] Will check existing token first');
+    debugLog('Checking for existing token...');
+    // Add a small delay to ensure page is ready
+    setTimeout(() => {
+        console.log('[OTM Debug] Calling checkExistingToken after delay');
+        checkExistingToken();
+    }, 1000);
+
+    // Function to check existing token and start appropriate flow
+    async function checkExistingToken() {
+        const savedToken = getSavedBearerToken();
+        console.log('[OTM Debug] Checking existing token...');
+        if (savedToken) {
+            console.log('[OTM Debug] Found saved token, testing validity...');
+            sendMessageToParent('progress', { step: 'token_check', message: 'Đang kiểm tra token OTM đã lưu...' });
+            const isValid = await testTokenValidity(savedToken);
+            console.log('[OTM Debug] Token validity result:', isValid);
+            if (isValid) {
+                debugLog('Existing token is valid');
+                sendMessageToParent('progress', { step: 'token_valid', message: 'Token OTM hợp lệ, không cần tự động hóa' });
+                
+                // Check if we have otmFetchParam to proceed with automation
+                if (otmFetchParam) {
+                    console.log('[OTM Debug] Token valid and otmFetchParam exists, proceeding to direct API fetch');
+                    // Parse the fetch parameters and fetch directly without UI automation
+                    try {
+                        const data = JSON.parse(decodeURIComponent(otmFetchParam));
+                        fromDate = data.fromDate;
+                        toDate = data.toDate;
+                        console.log('Starting direct API fetch for dates:', fromDate, 'to', toDate);
+                        await fetchSurgeryData(fromDate, toDate);
+                        return;
+                    } catch (error) {
+                        console.error('Failed to parse OTM fetch data from URL:', error);
+                        sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + error.message });
+                        closeTab();
+                        return;
+                    }
+                } else {
+                    // No otmFetchParam, default to today's date and fetch directly
+                    const today = new Date();
+                    const yyyy = today.getFullYear();
+                    const mm = String(today.getMonth() + 1).padStart(2, '0');
+                    const dd = String(today.getDate()).padStart(2, '0');
+                    fromDate = `${yyyy}-${mm}-${dd}`;
+                    toDate = fromDate;
+                    console.log('[OTM Debug] Token valid, no otmFetchParam; defaulting to today and fetching:', fromDate);
+                    await fetchSurgeryData(fromDate, toDate);
+                    return;
+                }
+            } else {
+                debugLog('Existing token is invalid, starting automation to get new token');
+                sendMessageToParent('progress', { step: 'token_invalid', message: 'Token OTM không hợp lệ, bắt đầu tự động hóa để lấy token mới...' });
+            }
+        } else {
+            console.log('[OTM Debug] No saved token found');
+            debugLog('No saved token found, starting automation');
+            sendMessageToParent('progress', { step: 'no_token', message: 'Không tìm thấy token OTM đã lưu, bắt đầu tự động hóa...' });
+        }
+
+    // Start automation to get new token (either invalid token or no token)
+    if (otmFetchParam) {
+            // Parse the fetch parameters
+            try {
+                const data = JSON.parse(decodeURIComponent(otmFetchParam));
+                fromDate = data.fromDate;
+                toDate = data.toDate;
+                console.log('Starting OTM automation for dates:', fromDate, 'to', toDate);
+            } catch (error) {
+                console.error('Failed to parse OTM fetch data from URL:', error);
+                sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + error.message });
+                closeTab();
+                return;
+            }
+        }
+        startAutomation();
+    }
+
+    // Intercept fetch to capture Bearer token
+    let bearerToken = getSavedBearerToken(); // Try to load saved token first
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        const [url, options] = args;
+        if (options && options.headers) {
+            // Check for Authorization header
+            if (options.headers.Authorization) {
+                const authHeader = options.headers.Authorization;
+                if (authHeader.startsWith('Bearer ')) {
+                    const newToken = authHeader.substring(7);
+                    if (newToken !== bearerToken) {
+                        bearerToken = newToken;
+                        saveBearerToken(bearerToken);
+                        debugLog('Captured new Bearer token from Authorization header');
+                    }
+                }
+            }
+            // Also check for lowercase authorization
+            if (options.headers.authorization) {
+                const authHeader = options.headers.authorization;
+                if (authHeader.startsWith('Bearer ')) {
+                    const newToken = authHeader.substring(7);
+                    if (newToken !== bearerToken) {
+                        bearerToken = newToken;
+                        saveBearerToken(bearerToken);
+                        debugLog('Captured new Bearer token from lowercase authorization header');
+                    }
+                }
+            }
+        }
+        return originalFetch.apply(this, args);
+    };
+
+    // Also intercept XMLHttpRequest for token capture
+    const originalOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...args) {
+        this.addEventListener('loadstart', function() {
+            if (this._headers && this._headers.Authorization) {
+                const authHeader = this._headers.Authorization;
+                if (authHeader.startsWith('Bearer ')) {
+                    const newToken = authHeader.substring(7);
+                    if (newToken !== bearerToken) {
+                        bearerToken = newToken;
+                        saveBearerToken(bearerToken);
+                        debugLog('Captured Bearer token from XMLHttpRequest');
+                    }
+                }
+            }
+        });
+        return originalOpen.apply(this, [method, url, ...args]);
+    };
+
+    const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+        if (!this._headers) this._headers = {};
+        this._headers[header] = value;
+        if (header === 'Authorization' && value.startsWith('Bearer ')) {
+            const newToken = value.substring(7);
+            if (newToken !== bearerToken) {
+                bearerToken = newToken;
+                saveBearerToken(bearerToken);
+                debugLog('Captured Bearer token from XMLHttpRequest setRequestHeader');
+            }
+        }
+        return originalSetRequestHeader.apply(this, [header, value]);
+    };
+
+    // Utility functions
+    function findElementByText(tagName, textContent) {
+        const elements = document.querySelectorAll(tagName);
+        for (const element of elements) {
+            const elementText = element.textContent.trim();
+            // Try exact match first
+            if (elementText === textContent.trim()) {
+                return element;
+            }
+            // Try case-insensitive match
+            if (elementText.toLowerCase() === textContent.trim().toLowerCase()) {
+                return element;
+            }
+            // Try partial match
+            if (elementText.includes(textContent.trim())) {
+                return element;
+            }
+            // Try partial case-insensitive match
+            if (elementText.toLowerCase().includes(textContent.trim().toLowerCase())) {
+                return element;
+            }
+        }
+        return null;
+    }
+
+    function triggerMouseEvent(element, eventType) {
+        const event = new MouseEvent(eventType, {
+            bubbles: true,
+            cancelable: true
+        });
+        element.dispatchEvent(event);
+    }
+
+    function waitForElement(tagName, textContent, timeout = 10000) {
+        return new Promise((resolve) => {
+            const startTime = Date.now();
+            const interval = setInterval(() => {
+                const element = findElementByText(tagName, textContent);
+                if (element) {
+                    clearInterval(interval);
+                    resolve(element);
+                } else if (Date.now() - startTime > timeout) {
+                    clearInterval(interval);
+                    resolve(null);
+                }
+            }, 500);
+        });
+    }
+
+    // Main automation function
+    async function startAutomation() {
+        try {
+            debugLog('=== STARTING OTM AUTOMATION ===');
+            sendMessageToParent('progress', { step: 'start', message: 'Bắt đầu tự động hóa OTM...' });
+
+            // Wait for page to load (reduced from 3000ms)
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            sendMessageToParent('progress', { step: 'page_loaded', message: 'Trang OTM đã tải xong' });
+
+            // Step 1: Find and hover over "Quản lý Phẫu thuật"
+            debugLog('Looking for "Quản lý Phẫu thuật" menu...');
+            sendMessageToParent('progress', { step: 'finding_menu', message: 'Đang tìm menu "Quản lý Phẫu thuật"...' });
+            const quanLyPhauThuatElement = await waitForElement('p', 'Quản lý Phẫu thuật', 8000);
+
+            if (!quanLyPhauThuatElement) {
+                debugLog('Không tìm thấy phần tử "Quản lý Phẫu thuật". Có thể account không có quyền truy cập.');
+                sendMessageToParent('error', { message: 'Không tìm thấy menu "Quản lý Phẫu thuật". Có thể tài khoản không có quyền truy cập.' });
+                closeTab();
+                return;
+            }
+
+            debugLog('Tìm thấy "Quản lý Phẫu thuật", kích hoạt mouseover...');
+            sendMessageToParent('progress', { step: 'menu_found', message: 'Đã tìm thấy menu, đang mở submenu...' });
+
+            // Step 2: Trigger mouseover to show submenu
+            triggerMouseEvent(quanLyPhauThuatElement, 'mouseover');
+
+            // Wait a bit for submenu to appear (reduced from 1000ms)
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Step 3: Try different selectors for submenu (reduced timeouts)
+            debugLog('Tìm submenu "Đặt hẹn Lịch mổ"...');
+            sendMessageToParent('progress', { step: 'finding_submenu', message: 'Đang tìm submenu "Đặt hẹn Lịch mổ"...' });
+
+            let datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn Lịch mổ', 800);
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn Lịch mổ', 800);
+            }
+            if (!datHenLichMoElement) {
+                // Try partial text match
+                datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn', 900);
+            }
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn', 900);
+            }
+            if (!datHenLichMoElement) {
+                // Last resort: search all clickable elements
+                const allClickable = document.querySelectorAll('button, a, [role="button"], [onclick]');
+                for (const el of allClickable) {
+                    if (el.textContent && el.textContent.toLowerCase().includes('đặt hẹn')) {
+                        datHenLichMoElement = el;
+                        debugLog('Found via clickable elements search:', el.textContent.trim());
+                        break;
+                    }
+                }
+            }
+
+            // Debug: Log all possible elements
+            console.log('Debug: Tất cả elements h6:', Array.from(document.querySelectorAll('h6')).map(el => el.textContent.trim()));
+            console.log('Debug: Tất cả elements p:', Array.from(document.querySelectorAll('p')).map(el => el.textContent.trim()));
+
+            if (datHenLichMoElement) {
+                debugLog('Tìm thấy "Đặt hẹn Lịch mổ", click...');
+                sendMessageToParent('progress', { step: 'submenu_found', message: 'Đã tìm thấy submenu, đang chuyển trang...' });
+                datHenLichMoElement.click();
+
+                // Wait for the surgery scheduling page to load
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                sendMessageToParent('progress', { step: 'page_ready', message: 'Trang đặt lịch đã sẵn sàng' });
+
+                // Now we can fetch the surgery data if date range is available
+                if (fromDate && toDate) {
+                    await fetchSurgeryData(fromDate, toDate);
+                } else {
+                    debugLog('No date range provided; token should be captured by now. Closing tab.');
+                    sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng' });
+                    closeTab();
+                }
+
+            } else {
+                debugLog('Không tìm thấy submenu "Đặt hẹn Lịch mổ"');
+                debugLog('Debug: Current URL:', window.location.href);
+                debugLog('Debug: Page title:', document.title);
+                sendMessageToParent('error', { message: 'Không tìm thấy submenu "Đặt hẹn Lịch mổ"' });
+                closeTab();
+            }
+
+        } catch (error) {
+            console.error('Lỗi trong quá trình automation:', error);
+            sendMessageToParent('error', { message: 'Lỗi trong quá trình tự động hóa: ' + error.message });
+            closeTab();
+        }
+    }
+
+    // Function to fetch surgery data for a date range
+    async function fetchSurgeryData(fromDate, toDate) {
+        try {
+            debugLog('=== STARTING SURGERY DATA FETCH ===');
+            // Keep original requested range for reporting
+            const requestedFrom = fromDate;
+            const requestedTo = toDate;
+
+            // Adjust range: shift back 1 day for actual fetching
+            const adjFrom = new Date(fromDate);
+            adjFrom.setDate(adjFrom.getDate() - 2);
+            const adjustedFromStr = adjFrom.toISOString().split('T')[0];
+
+            const adjTo = new Date(toDate);
+            adjTo.setDate(adjTo.getDate() - 2);
+            const adjustedToStr = adjTo.toISOString().split('T')[0];
+
+            debugLog('Requested range:', requestedFrom, 'to', requestedTo);
+            debugLog('Adjusted (fetch) range:', adjustedFromStr, 'to', adjustedToStr);
+
+            // Send progress update to parent
+            sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token xác thực...' });
+
+            // Wait for token if not available yet
+            let attempts = 0;
+            while (!bearerToken && attempts < 10) {
+                debugLog(`Waiting for Bearer token... (attempt ${attempts + 1}/10)`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                attempts++;
+            }
+
+            if (!bearerToken) {
+                debugLog('No Bearer token captured after 10 attempts');
+                sendMessageToParent('error', { message: 'Không thể lấy token xác thực sau 10 lần thử' });
+                closeTab();
+                return;
+            }
+
+            debugLog('Bearer token available:', bearerToken.substring(0, 20) + '...');
+            sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng, đang lấy dữ liệu...' });
+
+            // Generate array of dates from adjustedFromStr to adjustedToStr
+            const dates = [];
+            const startDate = new Date(adjustedFromStr);
+            const endDate = new Date(adjustedToStr);
+            
+            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+                dates.push(date.toISOString().split('T')[0]);
+            }
+
+            debugLog('Dates to fetch:', dates);
+
+            const allSurgeryData = [];
+            let totalSurgeries = 0;
+
+            // Fetch data for each date
+            for (let i = 0; i < dates.length; i++) {
+                const currentDate = dates[i];
+                sendMessageToParent('progress', { 
+                    step: 'api_call', 
+                    message: `Đang gọi API cho ngày ${currentDate}... (${i + 1}/${dates.length})` 
+                });
+
+                try {
+                    // Convert date to ISO format with 17:00:00.000Z (next day at 00:00 Vietnam time)
+                    const dateObj = new Date(currentDate);
+                    dateObj.setDate(dateObj.getDate() + 1); // Next day
+                    const isoDate = dateObj.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+
+                    debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
+
+                    // Make the API request
+                    const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
+                        headers: {
+                            "accept": "application/json, text/plain, */*",
+                            "accept-language": "en-US,en;q=0.9,vi;q=0.8",
+                            "authorization": `Bearer ${bearerToken}`,
+                            "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
+                            "logintype": "2",
+                            "priority": "u=1, i",
+                            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
+                            "sec-ch-ua-mobile": "?0",
+                            "sec-ch-ua-platform": "\"Windows\"",
+                            "sec-fetch-dest": "empty",
+                            "sec-fetch-mode": "cors",
+                            "sec-fetch-site": "same-origin",
+                            "siteid": "1"
+                        },
+                        referrer: "https://otm.tahospital.vn/surgery/booking",
+                        body: null,
+                        method: "GET",
+                        mode: "cors",
+                        credentials: "include"
+                    });
+
+                    if (!response.ok) {
+                        debugLog(`HTTP error for ${currentDate}: ${response.status}`);
+                        continue; // Skip this date and continue with others
+                    }
+
+                    const data = await response.json();
+                    debugLog(`Surgery data received for ${currentDate}:`, data);
+
+                    // Process the data for this date
+                    if (data && Array.isArray(data)) {
+                        const surgeryCount = data.length;
+                        totalSurgeries += surgeryCount;
+                        
+                        // Add date information to each surgery
+                        const surgeriesWithDate = data.map(surgery => ({
+                            ...surgery,
+                            fetchDate: currentDate
+                        }));
+                        
+                        allSurgeryData.push(...surgeriesWithDate);
+                        
+                        debugLog(`Found ${surgeryCount} surgeries for ${currentDate}`);
+                        console.log(`=== SURGERY DATA FOR ${currentDate} ===`);
+                        data.forEach((item, index) => {
+                            console.log(`${index + 1}. Patient: ${item.customer?.fullname || 'N/A'}`);
+                            console.log(`   Surgery: ${item.surgerymethod || 'N/A'}`);
+                            console.log(`   Start Time: ${item.start || 'N/A'}`);
+                            console.log(`   End Time: ${item.end || 'N/A'}`);
+                            console.log(`   Room: ${item.room?.displayname || 'N/A'}`);
+                            console.log(`   Department: ${item.department?.displayname || 'N/A'}`);
+                            console.log(`   Status: ${item.status || 'N/A'}`);
+                            console.log(`   Diagnosis: ${item.diagnose || 'N/A'}`);
+                            console.log('---');
+                        });
+                    }
+
+                    // Add a small delay between requests to avoid rate limiting
+                    if (i < dates.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+
+                } catch (dateError) {
+                    debugLog(`Error fetching data for ${currentDate}:`, dateError);
+                    // Continue with next date
+                }
+            }
+
+            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API' });
+
+            // Send success data to parent with all collected data
+            if (allSurgeryData.length > 0) {
+                const message = `Tìm thấy tổng cộng ${totalSurgeries} ca mổ từ ${requestedFrom} đến ${requestedTo}:\n\n` +
+                    allSurgeryData.map((item, index) => 
+                        `${index + 1}. ${item.customer?.fullname || 'N/A'} - ${item.surgerymethod || 'N/A'} (${item.fetchDate})`
+                    ).join('\n');
+
+                sendMessageToParent('success', {
+                    surgeryData: allSurgeryData,
+                    count: totalSurgeries,
+                    dateRange: { from: requestedFrom, to: requestedTo },
+                    summary: message
+                });
+
+                debugLog('=== SURGERY DATA FETCH COMPLETED SUCCESSFULLY ===');
+                debugLog(`Total surgeries found: ${totalSurgeries}`);
+            } else {
+                sendMessageToParent('success', {
+                    surgeryData: [],
+                    count: 0,
+                    dateRange: { from: requestedFrom, to: requestedTo },
+                    summary: `Không tìm thấy dữ liệu mổ từ ${requestedFrom} đến ${requestedTo}`
+                });
+            }
+
+            closeTab();
+
+        } catch (error) {
+            debugLog('Error fetching surgery data:', error);
+            debugLog('Lỗi khi lấy dữ liệu mổ: ' + error.message);
+            sendMessageToParent('error', {
+                message: 'Lỗi khi lấy dữ liệu mổ: ' + error.message,
+                error: error.toString()
+            });
+            closeTab();
+        }
+    }
+
+    // Start automation when page loads
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            // checkExistingToken() is already called at the top
+        });
+    } else {
+        // checkExistingToken() is already called at the top
+    }
+
+})();
+
+},{}],19:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
-const Utils = require('./utils');
+const Utils = require('../utils');
 const {
     createDirectReportGeneration,
     addGlobalStyles
-} = require('./dashboard.support');
+} = require('./page.dashboard.support');
 
 // Import cài đặt giao diện
-const BS_CAI_DAT = require('./BS_CAI_DAT_GIAO_DIEN');
+const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 // Import refactored modules
-const PatientService = require('./services/patientService');
-const ChecklistService = require('./services/checklistService');
-const PatientDataMapper = require('./utils/patientDataMapper');
-const ModalManager = require('./components/modalManager');
-const LoginHandler = require('./components/loginHandler');
+const PatientService = require('../services/patientService');
+const ChecklistService = require('../services/checklistService');
+const PatientDataMapper = require('../utils/patientDataMapper');
+const ModalManager = require('../components/modalManager');
+const LoginHandler = require('../components/loginHandler');
 
 // Import newly refactored components
-const { createPatientInfoSection } = require('./components/patientInfoSection');
-const SidebarSession = require('./components/sidebarSession');
-const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('./utils/tagUtils');
-const { setupPhauThuatHandlers } = require('./components/phauThuatHandlers');
+const { createPatientInfoSection } = require('../components/patientInfoSection');
+const SidebarSession = require('../components/sidebarSession');
+const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
+const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
 
 // Import utility functions
-const { showToast, copyToClipboard } = require('./utils/uiUtils');
-const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('./utils/surgeryUtils');
-const { escapeHtml } = require('./utils/htmlUtils');
-const DomUpdaters = require('./utils/domUpdaters');
-const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('./utils/checklistUtils');
+const { showToast, copyToClipboard } = require('../utils/uiUtils');
+const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = require('../utils/surgeryUtils');
+const { escapeHtml } = require('../utils/htmlUtils');
+const DomUpdaters = require('../utils/domUpdaters');
+const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('../utils/checklistUtils');
 
 // Global variable for OTM tabs
 if (typeof window !== 'undefined') {
@@ -3966,8 +4698,8 @@ function showDashboardBenhNhanIfNeeded() {
             margin-bottom: 12px; flex-wrap: wrap;
         `;
     // Import shared action creators
-    const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('./components/actionButtons');
-    const { initCopyDienTienAI } = require('./components/copyDienTienAI');
+    const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('../components/actionButtons');
+    const { initCopyDienTienAI } = require('../components/copyDienTienAI');
     sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
     sidebarActions.appendChild(createHsbaV1Button(patient));
     sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
@@ -3997,13 +4729,13 @@ function showDashboardBenhNhanIfNeeded() {
             btnCopyAgain.insertAdjacentElement('afterend', statusBar);
 
             if (!mabn) {
-                const mod = require('./components/copyDienTienAI');
+                const mod = require('../components/copyDienTienAI');
                 mod.setStatus(statusBar, 'Không tìm thấy MABN (pid)', '#b91c1c', true);
                 return;
             }
 
             // Import functions from module
-            const mod = require('./components/copyDienTienAI');
+            const mod = require('../components/copyDienTienAI');
             const { fetchPatientInfo } = mod.__esModule ? mod : { fetchPatientInfo: undefined };
             // Fallback: call via window by reusing internal helpers through duplicated minimal flow
             try {
@@ -4041,7 +4773,7 @@ function showDashboardBenhNhanIfNeeded() {
         });
         // Copy-again behavior
         btnCopyAgain.addEventListener('click', async () => {
-            const mod = require('./components/copyDienTienAI');
+            const mod = require('../components/copyDienTienAI');
             const cached = btnCopyAgain.dataset.clipboardText || '';
             const statusBar = document.getElementById('dr-copy-dien-tien-status') || document.createElement('div');
             if (!cached) {
@@ -4079,7 +4811,7 @@ function showDashboardBenhNhanIfNeeded() {
         rightColumn.appendChild(checklistDiv);
         // Add HSBA Data tab into the same tabs bar
         try {
-            const { addHSBATab } = require('./components/hsbaDataFetcher');
+            const { addHSBATab } = require('../components/hsbaDataFetcher');
             addHSBATab(checklistDiv, patient);
         } catch (e) { console.warn('HSBA tab init failed', e); }
         
@@ -4163,7 +4895,7 @@ function showDashboardBenhNhanIfNeeded() {
         container.style.paddingBottom = '90px';
         
     const renderItemGrid = (item) => createPatientCard(item);
-    const { createListRow } = require('./components/listView');
+    const { createListRow } = require('../components/listView');
     const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
         const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
@@ -4462,7 +5194,7 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create action buttons
     function createActionButtons(item) {
-    const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('./components/actionButtons');
+    const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('../components/actionButtons');
     const btnToDieuTri = createToDieuTriButton({ item, variant: 'full' });
     const btnHsba2 = createHsbaButton({ item, variant: 'full' });
     const btnCopyOne = createCopyOneButton({ item, variant: 'icon' });
@@ -4488,8 +5220,8 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create bottom bar
     function createBottomBar() {
-        const ApiService = require('./services/apiService');
-        const { getSelectedKhoa } = require('./utils/khoaUtils');
+        const ApiService = require('../services/apiService');
+        const { getSelectedKhoa } = require('../utils/khoaUtils');
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
@@ -4775,7 +5507,7 @@ function addOTMButtonsToBottomBar(bottomBar) {
     console.log('OTM button added to dashboard');
 
     function handleOTMDateClick() {
-        const DialogManager = require('./components/dialogManager');
+        const DialogManager = require('../components/dialogManager');
         const dialog = DialogManager.createDialog('otm-date-dialog');
         
         // Get today's date in YYYY-MM-DD format
@@ -4887,13 +5619,13 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./BS_CAI_DAT_GIAO_DIEN":1,"./components/actionButtons":4,"./components/copyDienTienAI":6,"./components/dialogManager":7,"./components/hsbaDataFetcher":8,"./components/listView":9,"./components/loginHandler":10,"./components/modalManager":11,"./components/patientInfoSection":12,"./components/phauThuatHandlers":13,"./components/sidebarSession":14,"./dashboard.support":17,"./services/apiService":21,"./services/checklistService":22,"./services/patientService":23,"./utils":29,"./utils/checklistUtils":30,"./utils/domUpdaters":32,"./utils/htmlUtils":33,"./utils/khoaUtils":34,"./utils/patientDataMapper":35,"./utils/surgeryUtils":36,"./utils/tagUtils":37,"./utils/uiUtils":38}],17:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":9,"../components/loginHandler":10,"../components/modalManager":11,"../components/patientInfoSection":12,"../components/phauThuatHandlers":13,"../components/sidebarSession":14,"../services/apiService":23,"../services/checklistService":24,"../services/patientService":25,"../utils":29,"../utils/checklistUtils":30,"../utils/domUpdaters":32,"../utils/htmlUtils":33,"../utils/khoaUtils":34,"../utils/patientDataMapper":35,"../utils/surgeryUtils":36,"../utils/tagUtils":37,"../utils/uiUtils":38,"./page.dashboard.support":20}],20:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
-const ReportService = require('./services/reportService');
-const ApiService = require('./services/apiService');
-const DialogManager = require('./components/dialogManager');
-const DateUtils = require('./utils/dateUtils');
+const ReportService = require('../services/reportService');
+const ApiService = require('../services/apiService');
+const DialogManager = require('../components/dialogManager');
+const DateUtils = require('../utils/dateUtils');
 
 /**
  * Create direct report generation dialog
@@ -5720,739 +6452,495 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"./components/dialogManager":7,"./services/apiService":21,"./services/reportService":24,"./utils/dateUtils":31}],18:[function(require,module,exports){
-// googleAppsScript.js
+},{"../components/dialogManager":7,"../services/apiService":23,"../services/reportService":26,"../utils/dateUtils":31}],21:[function(require,module,exports){
+// settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
-function GoogleAppsScriptUploader(googleAppsScriptUrl) {
-    this.url = googleAppsScriptUrl;
+const SettingsService = require('../services/settingsService');
+const ApiService = require('../services/apiService');
+
+function createStylesOnce() {
+    if (document.getElementById('dr-openworld-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'dr-openworld-styles';
+    st.textContent = `
+        .dr-ow-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .dr-ow-card { border:1px solid #e5e7eb; border-radius: 10px; padding: 10px; background: #fff; }
+        .dr-ow-title { margin: 0 0 8px 0; font-weight: 700; color: #0f172a; }
+        .dr-ow-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow: auto; }
+        .dr-ow-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; border:1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+        .dr-ow-item:hover { background: #f8fafc; }
+        .dr-ow-item.active { border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.15) inset; }
+        .dr-ow-badge { background: #16a34a; color: #fff; border-radius: 10px; padding: 2px 6px; font-size: 12px; }
+        .dr-ow-empty { color:#6b7280; font-style: italic; }
+        @media (max-width: 900px) { .dr-ow-wrap { grid-template-columns: 1fr; } }
+    `;
+    document.head.appendChild(st);
 }
 
-GoogleAppsScriptUploader.prototype.uploadPatientList = function () {
-    if (!window.dr_data || !Array.isArray(window.dr_data) || window.dr_data.length === 0) {
-        console.error('Không có dữ liệu bệnh nhân để upload lên Google Apps Script!');
-        return;
-    }
-    console.log('Đang tải dữ liệu bệnh nhân lên Google Apps Script (sử dụng GM_xmlhttpRequest để xử lý CORS)...');
-    var requestBody = {
-        function: 'doPost',
-        parameters: [window.dr_data],
-    };
-    var self = this;
-    return new Promise(function (resolve, reject) {
-        GM_xmlhttpRequest({
-            method: 'POST',
-            url: self.url,
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            redirects: 'follow',
-            data: JSON.stringify(requestBody),
-            onload: function (response) {
-                try {
-                    console.log('Phản hồi từ Google Apps Script:', response);
-                    var result = JSON.parse(response.responseText);
-                    if (response.status >= 200 && response.status < 300) {
-                        console.log('Đã gửi danh sách bệnh nhân lên Google Apps Script thành công!');
-                        console.log('Kết quả từ Google Apps Script:', result);
-                        resolve(result);
-                    } else {
-                        console.error('Lỗi khi gửi lên Google Apps Script: ' + (result.error && result.error.message ? result.error.message : 'HTTP Status ' + response.status));
-                        console.error('Lỗi từ Google Apps Script:', result);
-                        reject(new Error(result.error && result.error.message ? result.error.message : 'HTTP Status ' + response.status));
-                    }
-                } catch (e) {
-                    console.error('Lỗi phân tích phản hồi từ Google Apps Script: ' + e.message);
-                    console.error('Lỗi phân tích phản hồi:', e, response.responseText);
-                    reject(new Error('Failed to parse response from Google Apps Script.'));
-                }
-            },
-            onerror: function (error) {
-                console.error('Lỗi mạng khi gửi lên Google Apps Script: ' + error.statusText);
-                console.error('Lỗi mạng (GM_xmlhttpRequest):', error);
-                reject(new Error('Network error or failed to connect to Google Apps Script.'));
-            },
-            ontimeout: function (error) {
-                console.error('Yêu cầu tới Google Apps Script bị hết thời gian: ' + error.statusText);
-                console.error('Yêu cầu hết thời gian (GM_xmlhttpRequest):', error);
-                reject(new Error('Request to Google Apps Script timed out.'));
-            }
+function debounce(fn, delay = 400) {
+    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+}
+
+async function fetchKhoaPhong() { return ApiService.fetchKhoaPhong(); }
+async function fetchRoomsByKhoa(khoaId) { return ApiService.fetchRoomsByKhoa(khoaId); }
+
+/**
+ * Mount Open World settings tab
+ */
+async function mountOpenWorldTab(opts) {
+    const { container, doctorName, checklistObj, settings } = opts || {};
+    if (!container) return;
+    createStylesOnce();
+
+    container.innerHTML = `
+        <div style="margin:0 0 8px; color:#6b7280">Quản lý khoa mặc định và các phòng theo dõi bệnh nhân. Việc chọn khoa sẽ được lưu và áp dụng ở dashboard.</div>
+        <div class="dr-ow-wrap">
+            <div class="dr-ow-card">
+                <h4 class="dr-ow-title">Danh sách khoa/phòng</h4>
+                <div id="dr-ow-khoa-list" class="dr-ow-list"><div class="dr-ow-empty">Đang tải danh sách khoa...</div></div>
+            </div>
+            <div class="dr-ow-card">
+                <h4 class="dr-ow-title">Phòng thuộc khoa đã chọn</h4>
+                <div id="dr-ow-room-list" class="dr-ow-list"><div class="dr-ow-empty">Chưa chọn khoa.</div></div>
+            </div>
+        </div>
+    `;
+
+    const khoaListEl = container.querySelector('#dr-ow-khoa-list');
+    const roomListEl = container.querySelector('#dr-ow-room-list');
+
+    const ls = window.localStorage;
+    const SELECTED_KHOA_KEY = 'bsnt_khoa_dashboard';
+    const ROOMS_CACHE_KEY = (k) => `dr_ow_rooms_${k}`;
+
+    // Helper: render rooms
+    function renderRooms(rooms) {
+        if (!rooms || rooms.length === 0) {
+            roomListEl.innerHTML = `<div class="dr-ow-empty">Không có phòng.</div>`;
+            return;
+        }
+        roomListEl.innerHTML = '';
+        rooms.forEach(r => {
+            const div = document.createElement('div');
+            div.className = 'dr-ow-item';
+            div.textContent = r.name || r.code || 'Phòng';
+            // keep attributes for later use
+            div.dataset.id = r.id || '';
+            div.dataset.code = r.code || '';
+            div.dataset.name = r.name || '';
+            div.dataset.khoA_ID = r.khoA_ID || '';
+            div.dataset.tanG_ID = r.tanG_ID || '';
+            roomListEl.appendChild(div);
         });
-    });
-};
-
-GoogleAppsScriptUploader.prototype.addUploadButton = function () {
-    var btn = document.createElement('button');
-    btn.innerText = 'Đăng lên Google Sheet';
-    btn.style.position = 'fixed';
-    btn.style.left = '20px';
-    btn.style.bottom = '70px';
-    btn.style.background = '#4285F4';
-    btn.style.color = '#fff';
-    btn.style.padding = '10px 18px';
-    btn.style.border = 'none';
-    btn.style.borderRadius = '5px';
-    btn.style.fontSize = '14px';
-    btn.style.cursor = 'pointer';
-    btn.style.zIndex = 9999;
-    btn.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-    btn.onclick = this.uploadPatientList.bind(this);
-    document.body.appendChild(btn);
-};
-
-var GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbz48_viXo1mjhk-W2CsDbxLuFLFHyD2I7k2UchSmZROjqRC9S4hCRvbNmNOY5nP8HVBnA/exec';
-
-module.exports = {
-    GoogleAppsScriptUploader: GoogleAppsScriptUploader,
-    GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
-};
-
-},{}],19:[function(require,module,exports){
-// otm-entry.js - Entry point for OTM content script
-(function() {
-    'use strict';
-
-    // Only run on OTM domain
-    if (window.location.hostname !== 'otm.tahospital.vn') {
-        return;
     }
 
-    console.log('OTM Entry Script loaded');
-
-    // Load the content script
-    try {
-        require('./otm.content');
-    } catch (error) {
-        console.error('Failed to load OTM content script:', error);
-    }
-
-})();
-
-},{"./otm.content":20}],20:[function(require,module,exports){
-// otm.content.js - Content script for OTM surgery data fetching
-(function() {
-    'use strict';
-
-    console.log('OTM Content Script loaded');
-
-    // Function to check if debug is enabled
-    function isDebugEnabled() {
-        return localStorage.getItem('dr_debug_otm') === 'true';
-    }
-
-    // Function to log debug messages
-    function debugLog(message, ...args) {
-        if (isDebugEnabled()) {
-            console.log('[OTM Debug]', message, ...args);
-        }
-    }
-
-    // Function to save bearer token to localStorage
-    function saveBearerToken(token) {
+    // Debounced save to API for default khoa
+    const debouncedSave = debounce(async (khoaId) => {
         try {
-            localStorage.setItem('otm_bearer_token', token);
-            debugLog('Bearer token saved to localStorage');
-        } catch (error) {
-            debugLog('Error saving bearer token:', error);
-        }
-    }
-
-    // Function to get bearer token from localStorage
-    function getSavedBearerToken() {
-        try {
-            const token = localStorage.getItem('otm_bearer_token');
-            if (token) {
-                debugLog('Found saved bearer token');
-                return token;
+            if (!doctorName) return;
+            let obj = checklistObj || await SettingsService.loadSettingsPhieu(doctorName);
+            if (!obj) {
+                const created = await SettingsService.createSettingsPhieu(doctorName);
+                if (created && created.isValid) obj = await SettingsService.loadSettingsPhieu(doctorName);
             }
-        } catch (error) {
-            debugLog('Error getting saved bearer token:', error);
-        }
-        return null;
-    }
+            if (!obj) return;
+            const current = SettingsService.parseSettingsState(obj) || {};
+            const next = { ...current, openWorld: { ...(current.openWorld || {}), defaultKhoa: String(khoaId || '') } };
+            await SettingsService.updateSettingsState(obj, next);
+        } catch (e) { console.warn('Save default khoa failed', e); }
+    }, 600);
 
-    // Function to send message to parent using GM storage
-    function sendMessageToParent(type, data) {
-        debugLog('Sending message to parent via GM storage:', type, data);
+    // Render khoa list and wire selection
+    async function renderKhoaList() {
         try {
-            const key = `otm_${type}`;
-            const value = JSON.stringify({
-                data: data,
-                timestamp: Date.now(),
-                tabId: Math.random().toString(36).substr(2, 9)
-            });
-
-            if (typeof GM !== 'undefined' && GM.setValue) {
-                GM.setValue(key, value);
-                debugLog(`Stored ${key} in GM storage`);
-            } else {
-                debugLog('GM.setValue not available, falling back to localStorage');
-                localStorage.setItem(key, value);
-            }
-        } catch (error) {
-            debugLog('Error storing message:', error);
-        }
-    }
-
-    // Function to close this tab
-    function closeTab() {
-        debugLog('Requesting parent to close OTM tab');
-        try {
-            // Send message to parent to close this tab
-            sendMessageToParent('close_tab', {
-                message: 'Please close the OTM tab',
-                reason: 'Automation completed'
-            });
-        } catch (error) {
-            debugLog('Error requesting tab close:', error);
-        }
-    }
-
-    // Function to test if bearer token is still valid
-    async function testTokenValidity(token) {
-        try {
-            debugLog('Testing token validity...');
-            // Use a future date for testing (next week)
-            const testDate = new Date();
-            testDate.setDate(testDate.getDate() + 7); // 7 days from now
-            const isoDate = testDate.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
-
-            debugLog('Test date for token validation:', isoDate);
-
-            const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
-                headers: {
-                    "accept": "application/json, text/plain, */*",
-                    "accept-language": "en-US,en;q=0.9,vi;q=0.8",
-                    "authorization": `Bearer ${token}`,
-                    "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
-                    "logintype": "2",
-                    "priority": "u=1, i",
-                    "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
-                    "sec-ch-ua-mobile": "?0",
-                    "sec-ch-ua-platform": "\"Windows\"",
-                    "sec-fetch-dest": "empty",
-                    "sec-fetch-mode": "cors",
-                    "sec-fetch-site": "same-origin",
-                    "siteid": "1"
-                },
-                method: "GET",
-                mode: "cors",
-                credentials: "include"
-            });
-
-            debugLog('Token validation response status:', response.status);
-            debugLog('Token validation response ok:', response.ok);
-
-            if (!response.ok) {
-                debugLog('Token validation failed - response not ok');
-                return false;
-            }
-
-            // Try to parse the response
-            const data = await response.json();
-            debugLog('Token validation response data:', data);
-
-            return true;
-        } catch (error) {
-            debugLog('Token validity test failed with error:', error);
-            debugLog('Error details:', error.message);
-            return false;
-        }
-    }
-
-    // Check if we should run automation - read from URL parameters
-    const urlParams = new URLSearchParams(window.location.search);
-    const otmFetchParam = urlParams.get('otm-fetch');
-    // Date range for fetching (filled from URL or defaulted later)
-    let fromDate = null;
-    let toDate = null;
-    
-    console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam);
-    
-    // Always check existing token first
-    console.log('[OTM Debug] Will check existing token first');
-    debugLog('Checking for existing token...');
-    // Add a small delay to ensure page is ready
-    setTimeout(() => {
-        console.log('[OTM Debug] Calling checkExistingToken after delay');
-        checkExistingToken();
-    }, 1000);
-
-    // Function to check existing token and start appropriate flow
-    async function checkExistingToken() {
-        const savedToken = getSavedBearerToken();
-        console.log('[OTM Debug] Checking existing token...');
-        if (savedToken) {
-            console.log('[OTM Debug] Found saved token, testing validity...');
-            sendMessageToParent('progress', { step: 'token_check', message: 'Đang kiểm tra token OTM đã lưu...' });
-            const isValid = await testTokenValidity(savedToken);
-            console.log('[OTM Debug] Token validity result:', isValid);
-            if (isValid) {
-                debugLog('Existing token is valid');
-                sendMessageToParent('progress', { step: 'token_valid', message: 'Token OTM hợp lệ, không cần tự động hóa' });
-                
-                // Check if we have otmFetchParam to proceed with automation
-                if (otmFetchParam) {
-                    console.log('[OTM Debug] Token valid and otmFetchParam exists, proceeding to direct API fetch');
-                    // Parse the fetch parameters and fetch directly without UI automation
+            const khoa = await fetchKhoaPhong();
+            let selected = (ls && ls.getItem(SELECTED_KHOA_KEY)) || '';
+            khoaListEl.innerHTML = '';
+            khoa.forEach(k => {
+                const div = document.createElement('div');
+                const kId = String(k.id);
+                const isSelected = !!selected && selected === kId;
+                div.className = 'dr-ow-item' + (isSelected ? ' active' : '');
+                const name = (k && k.name) || 'Khoa';
+                div.innerHTML = `<span>${name}</span>` + (isSelected ? `<span class="dr-ow-badge">Đã chọn</span>` : '');
+                div.addEventListener('click', async () => {
+                    // update selection locally
+                    Array.from(khoaListEl.querySelectorAll('.dr-ow-item')).forEach(el => el.classList.remove('active'));
+                    div.classList.add('active');
+                    // set badge
+                    Array.from(khoaListEl.querySelectorAll('.dr-ow-badge')).forEach(b => b.remove());
+                    div.insertAdjacentHTML('beforeend', `<span class="dr-ow-badge">Đã chọn</span>`);
+                    // persist to localStorage for dashboard compatibility
                     try {
-                        const data = JSON.parse(decodeURIComponent(otmFetchParam));
-                        fromDate = data.fromDate;
-                        toDate = data.toDate;
-                        console.log('Starting direct API fetch for dates:', fromDate, 'to', toDate);
-                        await fetchSurgeryData(fromDate, toDate);
-                        return;
-                    } catch (error) {
-                        console.error('Failed to parse OTM fetch data from URL:', error);
-                        sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + error.message });
-                        closeTab();
-                        return;
-                    }
-                } else {
-                    // No otmFetchParam, default to today's date and fetch directly
-                    const today = new Date();
-                    const yyyy = today.getFullYear();
-                    const mm = String(today.getMonth() + 1).padStart(2, '0');
-                    const dd = String(today.getDate()).padStart(2, '0');
-                    fromDate = `${yyyy}-${mm}-${dd}`;
-                    toDate = fromDate;
-                    console.log('[OTM Debug] Token valid, no otmFetchParam; defaulting to today and fetching:', fromDate);
-                    await fetchSurgeryData(fromDate, toDate);
-                    return;
-                }
-            } else {
-                debugLog('Existing token is invalid, starting automation to get new token');
-                sendMessageToParent('progress', { step: 'token_invalid', message: 'Token OTM không hợp lệ, bắt đầu tự động hóa để lấy token mới...' });
-            }
-        } else {
-            console.log('[OTM Debug] No saved token found');
-            debugLog('No saved token found, starting automation');
-            sendMessageToParent('progress', { step: 'no_token', message: 'Không tìm thấy token OTM đã lưu, bắt đầu tự động hóa...' });
-        }
-
-    // Start automation to get new token (either invalid token or no token)
-    if (otmFetchParam) {
-            // Parse the fetch parameters
-            try {
-                const data = JSON.parse(decodeURIComponent(otmFetchParam));
-                fromDate = data.fromDate;
-                toDate = data.toDate;
-                console.log('Starting OTM automation for dates:', fromDate, 'to', toDate);
-            } catch (error) {
-                console.error('Failed to parse OTM fetch data from URL:', error);
-                sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + error.message });
-                closeTab();
-                return;
-            }
-        }
-        startAutomation();
-    }
-
-    // Intercept fetch to capture Bearer token
-    let bearerToken = getSavedBearerToken(); // Try to load saved token first
-    const originalFetch = window.fetch;
-    window.fetch = function(...args) {
-        const [url, options] = args;
-        if (options && options.headers) {
-            // Check for Authorization header
-            if (options.headers.Authorization) {
-                const authHeader = options.headers.Authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured new Bearer token from Authorization header');
-                    }
-                }
-            }
-            // Also check for lowercase authorization
-            if (options.headers.authorization) {
-                const authHeader = options.headers.authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured new Bearer token from lowercase authorization header');
-                    }
-                }
-            }
-        }
-        return originalFetch.apply(this, args);
-    };
-
-    // Also intercept XMLHttpRequest for token capture
-    const originalOpen = XMLHttpRequest.prototype.open;
-    XMLHttpRequest.prototype.open = function(method, url, ...args) {
-        this.addEventListener('loadstart', function() {
-            if (this._headers && this._headers.Authorization) {
-                const authHeader = this._headers.Authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured Bearer token from XMLHttpRequest');
-                    }
-                }
-            }
-        });
-        return originalOpen.apply(this, [method, url, ...args]);
-    };
-
-    const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
-    XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
-        if (!this._headers) this._headers = {};
-        this._headers[header] = value;
-        if (header === 'Authorization' && value.startsWith('Bearer ')) {
-            const newToken = value.substring(7);
-            if (newToken !== bearerToken) {
-                bearerToken = newToken;
-                saveBearerToken(bearerToken);
-                debugLog('Captured Bearer token from XMLHttpRequest setRequestHeader');
-            }
-        }
-        return originalSetRequestHeader.apply(this, [header, value]);
-    };
-
-    // Utility functions
-    function findElementByText(tagName, textContent) {
-        const elements = document.querySelectorAll(tagName);
-        for (const element of elements) {
-            const elementText = element.textContent.trim();
-            // Try exact match first
-            if (elementText === textContent.trim()) {
-                return element;
-            }
-            // Try case-insensitive match
-            if (elementText.toLowerCase() === textContent.trim().toLowerCase()) {
-                return element;
-            }
-            // Try partial match
-            if (elementText.includes(textContent.trim())) {
-                return element;
-            }
-            // Try partial case-insensitive match
-            if (elementText.toLowerCase().includes(textContent.trim().toLowerCase())) {
-                return element;
-            }
-        }
-        return null;
-    }
-
-    function triggerMouseEvent(element, eventType) {
-        const event = new MouseEvent(eventType, {
-            bubbles: true,
-            cancelable: true
-        });
-        element.dispatchEvent(event);
-    }
-
-    function waitForElement(tagName, textContent, timeout = 10000) {
-        return new Promise((resolve) => {
-            const startTime = Date.now();
-            const interval = setInterval(() => {
-                const element = findElementByText(tagName, textContent);
-                if (element) {
-                    clearInterval(interval);
-                    resolve(element);
-                } else if (Date.now() - startTime > timeout) {
-                    clearInterval(interval);
-                    resolve(null);
-                }
-            }, 500);
-        });
-    }
-
-    // Main automation function
-    async function startAutomation() {
-        try {
-            debugLog('=== STARTING OTM AUTOMATION ===');
-            sendMessageToParent('progress', { step: 'start', message: 'Bắt đầu tự động hóa OTM...' });
-
-            // Wait for page to load (reduced from 3000ms)
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            sendMessageToParent('progress', { step: 'page_loaded', message: 'Trang OTM đã tải xong' });
-
-            // Step 1: Find and hover over "Quản lý Phẫu thuật"
-            debugLog('Looking for "Quản lý Phẫu thuật" menu...');
-            sendMessageToParent('progress', { step: 'finding_menu', message: 'Đang tìm menu "Quản lý Phẫu thuật"...' });
-            const quanLyPhauThuatElement = await waitForElement('p', 'Quản lý Phẫu thuật', 8000);
-
-            if (!quanLyPhauThuatElement) {
-                debugLog('Không tìm thấy phần tử "Quản lý Phẫu thuật". Có thể account không có quyền truy cập.');
-                sendMessageToParent('error', { message: 'Không tìm thấy menu "Quản lý Phẫu thuật". Có thể tài khoản không có quyền truy cập.' });
-                closeTab();
-                return;
-            }
-
-            debugLog('Tìm thấy "Quản lý Phẫu thuật", kích hoạt mouseover...');
-            sendMessageToParent('progress', { step: 'menu_found', message: 'Đã tìm thấy menu, đang mở submenu...' });
-
-            // Step 2: Trigger mouseover to show submenu
-            triggerMouseEvent(quanLyPhauThuatElement, 'mouseover');
-
-            // Wait a bit for submenu to appear (reduced from 1000ms)
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            // Step 3: Try different selectors for submenu (reduced timeouts)
-            debugLog('Tìm submenu "Đặt hẹn Lịch mổ"...');
-            sendMessageToParent('progress', { step: 'finding_submenu', message: 'Đang tìm submenu "Đặt hẹn Lịch mổ"...' });
-
-            let datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn Lịch mổ', 800);
-            if (!datHenLichMoElement) {
-                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn Lịch mổ', 800);
-            }
-            if (!datHenLichMoElement) {
-                // Try partial text match
-                datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn', 900);
-            }
-            if (!datHenLichMoElement) {
-                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn', 900);
-            }
-            if (!datHenLichMoElement) {
-                // Last resort: search all clickable elements
-                const allClickable = document.querySelectorAll('button, a, [role="button"], [onclick]');
-                for (const el of allClickable) {
-                    if (el.textContent && el.textContent.toLowerCase().includes('đặt hẹn')) {
-                        datHenLichMoElement = el;
-                        debugLog('Found via clickable elements search:', el.textContent.trim());
-                        break;
-                    }
-                }
-            }
-
-            // Debug: Log all possible elements
-            console.log('Debug: Tất cả elements h6:', Array.from(document.querySelectorAll('h6')).map(el => el.textContent.trim()));
-            console.log('Debug: Tất cả elements p:', Array.from(document.querySelectorAll('p')).map(el => el.textContent.trim()));
-
-            if (datHenLichMoElement) {
-                debugLog('Tìm thấy "Đặt hẹn Lịch mổ", click...');
-                sendMessageToParent('progress', { step: 'submenu_found', message: 'Đã tìm thấy submenu, đang chuyển trang...' });
-                datHenLichMoElement.click();
-
-                // Wait for the surgery scheduling page to load
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                sendMessageToParent('progress', { step: 'page_ready', message: 'Trang đặt lịch đã sẵn sàng' });
-
-                // Now we can fetch the surgery data if date range is available
-                if (fromDate && toDate) {
-                    await fetchSurgeryData(fromDate, toDate);
-                } else {
-                    debugLog('No date range provided; token should be captured by now. Closing tab.');
-                    sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng' });
-                    closeTab();
-                }
-
-            } else {
-                debugLog('Không tìm thấy submenu "Đặt hẹn Lịch mổ"');
-                debugLog('Debug: Current URL:', window.location.href);
-                debugLog('Debug: Page title:', document.title);
-                sendMessageToParent('error', { message: 'Không tìm thấy submenu "Đặt hẹn Lịch mổ"' });
-                closeTab();
-            }
-
-        } catch (error) {
-            console.error('Lỗi trong quá trình automation:', error);
-            sendMessageToParent('error', { message: 'Lỗi trong quá trình tự động hóa: ' + error.message });
-            closeTab();
-        }
-    }
-
-    // Function to fetch surgery data for a date range
-    async function fetchSurgeryData(fromDate, toDate) {
-        try {
-            debugLog('=== STARTING SURGERY DATA FETCH ===');
-            // Keep original requested range for reporting
-            const requestedFrom = fromDate;
-            const requestedTo = toDate;
-
-            // Adjust range: shift back 1 day for actual fetching
-            const adjFrom = new Date(fromDate);
-            adjFrom.setDate(adjFrom.getDate() - 2);
-            const adjustedFromStr = adjFrom.toISOString().split('T')[0];
-
-            const adjTo = new Date(toDate);
-            adjTo.setDate(adjTo.getDate() - 2);
-            const adjustedToStr = adjTo.toISOString().split('T')[0];
-
-            debugLog('Requested range:', requestedFrom, 'to', requestedTo);
-            debugLog('Adjusted (fetch) range:', adjustedFromStr, 'to', adjustedToStr);
-
-            // Send progress update to parent
-            sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token xác thực...' });
-
-            // Wait for token if not available yet
-            let attempts = 0;
-            while (!bearerToken && attempts < 10) {
-                debugLog(`Waiting for Bearer token... (attempt ${attempts + 1}/10)`);
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                attempts++;
-            }
-
-            if (!bearerToken) {
-                debugLog('No Bearer token captured after 10 attempts');
-                sendMessageToParent('error', { message: 'Không thể lấy token xác thực sau 10 lần thử' });
-                closeTab();
-                return;
-            }
-
-            debugLog('Bearer token available:', bearerToken.substring(0, 20) + '...');
-            sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng, đang lấy dữ liệu...' });
-
-            // Generate array of dates from adjustedFromStr to adjustedToStr
-            const dates = [];
-            const startDate = new Date(adjustedFromStr);
-            const endDate = new Date(adjustedToStr);
-            
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                dates.push(date.toISOString().split('T')[0]);
-            }
-
-            debugLog('Dates to fetch:', dates);
-
-            const allSurgeryData = [];
-            let totalSurgeries = 0;
-
-            // Fetch data for each date
-            for (let i = 0; i < dates.length; i++) {
-                const currentDate = dates[i];
-                sendMessageToParent('progress', { 
-                    step: 'api_call', 
-                    message: `Đang gọi API cho ngày ${currentDate}... (${i + 1}/${dates.length})` 
+                        ls && ls.setItem(SELECTED_KHOA_KEY, kId);
+                    } catch(_) {}
+                    // fetch rooms for selected khoa
+                    const rooms = await fetchRoomsByKhoa(kId);
+                    renderRooms(rooms);
+                    try { ls && ls.setItem(ROOMS_CACHE_KEY(kId), JSON.stringify(rooms || [])); } catch(_) {}
+                    // save via API for per-doctor settings
+                    debouncedSave(kId);
                 });
-
-                try {
-                    // Convert date to ISO format with 17:00:00.000Z (next day at 00:00 Vietnam time)
-                    const dateObj = new Date(currentDate);
-                    dateObj.setDate(dateObj.getDate() + 1); // Next day
-                    const isoDate = dateObj.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
-
-                    debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
-
-                    // Make the API request
-                    const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
-                        headers: {
-                            "accept": "application/json, text/plain, */*",
-                            "accept-language": "en-US,en;q=0.9,vi;q=0.8",
-                            "authorization": `Bearer ${bearerToken}`,
-                            "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
-                            "logintype": "2",
-                            "priority": "u=1, i",
-                            "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
-                            "sec-ch-ua-mobile": "?0",
-                            "sec-ch-ua-platform": "\"Windows\"",
-                            "sec-fetch-dest": "empty",
-                            "sec-fetch-mode": "cors",
-                            "sec-fetch-site": "same-origin",
-                            "siteid": "1"
-                        },
-                        referrer: "https://otm.tahospital.vn/surgery/booking",
-                        body: null,
-                        method: "GET",
-                        mode: "cors",
-                        credentials: "include"
-                    });
-
-                    if (!response.ok) {
-                        debugLog(`HTTP error for ${currentDate}: ${response.status}`);
-                        continue; // Skip this date and continue with others
-                    }
-
-                    const data = await response.json();
-                    debugLog(`Surgery data received for ${currentDate}:`, data);
-
-                    // Process the data for this date
-                    if (data && Array.isArray(data)) {
-                        const surgeryCount = data.length;
-                        totalSurgeries += surgeryCount;
-                        
-                        // Add date information to each surgery
-                        const surgeriesWithDate = data.map(surgery => ({
-                            ...surgery,
-                            fetchDate: currentDate
-                        }));
-                        
-                        allSurgeryData.push(...surgeriesWithDate);
-                        
-                        debugLog(`Found ${surgeryCount} surgeries for ${currentDate}`);
-                        console.log(`=== SURGERY DATA FOR ${currentDate} ===`);
-                        data.forEach((item, index) => {
-                            console.log(`${index + 1}. Patient: ${item.customer?.fullname || 'N/A'}`);
-                            console.log(`   Surgery: ${item.surgerymethod || 'N/A'}`);
-                            console.log(`   Start Time: ${item.start || 'N/A'}`);
-                            console.log(`   End Time: ${item.end || 'N/A'}`);
-                            console.log(`   Room: ${item.room?.displayname || 'N/A'}`);
-                            console.log(`   Department: ${item.department?.displayname || 'N/A'}`);
-                            console.log(`   Status: ${item.status || 'N/A'}`);
-                            console.log(`   Diagnosis: ${item.diagnose || 'N/A'}`);
-                            console.log('---');
-                        });
-                    }
-
-                    // Add a small delay between requests to avoid rate limiting
-                    if (i < dates.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-
-                } catch (dateError) {
-                    debugLog(`Error fetching data for ${currentDate}:`, dateError);
-                    // Continue with next date
-                }
-            }
-
-            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API' });
-
-            // Send success data to parent with all collected data
-            if (allSurgeryData.length > 0) {
-                const message = `Tìm thấy tổng cộng ${totalSurgeries} ca mổ từ ${requestedFrom} đến ${requestedTo}:\n\n` +
-                    allSurgeryData.map((item, index) => 
-                        `${index + 1}. ${item.customer?.fullname || 'N/A'} - ${item.surgerymethod || 'N/A'} (${item.fetchDate})`
-                    ).join('\n');
-
-                sendMessageToParent('success', {
-                    surgeryData: allSurgeryData,
-                    count: totalSurgeries,
-                    dateRange: { from: requestedFrom, to: requestedTo },
-                    summary: message
-                });
-
-                debugLog('=== SURGERY DATA FETCH COMPLETED SUCCESSFULLY ===');
-                debugLog(`Total surgeries found: ${totalSurgeries}`);
-            } else {
-                sendMessageToParent('success', {
-                    surgeryData: [],
-                    count: 0,
-                    dateRange: { from: requestedFrom, to: requestedTo },
-                    summary: `Không tìm thấy dữ liệu mổ từ ${requestedFrom} đến ${requestedTo}`
-                });
-            }
-
-            closeTab();
-
-        } catch (error) {
-            debugLog('Error fetching surgery data:', error);
-            debugLog('Lỗi khi lấy dữ liệu mổ: ' + error.message);
-            sendMessageToParent('error', {
-                message: 'Lỗi khi lấy dữ liệu mổ: ' + error.message,
-                error: error.toString()
+                khoaListEl.appendChild(div);
             });
-            closeTab();
+            // Auto-load rooms for current selection
+            if (selected) {
+                try {
+                    const cached = ls && ls.getItem(ROOMS_CACHE_KEY(selected));
+                    if (cached) {
+                        try { renderRooms(JSON.parse(cached)); } catch { /* ignore */ }
+                    } else {
+                        const rooms = await fetchRoomsByKhoa(selected);
+                        renderRooms(rooms);
+                        try { ls && ls.setItem(ROOMS_CACHE_KEY(selected), JSON.stringify(rooms || [])); } catch(_) {}
+                    }
+                } catch(_) {}
+            }
+        } catch (e) {
+            khoaListEl.innerHTML = `<div class="dr-ow-empty">Lỗi tải danh sách khoa.</div>`;
+            console.warn('LoadKhoaPhong failed', e);
         }
     }
 
-    // Start automation when page loads
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            // checkExistingToken() is already called at the top
+    renderKhoaList();
+}
+
+module.exports = { mountOpenWorldTab };
+
+},{"../services/apiService":23,"../services/settingsService":28}],22:[function(require,module,exports){
+// settings.js - Render a settings page similar to dashboard, triggered by ?caidat
+
+const SettingsService = require('../services/settingsService');
+const { mountOpenWorldTab } = require('../pages/page.settings-open-world');
+
+async function showSettingsIfNeeded() {
+        // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
+        const u = new URL(window.location.href);
+        const caidatParam = u.searchParams.get('caidat');
+        const tabParam = u.searchParams.get('tab');
+        const targetTab = (caidatParam && caidatParam !== 'true') ? caidatParam : (tabParam || 'discharge');
+        if (!(/[?&](caidat)($|=|&)/.test(window.location.search))) return;
+
+        // Reset page and mount a two-column layout with tabs
+        document.body.innerHTML = '';
+
+        const styles = document.createElement('style');
+        styles.textContent = `
+            .dr-st-wrap{display:flex; min-height:100vh; color:#111827; background:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+            .dr-st-left{width:260px; border-right:1px solid #e5e7eb; background:#fafafa}
+            .dr-st-left h2{margin:16px; font-size:18px}
+            .dr-st-menu{display:flex; flex-direction:column; gap:8px; padding:0 12px 16px}
+            .dr-st-menu button{appearance:none; border:1px solid #e5e7eb; background:#fff; padding:10px 12px; border-radius:10px; text-align:left; cursor:pointer}
+            .dr-st-menu button.active{border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.15) inset}
+            .dr-st-right{flex:1; min-width:0;}
+            .dr-st-head{display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e5e7eb}
+            .dr-st-title{margin:0; font-size:18px}
+            .dr-st-content{padding:16px 20px}
+            .dr-st-row{display:flex; gap:8px; align-items:center; margin-bottom:8px}
+            .dr-st-input{flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px}
+            .dr-st-btn{appearance:none; border:1px solid #e5e7eb; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer}
+            .dr-st-btn.primary{border-color:#2563eb; background:#2563eb; color:#fff}
+            .dr-st-list{display:flex; flex-direction:column; gap:8px; margin:12px 0}
+            .dr-st-tab{display:none}
+            .dr-st-tab.active{display:block}
+            .dr-st-footer{padding:12px 20px; color:#6b7280; border-top:1px solid #e5e7eb}
+        `;
+        document.head.appendChild(styles);
+
+        const wrap = document.createElement('div');
+        wrap.className = 'dr-st-wrap';
+
+        // Left menu
+        const left = document.createElement('aside');
+        left.className = 'dr-st-left';
+        left.innerHTML = `
+            <h2>Cài đặt</h2>
+                        <div class="dr-st-menu">
+                <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
+                <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
+                                <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
+            </div>
+            <div class="dr-st-footer" id="dr-st-doctor"></div>
+        `;
+
+        // Right content with header and tabs
+        const right = document.createElement('section');
+        right.className = 'dr-st-right';
+                right.innerHTML = `
+            <div class="dr-st-head">
+                        <h3 class="dr-st-title">${targetTab==='account'?'Account':'Lời dặn dò ra viện'}</h3>
+                <div>
+                    <button class="dr-st-btn" id="reload-tab">Tải lại</button>
+                    <button class="dr-st-btn primary" id="save-tab">Lưu</button>
+                </div>
+            </div>
+            <div class="dr-st-content">
+                        <div id="tab-discharge" class="dr-st-tab ${targetTab==='discharge'?'active':''}">
+                    <p style="margin:0 0 8px; color:#6b7280">Danh sách các lời dặn dò ra viện. Bạn có thể thêm/xóa và chỉnh sửa.</p>
+                    <div id="discharge-list" class="dr-st-list"></div>
+                    <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
+                </div>
+                                        <div id="tab-account" class="dr-st-tab ${targetTab==='account'?'active':''}">
+                                                <div style="margin-bottom:12px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#92400e">
+                                                <b>Lưu ý bảo mật:</b> Thông tin dưới đây chỉ lưu trên thiết bị (LocalStorage của trình duyệt), không gửi lên máy chủ. Hãy sử dụng trên máy tính cá nhân tin cậy. Nếu dùng máy công cộng, KHÔNG nhập mật khẩu ở đây.
+                                        </div>
+                                                <div id="dr-acc-toggle-wrap" style="margin:8px 0 16px;"></div>
+                                                <div style="margin-top:8px; color:#6b7280; font-size:13px; line-height:1.5;">
+                                                Khi bật "tự động login", lúc vào trang <code>/Home/Login</code> tiện ích sẽ tự điền Tên đăng nhập và Mật khẩu rồi nhấn Đăng nhập, sau đó chờ 1.5 giây và mở <code>/?nln</code>. Tắt tùy chọn này nếu bạn không muốn tự động đăng nhập.
+                                        </div>
+                                                                                                <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
+                                </div>
+                                                                <div id="tab-openworld" class="dr-st-tab ${targetTab==='openworld'?'active':''}">
+                                                                        <div id="dr-openworld-container"></div>
+                                                                </div>
+            </div>
+        `;
+
+        wrap.appendChild(left);
+        wrap.appendChild(right);
+        document.body.appendChild(wrap);
+
+        // Load settings state
+        let { doctorName, checklistObj, settings } = await SettingsService.getOrCreateSettings();
+        const titleEl = right.querySelector('.dr-st-title');
+        const listEl = right.querySelector('#discharge-list');
+        const doctorEl = left.querySelector('#dr-st-doctor');
+        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+
+                // Account tab: multi-account manager (localStorage only)
+                const ls = window.localStorage;
+                const ACC_KEY = 'dr_accounts_json';
+                const DEF_KEY = 'dr_acc_default';
+                const AUTO_KEY = 'dr_acc_autologin';
+                function readAccounts() {
+                        try { return JSON.parse(ls.getItem(ACC_KEY) || '[]'); } catch(_) { return []; }
+                }
+                function writeAccounts(arr) { ls.setItem(ACC_KEY, JSON.stringify(arr || [])); }
+                function readDefault() { return ls.getItem(DEF_KEY) || ''; }
+                function writeDefault(u) { ls.setItem(DEF_KEY, u || ''); }
+
+                const grid = right.querySelector('#dr-acc-grid');
+                function renderGrid() {
+                        if (!grid) return;
+                        grid.innerHTML = '';
+                                                   const accounts = readAccounts();
+                                                   let def = readDefault();
+                                                   // If only one account, auto set as default
+                                                   if (accounts.length === 1) {
+                                                           const only = accounts[0];
+                                                           if (only && only.username && def !== only.username) {
+                                                                   writeDefault(only.username);
+                                                                   def = only.username;
+                                                           }
+                                                   }
+                        accounts.forEach((acc, idx) => {
+                                const box = document.createElement('div');
+                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:10px; padding:10px; position:relative; background:#fff;';
+                                const radioId = `dr-acc-default-${idx}`;
+                                box.innerHTML = `
+                                                                                   <button class="dr-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#dc2626; color:#fff; border:none; border-radius:6px; padding:2px 6px; cursor:pointer;">X</button>
+                                        <div class="dr-st-row" style="margin-top:8px;">
+                                                <label style="width:100px">Tiêu đề</label>
+                                                <input class="dr-st-input dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: BS. ABC" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px">Tên đăng nhập</label>
+                                                <input class="dr-st-input dr-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px">Mật khẩu</label>
+                                                <input class="dr-st-input dr-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <input id="${radioId}" type="radio" name="dr-acc-default" class="dr-acc-default" ${def && def===acc.username ? 'checked' : ''} />
+                                                <label for="${radioId}" style="margin-left:6px; cursor:pointer;">Tài khoản mặc định</label>
+                                        </div>
+                                `;
+                                box.querySelector('.dr-acc-remove').addEventListener('click', () => {
+                                        if (confirm('Xóa tài khoản này?')) {
+                                                const arr = readAccounts();
+                                                arr.splice(idx,1);
+                                                writeAccounts(arr);
+                                                                if (def === acc.username) writeDefault('');
+                                                                if (arr.length === 1) {
+                                                                        const u = arr[0] && arr[0].username || '';
+                                                                        if (u) writeDefault(u);
+                                                                }
+                                                renderGrid();
+                                        }
+                                });
+                                box.querySelector('.dr-acc-title').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                        if (arr[idx]) { arr[idx].title = e.target.value; writeAccounts(arr); }
+                                });
+                                                box.querySelector('.dr-acc-username').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                                        if (arr[idx]) {
+                                                                const oldU = arr[idx].username || '';
+                                                                arr[idx].username = e.target.value; writeAccounts(arr);
+                                                                const curDef = readDefault();
+                                                                if (curDef === oldU) writeDefault(e.target.value || '');
+                                                        }
+                                });
+                                box.querySelector('.dr-acc-password').addEventListener('input', (e) => {
+                                        const arr = readAccounts();
+                                        if (arr[idx]) { arr[idx].password = e.target.value; writeAccounts(arr); }
+                                });
+                                box.querySelector('.dr-acc-default').addEventListener('change', (e) => {
+                                        if (e.target.checked) writeDefault(acc.username || '');
+                                });
+                                // Ensure label click also sets default (redundant with for=, but safe)
+                                const lbl = box.querySelector(`label[for="${radioId}"]`);
+                                if (lbl) {
+                                        lbl.addEventListener('click', () => {
+                                                const inp = box.querySelector(`#${radioId}`);
+                                                if (inp) { inp.checked = true; writeDefault(acc.username || ''); }
+                                        });
+                                }
+                                grid.appendChild(box);
+                        });
+                        // Add box
+                        const addBox = document.createElement('div');
+                        addBox.style.cssText = 'border:1px dashed #cbd5e1; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#fafafa;';
+                        addBox.innerHTML = '<div style="font-size:28px; line-height:1;">+</div>';
+                        addBox.title = 'Thêm tài khoản';
+                        addBox.addEventListener('click', () => {
+                                const arr = readAccounts();
+                                arr.push({ title:'', username:'', password:'' });
+                                writeAccounts(arr);
+                                renderGrid();
+                        });
+                        grid.appendChild(addBox);
+                }
+                renderGrid();
+
+                // Top-level auto-login toggle (shared component)
+                try {
+                        const { createAutoLoginToggle, applyToggleStyles } = require('../components/autoLoginToggle');
+                        const wrap = right.querySelector('#dr-acc-toggle-wrap');
+                        if (wrap) {
+                                const enabled = ls.getItem(AUTO_KEY) === '1';
+                                const toggle = createAutoLoginToggle({
+                                        enabled,
+                                        onToggle: () => {
+                                                const cur = ls.getItem(AUTO_KEY) === '1';
+                                                ls.setItem(AUTO_KEY, cur ? '0' : '1');
+                                                applyToggleStyles(toggle, !cur);
+                                        },
+                                        onDblClick: () => {},
+                                        title: 'Bật/tắt tự động login'
+                                });
+                                wrap.appendChild(toggle);
+                        }
+                } catch(_) {}
+
+        const renderDischarge = (items) => {
+                listEl.innerHTML = '';
+                (items || []).forEach(text => {
+                        const row = document.createElement('div');
+                        row.className = 'dr-st-row';
+                        row.innerHTML = `
+                            <input class="dr-st-input" type="text" value="${(text || '').replace(/"/g,'&quot;')}" placeholder="Nhập lời dặn dò..." />
+                            <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
+                        `;
+                        listEl.appendChild(row);
+                });
+        };
+
+        renderDischarge(settings && settings.danDoRaVien ? settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien);
+
+        // Left menu switching (future tabs-ready)
+                left.addEventListener('click', (e) => {
+                                const btn = e.target.closest('button[data-tab]');
+                if (!btn) return;
+                left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const tab = btn.dataset.tab;
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : btn.textContent.trim()));
+                right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
+                const target = right.querySelector(`#tab-${tab}`);
+                if (target) target.classList.add('active');
+                                // Update URL (no reload) to reflect current tab for deep linking
+                                try {
+                                        const url = new URL(window.location.href);
+                                        url.searchParams.set('caidat', tab);
+                                        window.history.replaceState({}, '', url);
+                                } catch(_) {}
+                                // Mount Open World content when its tab is shown
+                                if (tab === 'openworld') {
+                                        const mountEl = right.querySelector('#dr-openworld-container');
+                                        if (mountEl && !mountEl.dataset.mounted) {
+                                                mountEl.dataset.mounted = '1';
+                                                mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
+                                        }
+                                }
         });
-    } else {
-        // checkExistingToken() is already called at the top
-    }
 
-})();
+        // Right actions
+        right.addEventListener('click', async (e) => {
+                if (e.target.id === 'add-discharge') {
+                        const row = document.createElement('div');
+                        row.className = 'dr-st-row';
+                        row.innerHTML = `
+                            <input class="dr-st-input" type="text" placeholder="Nhập lời dặn dò..." />
+                            <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
+                        `;
+                        listEl.appendChild(row);
+                        return;
+                }
+                if (e.target.classList && e.target.classList.contains('remove-row')) {
+                        e.target.closest('.dr-st-row')?.remove();
+                        return;
+                }
+                if (e.target.id === 'reload-tab') {
+                        const data = await SettingsService.getOrCreateSettings();
+                        doctorName = data.doctorName;
+                        checklistObj = data.checklistObj;
+                        settings = data.settings || SettingsService.getDefaultSettings();
+                        renderDischarge(settings.danDoRaVien || []);
+                        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+                        return;
+                }
+                if (e.target.id === 'save-tab') {
+                        const values = Array.from(listEl.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean);
+                        const next = { ...(settings || {}), danDoRaVien: values };
+                        // Ensure checklist exists
+                        if (!checklistObj && doctorName) {
+                                const created = await SettingsService.createSettingsPhieu(doctorName);
+                                if (created && created.isValid) {
+                                        checklistObj = await SettingsService.loadSettingsPhieu(doctorName);
+                                }
+                        }
+                        if (!checklistObj) {
+                                alert('Không thể lưu: chưa có phiếu cài đặt.');
+                                return;
+                        }
+                        const ok = await SettingsService.updateSettingsState(checklistObj, next);
+                        if (ok) {
+                                settings = next;
+                                alert('Đã lưu cài đặt');
+                        } else {
+                                alert('Lưu thất bại');
+                        }
+                }
+        });
 
-},{}],21:[function(require,module,exports){
+        // Account tab no longer uses single username/password fields; managed via grid.
+                // Mount Open World if deep-linked initially
+                try {
+                        if (targetTab === 'openworld') {
+                                const mountEl = right.querySelector('#dr-openworld-container');
+                                if (mountEl) {
+                                        mountEl.dataset.mounted = '1';
+                                        mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
+                                }
+                        }
+                } catch(_) {}
+}
+
+module.exports = { showSettingsIfNeeded };
+
+},{"../components/autoLoginToggle":5,"../pages/page.settings-open-world":21,"../services/settingsService":28}],23:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -6609,7 +7097,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":34}],22:[function(require,module,exports){
+},{"../utils/khoaUtils":34}],24:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -6877,10 +7365,10 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":31,"./apiService":21,"./saveQueue":25}],23:[function(require,module,exports){
+},{"../utils/dateUtils":31,"./apiService":23,"./saveQueue":27}],25:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
-const { fetchToDieuTriData } = require('../dashboard.support');
+const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const LoginHandler = require('../components/loginHandler');
 const ChecklistService = require('./checklistService');
@@ -7106,7 +7594,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":10,"../dashboard.support":17,"../utils/patientDataMapper":35,"./checklistService":22}],24:[function(require,module,exports){
+},{"../components/loginHandler":10,"../pages/page.dashboard.support":20,"../utils/patientDataMapper":35,"./checklistService":24}],26:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -7309,7 +7797,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":31,"../utils/patientDataMapper":35,"../utils/surgeryUtils":36,"./checklistService":22}],25:[function(require,module,exports){
+},{"../utils/dateUtils":31,"../utils/patientDataMapper":35,"../utils/surgeryUtils":36,"./checklistService":24}],27:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -7373,7 +7861,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],26:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -7515,495 +8003,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":34,"./apiService":21}],27:[function(require,module,exports){
-// settings-open-world.js - Open World settings (Thông tin khoa/phòng)
-
-const SettingsService = require('./services/settingsService');
-const ApiService = require('./services/apiService');
-
-function createStylesOnce() {
-    if (document.getElementById('dr-openworld-styles')) return;
-    const st = document.createElement('style');
-    st.id = 'dr-openworld-styles';
-    st.textContent = `
-        .dr-ow-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-        .dr-ow-card { border:1px solid #e5e7eb; border-radius: 10px; padding: 10px; background: #fff; }
-        .dr-ow-title { margin: 0 0 8px 0; font-weight: 700; color: #0f172a; }
-        .dr-ow-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow: auto; }
-        .dr-ow-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; border:1px solid #e5e7eb; border-radius: 8px; padding: 8px 10px; cursor: pointer; }
-        .dr-ow-item:hover { background: #f8fafc; }
-        .dr-ow-item.active { border-color: #16a34a; box-shadow: 0 0 0 2px rgba(22,163,74,.15) inset; }
-        .dr-ow-badge { background: #16a34a; color: #fff; border-radius: 10px; padding: 2px 6px; font-size: 12px; }
-        .dr-ow-empty { color:#6b7280; font-style: italic; }
-        @media (max-width: 900px) { .dr-ow-wrap { grid-template-columns: 1fr; } }
-    `;
-    document.head.appendChild(st);
-}
-
-function debounce(fn, delay = 400) {
-    let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
-}
-
-async function fetchKhoaPhong() { return ApiService.fetchKhoaPhong(); }
-async function fetchRoomsByKhoa(khoaId) { return ApiService.fetchRoomsByKhoa(khoaId); }
-
-/**
- * Mount Open World settings tab
- */
-async function mountOpenWorldTab(opts) {
-    const { container, doctorName, checklistObj, settings } = opts || {};
-    if (!container) return;
-    createStylesOnce();
-
-    container.innerHTML = `
-        <div style="margin:0 0 8px; color:#6b7280">Quản lý khoa mặc định và các phòng theo dõi bệnh nhân. Việc chọn khoa sẽ được lưu và áp dụng ở dashboard.</div>
-        <div class="dr-ow-wrap">
-            <div class="dr-ow-card">
-                <h4 class="dr-ow-title">Danh sách khoa/phòng</h4>
-                <div id="dr-ow-khoa-list" class="dr-ow-list"><div class="dr-ow-empty">Đang tải danh sách khoa...</div></div>
-            </div>
-            <div class="dr-ow-card">
-                <h4 class="dr-ow-title">Phòng thuộc khoa đã chọn</h4>
-                <div id="dr-ow-room-list" class="dr-ow-list"><div class="dr-ow-empty">Chưa chọn khoa.</div></div>
-            </div>
-        </div>
-    `;
-
-    const khoaListEl = container.querySelector('#dr-ow-khoa-list');
-    const roomListEl = container.querySelector('#dr-ow-room-list');
-
-    const ls = window.localStorage;
-    const SELECTED_KHOA_KEY = 'bsnt_khoa_dashboard';
-    const ROOMS_CACHE_KEY = (k) => `dr_ow_rooms_${k}`;
-
-    // Helper: render rooms
-    function renderRooms(rooms) {
-        if (!rooms || rooms.length === 0) {
-            roomListEl.innerHTML = `<div class="dr-ow-empty">Không có phòng.</div>`;
-            return;
-        }
-        roomListEl.innerHTML = '';
-        rooms.forEach(r => {
-            const div = document.createElement('div');
-            div.className = 'dr-ow-item';
-            div.textContent = r.name || r.code || 'Phòng';
-            // keep attributes for later use
-            div.dataset.id = r.id || '';
-            div.dataset.code = r.code || '';
-            div.dataset.name = r.name || '';
-            div.dataset.khoA_ID = r.khoA_ID || '';
-            div.dataset.tanG_ID = r.tanG_ID || '';
-            roomListEl.appendChild(div);
-        });
-    }
-
-    // Debounced save to API for default khoa
-    const debouncedSave = debounce(async (khoaId) => {
-        try {
-            if (!doctorName) return;
-            let obj = checklistObj || await SettingsService.loadSettingsPhieu(doctorName);
-            if (!obj) {
-                const created = await SettingsService.createSettingsPhieu(doctorName);
-                if (created && created.isValid) obj = await SettingsService.loadSettingsPhieu(doctorName);
-            }
-            if (!obj) return;
-            const current = SettingsService.parseSettingsState(obj) || {};
-            const next = { ...current, openWorld: { ...(current.openWorld || {}), defaultKhoa: String(khoaId || '') } };
-            await SettingsService.updateSettingsState(obj, next);
-        } catch (e) { console.warn('Save default khoa failed', e); }
-    }, 600);
-
-    // Render khoa list and wire selection
-    async function renderKhoaList() {
-        try {
-            const khoa = await fetchKhoaPhong();
-            let selected = (ls && ls.getItem(SELECTED_KHOA_KEY)) || '';
-            khoaListEl.innerHTML = '';
-            khoa.forEach(k => {
-                const div = document.createElement('div');
-                const kId = String(k.id);
-                const isSelected = !!selected && selected === kId;
-                div.className = 'dr-ow-item' + (isSelected ? ' active' : '');
-                const name = (k && k.name) || 'Khoa';
-                div.innerHTML = `<span>${name}</span>` + (isSelected ? `<span class="dr-ow-badge">Đã chọn</span>` : '');
-                div.addEventListener('click', async () => {
-                    // update selection locally
-                    Array.from(khoaListEl.querySelectorAll('.dr-ow-item')).forEach(el => el.classList.remove('active'));
-                    div.classList.add('active');
-                    // set badge
-                    Array.from(khoaListEl.querySelectorAll('.dr-ow-badge')).forEach(b => b.remove());
-                    div.insertAdjacentHTML('beforeend', `<span class="dr-ow-badge">Đã chọn</span>`);
-                    // persist to localStorage for dashboard compatibility
-                    try {
-                        ls && ls.setItem(SELECTED_KHOA_KEY, kId);
-                    } catch(_) {}
-                    // fetch rooms for selected khoa
-                    const rooms = await fetchRoomsByKhoa(kId);
-                    renderRooms(rooms);
-                    try { ls && ls.setItem(ROOMS_CACHE_KEY(kId), JSON.stringify(rooms || [])); } catch(_) {}
-                    // save via API for per-doctor settings
-                    debouncedSave(kId);
-                });
-                khoaListEl.appendChild(div);
-            });
-            // Auto-load rooms for current selection
-            if (selected) {
-                try {
-                    const cached = ls && ls.getItem(ROOMS_CACHE_KEY(selected));
-                    if (cached) {
-                        try { renderRooms(JSON.parse(cached)); } catch { /* ignore */ }
-                    } else {
-                        const rooms = await fetchRoomsByKhoa(selected);
-                        renderRooms(rooms);
-                        try { ls && ls.setItem(ROOMS_CACHE_KEY(selected), JSON.stringify(rooms || [])); } catch(_) {}
-                    }
-                } catch(_) {}
-            }
-        } catch (e) {
-            khoaListEl.innerHTML = `<div class="dr-ow-empty">Lỗi tải danh sách khoa.</div>`;
-            console.warn('LoadKhoaPhong failed', e);
-        }
-    }
-
-    renderKhoaList();
-}
-
-module.exports = { mountOpenWorldTab };
-
-},{"./services/apiService":21,"./services/settingsService":26}],28:[function(require,module,exports){
-// settings.js - Render a settings page similar to dashboard, triggered by ?caidat
-
-const SettingsService = require('./services/settingsService');
-const { mountOpenWorldTab } = require('./settings-open-world');
-
-async function showSettingsIfNeeded() {
-        // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
-        const u = new URL(window.location.href);
-        const caidatParam = u.searchParams.get('caidat');
-        const tabParam = u.searchParams.get('tab');
-        const targetTab = (caidatParam && caidatParam !== 'true') ? caidatParam : (tabParam || 'discharge');
-        if (!(/[?&](caidat)($|=|&)/.test(window.location.search))) return;
-
-        // Reset page and mount a two-column layout with tabs
-        document.body.innerHTML = '';
-
-        const styles = document.createElement('style');
-        styles.textContent = `
-            .dr-st-wrap{display:flex; min-height:100vh; color:#111827; background:#fff; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-            .dr-st-left{width:260px; border-right:1px solid #e5e7eb; background:#fafafa}
-            .dr-st-left h2{margin:16px; font-size:18px}
-            .dr-st-menu{display:flex; flex-direction:column; gap:8px; padding:0 12px 16px}
-            .dr-st-menu button{appearance:none; border:1px solid #e5e7eb; background:#fff; padding:10px 12px; border-radius:10px; text-align:left; cursor:pointer}
-            .dr-st-menu button.active{border-color:#2563eb; box-shadow:0 0 0 2px rgba(37,99,235,.15) inset}
-            .dr-st-right{flex:1; min-width:0;}
-            .dr-st-head{display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #e5e7eb}
-            .dr-st-title{margin:0; font-size:18px}
-            .dr-st-content{padding:16px 20px}
-            .dr-st-row{display:flex; gap:8px; align-items:center; margin-bottom:8px}
-            .dr-st-input{flex:1; padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px}
-            .dr-st-btn{appearance:none; border:1px solid #e5e7eb; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer}
-            .dr-st-btn.primary{border-color:#2563eb; background:#2563eb; color:#fff}
-            .dr-st-list{display:flex; flex-direction:column; gap:8px; margin:12px 0}
-            .dr-st-tab{display:none}
-            .dr-st-tab.active{display:block}
-            .dr-st-footer{padding:12px 20px; color:#6b7280; border-top:1px solid #e5e7eb}
-        `;
-        document.head.appendChild(styles);
-
-        const wrap = document.createElement('div');
-        wrap.className = 'dr-st-wrap';
-
-        // Left menu
-        const left = document.createElement('aside');
-        left.className = 'dr-st-left';
-        left.innerHTML = `
-            <h2>Cài đặt</h2>
-                        <div class="dr-st-menu">
-                <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
-                <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
-                                <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
-            </div>
-            <div class="dr-st-footer" id="dr-st-doctor"></div>
-        `;
-
-        // Right content with header and tabs
-        const right = document.createElement('section');
-        right.className = 'dr-st-right';
-                right.innerHTML = `
-            <div class="dr-st-head">
-                        <h3 class="dr-st-title">${targetTab==='account'?'Account':'Lời dặn dò ra viện'}</h3>
-                <div>
-                    <button class="dr-st-btn" id="reload-tab">Tải lại</button>
-                    <button class="dr-st-btn primary" id="save-tab">Lưu</button>
-                </div>
-            </div>
-            <div class="dr-st-content">
-                        <div id="tab-discharge" class="dr-st-tab ${targetTab==='discharge'?'active':''}">
-                    <p style="margin:0 0 8px; color:#6b7280">Danh sách các lời dặn dò ra viện. Bạn có thể thêm/xóa và chỉnh sửa.</p>
-                    <div id="discharge-list" class="dr-st-list"></div>
-                    <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
-                </div>
-                                        <div id="tab-account" class="dr-st-tab ${targetTab==='account'?'active':''}">
-                                                <div style="margin-bottom:12px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#92400e">
-                                                <b>Lưu ý bảo mật:</b> Thông tin dưới đây chỉ lưu trên thiết bị (LocalStorage của trình duyệt), không gửi lên máy chủ. Hãy sử dụng trên máy tính cá nhân tin cậy. Nếu dùng máy công cộng, KHÔNG nhập mật khẩu ở đây.
-                                        </div>
-                                                <div id="dr-acc-toggle-wrap" style="margin:8px 0 16px;"></div>
-                                                <div style="margin-top:8px; color:#6b7280; font-size:13px; line-height:1.5;">
-                                                Khi bật "tự động login", lúc vào trang <code>/Home/Login</code> tiện ích sẽ tự điền Tên đăng nhập và Mật khẩu rồi nhấn Đăng nhập, sau đó chờ 1.5 giây và mở <code>/?nln</code>. Tắt tùy chọn này nếu bạn không muốn tự động đăng nhập.
-                                        </div>
-                                                                                                <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
-                                </div>
-                                                                <div id="tab-openworld" class="dr-st-tab ${targetTab==='openworld'?'active':''}">
-                                                                        <div id="dr-openworld-container"></div>
-                                                                </div>
-            </div>
-        `;
-
-        wrap.appendChild(left);
-        wrap.appendChild(right);
-        document.body.appendChild(wrap);
-
-        // Load settings state
-        let { doctorName, checklistObj, settings } = await SettingsService.getOrCreateSettings();
-        const titleEl = right.querySelector('.dr-st-title');
-        const listEl = right.querySelector('#discharge-list');
-        const doctorEl = left.querySelector('#dr-st-doctor');
-        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
-
-                // Account tab: multi-account manager (localStorage only)
-                const ls = window.localStorage;
-                const ACC_KEY = 'dr_accounts_json';
-                const DEF_KEY = 'dr_acc_default';
-                const AUTO_KEY = 'dr_acc_autologin';
-                function readAccounts() {
-                        try { return JSON.parse(ls.getItem(ACC_KEY) || '[]'); } catch(_) { return []; }
-                }
-                function writeAccounts(arr) { ls.setItem(ACC_KEY, JSON.stringify(arr || [])); }
-                function readDefault() { return ls.getItem(DEF_KEY) || ''; }
-                function writeDefault(u) { ls.setItem(DEF_KEY, u || ''); }
-
-                const grid = right.querySelector('#dr-acc-grid');
-                function renderGrid() {
-                        if (!grid) return;
-                        grid.innerHTML = '';
-                                                   const accounts = readAccounts();
-                                                   let def = readDefault();
-                                                   // If only one account, auto set as default
-                                                   if (accounts.length === 1) {
-                                                           const only = accounts[0];
-                                                           if (only && only.username && def !== only.username) {
-                                                                   writeDefault(only.username);
-                                                                   def = only.username;
-                                                           }
-                                                   }
-                        accounts.forEach((acc, idx) => {
-                                const box = document.createElement('div');
-                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:10px; padding:10px; position:relative; background:#fff;';
-                                const radioId = `dr-acc-default-${idx}`;
-                                box.innerHTML = `
-                                                                                   <button class="dr-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#dc2626; color:#fff; border:none; border-radius:6px; padding:2px 6px; cursor:pointer;">X</button>
-                                        <div class="dr-st-row" style="margin-top:8px;">
-                                                <label style="width:100px">Tiêu đề</label>
-                                                <input class="dr-st-input dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: BS. ABC" />
-                                        </div>
-                                        <div class="dr-st-row">
-                                                <label style="width:100px">Tên đăng nhập</label>
-                                                <input class="dr-st-input dr-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" />
-                                        </div>
-                                        <div class="dr-st-row">
-                                                <label style="width:100px">Mật khẩu</label>
-                                                <input class="dr-st-input dr-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" />
-                                        </div>
-                                        <div class="dr-st-row">
-                                                <input id="${radioId}" type="radio" name="dr-acc-default" class="dr-acc-default" ${def && def===acc.username ? 'checked' : ''} />
-                                                <label for="${radioId}" style="margin-left:6px; cursor:pointer;">Tài khoản mặc định</label>
-                                        </div>
-                                `;
-                                box.querySelector('.dr-acc-remove').addEventListener('click', () => {
-                                        if (confirm('Xóa tài khoản này?')) {
-                                                const arr = readAccounts();
-                                                arr.splice(idx,1);
-                                                writeAccounts(arr);
-                                                                if (def === acc.username) writeDefault('');
-                                                                if (arr.length === 1) {
-                                                                        const u = arr[0] && arr[0].username || '';
-                                                                        if (u) writeDefault(u);
-                                                                }
-                                                renderGrid();
-                                        }
-                                });
-                                box.querySelector('.dr-acc-title').addEventListener('input', (e) => {
-                                        const arr = readAccounts();
-                                        if (arr[idx]) { arr[idx].title = e.target.value; writeAccounts(arr); }
-                                });
-                                                box.querySelector('.dr-acc-username').addEventListener('input', (e) => {
-                                        const arr = readAccounts();
-                                                        if (arr[idx]) {
-                                                                const oldU = arr[idx].username || '';
-                                                                arr[idx].username = e.target.value; writeAccounts(arr);
-                                                                const curDef = readDefault();
-                                                                if (curDef === oldU) writeDefault(e.target.value || '');
-                                                        }
-                                });
-                                box.querySelector('.dr-acc-password').addEventListener('input', (e) => {
-                                        const arr = readAccounts();
-                                        if (arr[idx]) { arr[idx].password = e.target.value; writeAccounts(arr); }
-                                });
-                                box.querySelector('.dr-acc-default').addEventListener('change', (e) => {
-                                        if (e.target.checked) writeDefault(acc.username || '');
-                                });
-                                // Ensure label click also sets default (redundant with for=, but safe)
-                                const lbl = box.querySelector(`label[for="${radioId}"]`);
-                                if (lbl) {
-                                        lbl.addEventListener('click', () => {
-                                                const inp = box.querySelector(`#${radioId}`);
-                                                if (inp) { inp.checked = true; writeDefault(acc.username || ''); }
-                                        });
-                                }
-                                grid.appendChild(box);
-                        });
-                        // Add box
-                        const addBox = document.createElement('div');
-                        addBox.style.cssText = 'border:1px dashed #cbd5e1; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#fafafa;';
-                        addBox.innerHTML = '<div style="font-size:28px; line-height:1;">+</div>';
-                        addBox.title = 'Thêm tài khoản';
-                        addBox.addEventListener('click', () => {
-                                const arr = readAccounts();
-                                arr.push({ title:'', username:'', password:'' });
-                                writeAccounts(arr);
-                                renderGrid();
-                        });
-                        grid.appendChild(addBox);
-                }
-                renderGrid();
-
-                // Top-level auto-login toggle (shared component)
-                try {
-                        const { createAutoLoginToggle, applyToggleStyles } = require('./components/autoLoginToggle');
-                        const wrap = right.querySelector('#dr-acc-toggle-wrap');
-                        if (wrap) {
-                                const enabled = ls.getItem(AUTO_KEY) === '1';
-                                const toggle = createAutoLoginToggle({
-                                        enabled,
-                                        onToggle: () => {
-                                                const cur = ls.getItem(AUTO_KEY) === '1';
-                                                ls.setItem(AUTO_KEY, cur ? '0' : '1');
-                                                applyToggleStyles(toggle, !cur);
-                                        },
-                                        onDblClick: () => {},
-                                        title: 'Bật/tắt tự động login'
-                                });
-                                wrap.appendChild(toggle);
-                        }
-                } catch(_) {}
-
-        const renderDischarge = (items) => {
-                listEl.innerHTML = '';
-                (items || []).forEach(text => {
-                        const row = document.createElement('div');
-                        row.className = 'dr-st-row';
-                        row.innerHTML = `
-                            <input class="dr-st-input" type="text" value="${(text || '').replace(/"/g,'&quot;')}" placeholder="Nhập lời dặn dò..." />
-                            <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
-                        `;
-                        listEl.appendChild(row);
-                });
-        };
-
-        renderDischarge(settings && settings.danDoRaVien ? settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien);
-
-        // Left menu switching (future tabs-ready)
-                left.addEventListener('click', (e) => {
-                                const btn = e.target.closest('button[data-tab]');
-                if (!btn) return;
-                left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const tab = btn.dataset.tab;
-                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : btn.textContent.trim()));
-                right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
-                const target = right.querySelector(`#tab-${tab}`);
-                if (target) target.classList.add('active');
-                                // Update URL (no reload) to reflect current tab for deep linking
-                                try {
-                                        const url = new URL(window.location.href);
-                                        url.searchParams.set('caidat', tab);
-                                        window.history.replaceState({}, '', url);
-                                } catch(_) {}
-                                // Mount Open World content when its tab is shown
-                                if (tab === 'openworld') {
-                                        const mountEl = right.querySelector('#dr-openworld-container');
-                                        if (mountEl && !mountEl.dataset.mounted) {
-                                                mountEl.dataset.mounted = '1';
-                                                mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
-                                        }
-                                }
-        });
-
-        // Right actions
-        right.addEventListener('click', async (e) => {
-                if (e.target.id === 'add-discharge') {
-                        const row = document.createElement('div');
-                        row.className = 'dr-st-row';
-                        row.innerHTML = `
-                            <input class="dr-st-input" type="text" placeholder="Nhập lời dặn dò..." />
-                            <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
-                        `;
-                        listEl.appendChild(row);
-                        return;
-                }
-                if (e.target.classList && e.target.classList.contains('remove-row')) {
-                        e.target.closest('.dr-st-row')?.remove();
-                        return;
-                }
-                if (e.target.id === 'reload-tab') {
-                        const data = await SettingsService.getOrCreateSettings();
-                        doctorName = data.doctorName;
-                        checklistObj = data.checklistObj;
-                        settings = data.settings || SettingsService.getDefaultSettings();
-                        renderDischarge(settings.danDoRaVien || []);
-                        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
-                        return;
-                }
-                if (e.target.id === 'save-tab') {
-                        const values = Array.from(listEl.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean);
-                        const next = { ...(settings || {}), danDoRaVien: values };
-                        // Ensure checklist exists
-                        if (!checklistObj && doctorName) {
-                                const created = await SettingsService.createSettingsPhieu(doctorName);
-                                if (created && created.isValid) {
-                                        checklistObj = await SettingsService.loadSettingsPhieu(doctorName);
-                                }
-                        }
-                        if (!checklistObj) {
-                                alert('Không thể lưu: chưa có phiếu cài đặt.');
-                                return;
-                        }
-                        const ok = await SettingsService.updateSettingsState(checklistObj, next);
-                        if (ok) {
-                                settings = next;
-                                alert('Đã lưu cài đặt');
-                        } else {
-                                alert('Lưu thất bại');
-                        }
-                }
-        });
-
-        // Account tab no longer uses single username/password fields; managed via grid.
-                // Mount Open World if deep-linked initially
-                try {
-                        if (targetTab === 'openworld') {
-                                const mountEl = right.querySelector('#dr-openworld-container');
-                                if (mountEl) {
-                                        mountEl.dataset.mounted = '1';
-                                        mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
-                                }
-                        }
-                } catch(_) {}
-}
-
-module.exports = { showSettingsIfNeeded };
-
-},{"./components/autoLoginToggle":5,"./services/settingsService":26,"./settings-open-world":27}],29:[function(require,module,exports){
+},{"../utils/khoaUtils":34,"./apiService":23}],29:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -8258,7 +8258,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":22,"./uiUtils":38}],31:[function(require,module,exports){
+},{"../services/checklistService":24,"./uiUtils":38}],31:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {

@@ -1,6 +1,6 @@
 // patientService.js - Centralized patient data fetching
 
-const { fetchToDieuTriData } = require('../dashboard.support');
+const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const LoginHandler = require('../components/loginHandler');
 const ChecklistService = require('./checklistService');

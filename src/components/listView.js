@@ -49,7 +49,7 @@ function createListRow(item, opts = {}) {
         try {
             const ReportService = require('../services/reportService');
             const ChecklistService = require('../services/checklistService');
-            const { copyReportToClipboardRich } = require('../dashboard.support');
+            const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
             const res = await ChecklistService.loadChecklistData(item);
             const obj = ChecklistService.findChecklistObject(res);
             const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};

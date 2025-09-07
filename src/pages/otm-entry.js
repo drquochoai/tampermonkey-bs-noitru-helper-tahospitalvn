@@ -11,7 +11,7 @@
 
     // Load the content script
     try {
-        require('./otm.content');
+        require('./otm.content.script');
     } catch (error) {
         console.error('Failed to load OTM content script:', error);
     }

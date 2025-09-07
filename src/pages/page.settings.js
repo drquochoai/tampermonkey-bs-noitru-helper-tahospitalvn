@@ -1,7 +1,13 @@
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
-const { mountOpenWorldTab } = require('../pages/page.settings-open-world');
+let mountOpenWorldTab;
+try {
+        ({ mountOpenWorldTab } = require('./page.settings-open-world'));
+} catch (e) {
+        try { ({ mountOpenWorldTab } = require('../settings-open-world')); }
+        catch (e2) { console.warn('Open World settings module not found', e2); }
+}
 
 async function showSettingsIfNeeded() {
         // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
@@ -49,6 +55,7 @@ async function showSettingsIfNeeded() {
                 <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
                 <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
                                 <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
+                                <button data-tab="otm-surgeons" class="${targetTab==='otm-surgeons'?'active':''}">Quản lý phẫu thuật</button>
             </div>
             <div class="dr-st-footer" id="dr-st-doctor"></div>
         `;
@@ -58,7 +65,7 @@ async function showSettingsIfNeeded() {
         right.className = 'dr-st-right';
                 right.innerHTML = `
             <div class="dr-st-head">
-                        <h3 class="dr-st-title">${targetTab==='account'?'Account':'Lời dặn dò ra viện'}</h3>
+                        <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':'Lời dặn dò ra viện'))}</h3>
                 <div>
                     <button class="dr-st-btn" id="reload-tab">Tải lại</button>
                     <button class="dr-st-btn primary" id="save-tab">Lưu</button>
@@ -82,6 +89,9 @@ async function showSettingsIfNeeded() {
                                 </div>
                                                                 <div id="tab-openworld" class="dr-st-tab ${targetTab==='openworld'?'active':''}">
                                                                         <div id="dr-openworld-container"></div>
+                                                                </div>
+                                                                <div id="tab-otm-surgeons" class="dr-st-tab ${targetTab==='otm-surgeons'?'active':''}">
+                                                                        <div id="dr-otm-surgeons-container"></div>
                                                                 </div>
             </div>
         `;
@@ -246,7 +256,7 @@ async function showSettingsIfNeeded() {
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : btn.textContent.trim()));
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim())));
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
@@ -262,6 +272,17 @@ async function showSettingsIfNeeded() {
                                         if (mountEl && !mountEl.dataset.mounted) {
                                                 mountEl.dataset.mounted = '1';
                                                 mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
+                                        }
+                                } else if (tab === 'otm-surgeons') {
+                                        try {
+                                                const { mountOTMSurgeonsTab } = require('../pages/page.settings.otm.quanlyphauthuat');
+                                                const mountEl = right.querySelector('#dr-otm-surgeons-container');
+                                                if (mountEl && !mountEl.dataset.mounted) {
+                                                        mountEl.dataset.mounted = '1';
+                                                        mountOTMSurgeonsTab({ container: mountEl });
+                                                }
+                                        } catch (e) {
+                                                console.warn('OTM Surgeons tab mount failed', e);
                                         }
                                 }
         });
@@ -324,6 +345,15 @@ async function showSettingsIfNeeded() {
                                         mountEl.dataset.mounted = '1';
                                         mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
                                 }
+                        } else if (targetTab === 'otm-surgeons') {
+                                try {
+                                        const { mountOTMSurgeonsTab } = require('../pages/page.settings.otm.quanlyphauthuat');
+                                        const mountEl = right.querySelector('#dr-otm-surgeons-container');
+                                        if (mountEl) {
+                                                mountEl.dataset.mounted = '1';
+                                                mountOTMSurgeonsTab({ container: mountEl });
+                                        }
+                                } catch (e) { console.warn('Init OTM Surgeons tab failed', e); }
                         }
                 } catch(_) {}
 }

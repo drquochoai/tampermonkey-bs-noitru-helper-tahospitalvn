@@ -47,6 +47,11 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./pages/page.dashboard');
     const { showSettingsIfNeeded } = require('./pages/page.settings');
+        // Lịch mổ hôm nay route hook
+        try {
+            const { showLichMoHomNayIfNeeded } = require('./pages/page.lichmo.homnay');
+            showLichMoHomNayIfNeeded();
+        } catch(_) {}
     const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();

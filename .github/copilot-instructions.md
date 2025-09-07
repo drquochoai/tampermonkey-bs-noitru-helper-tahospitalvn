@@ -19,7 +19,9 @@ Purpose: A Tampermonkey userscript that enhances TA Hospital inpatient dashboard
 - **Utilities**:
   - `src/utils/surgeryUtils.js` formats surgery rows, computes status labels (e.g., "Hôm nay PT", "Ngày mai PT"), and updates cards.
   - `src/utils/patientDataMapper.js` sorts patients and maps surgery data from checklist logs.
-
+- **Components**:
+  - Thư mục `src/components` chứa các thành phần giao diện người dùng có thể tái sử dụng, chẳng hạn như các nút, biểu mẫu và hộp thoại.
+  - Hãy luôn cố gắng sử dụng lại các thành phần hiện có trước khi tạo các thành phần mới.
 ## UI conventions and patterns
 - **Card markup**: Rows use `.dr-value`, labels use `.dr-label`. Surgery container is `.dr-pt-info`. HXT line uses `.dr-hxt-block` and is inserted after `.dr-pt-info` when present.
 - **Card targeting**: Prefer `.dr-card[data-mabn="<mabn>"]`; fallback to text search if needed.

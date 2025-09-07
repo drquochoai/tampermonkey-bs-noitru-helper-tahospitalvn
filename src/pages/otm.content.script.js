@@ -16,26 +16,66 @@
         }
     }
 
-    // Function to save bearer token to localStorage
+    // Lightweight validation for access tokens to avoid saving 'undefined'/'null'/too-short values
+    function isLikelyValidToken(tok) {
+        try {
+            if (typeof tok !== 'string') return false;
+            const t = tok.trim();
+            if (!t) return false;
+            const low = t.toLowerCase();
+            if (low === 'undefined' || low === 'null') return false;
+            if (t.length < 16) return false; // heuristic: tokens are typically long
+            // avoid whitespace in token
+            if (/\s/.test(t)) return false;
+            return true;
+        } catch { return false; }
+    }
+
+    // Function to save bearer token to GM and localStorage (only if valid)
     function saveBearerToken(token) {
         try {
-            localStorage.setItem('otm_bearer_token', token);
-            debugLog('Bearer token saved to localStorage');
+            if (!isLikelyValidToken(token)) {
+                debugLog('Refusing to save invalid bearer token candidate');
+                return;
+            }
+            try { sessionStorage.setItem('otm_bearer_token', token); } catch(_) {}
+            try { localStorage.setItem('otm_bearer_token', token); } catch(_) {}
+            try { if (typeof GM !== 'undefined' && GM.setValue) { GM.setValue('otm_bearer_token', token); } } catch(_) {}
+            debugLog('Bearer token saved');
         } catch (error) {
             debugLog('Error saving bearer token:', error);
         }
     }
 
-    // Function to get bearer token from localStorage
-    function getSavedBearerToken() {
+    // Function to get bearer token from GM or localStorage (awaits GM when needed)
+    async function getSavedBearerTokenAsync() {
         try {
-            const token = localStorage.getItem('otm_bearer_token');
+            let token = null;
+            try { token = sessionStorage.getItem('otm_bearer_token'); } catch(_) { token = null; }
+            if (!token) { try { token = localStorage.getItem('otm_bearer_token'); } catch(_) { token = null; } }
+            if (!token && typeof GM !== 'undefined' && GM.getValue) {
+                try {
+                    token = await GM.getValue('otm_bearer_token', '');
+                    if (token) {
+                        try { sessionStorage.setItem('otm_bearer_token', token); } catch(_) {}
+                        try { localStorage.setItem('otm_bearer_token', token); } catch(_) {}
+                    }
+                } catch(_) { token = null; }
+            }
             if (token) {
-                debugLog('Found saved bearer token');
+                // Guard against polluted storage values like 'undefined' or too short strings
+                if (!isLikelyValidToken(token)) {
+                    debugLog('Found invalid token in storage; cleaning up');
+                    try { sessionStorage.removeItem('otm_bearer_token'); } catch(_) {}
+                    try { localStorage.removeItem('otm_bearer_token'); } catch(_) {}
+                    try { if (typeof GM !== 'undefined' && GM.deleteValue) { GM.deleteValue('otm_bearer_token'); } } catch(_) {}
+                    return null;
+                }
+                debugLog('Found saved bearer token (async)');
                 return token;
             }
         } catch (error) {
-            debugLog('Error getting saved bearer token:', error);
+            debugLog('Error getting saved bearer token (async):', error);
         }
         return null;
     }
@@ -46,7 +86,9 @@
         try {
             const key = `otm_${type}`;
             const value = JSON.stringify({
-                data: data,
+                data: {
+                    ...(data || {})
+                },
                 timestamp: Date.now(),
                 tabId: Math.random().toString(36).substr(2, 9)
             });
@@ -63,18 +105,23 @@
         }
     }
 
-    // Function to close this tab
+    // Function to close this tab - always self-close like ?nln flow, with robust fallbacks
     function closeTab() {
-        debugLog('Requesting parent to close OTM tab');
-        try {
-            // Send message to parent to close this tab
-            sendMessageToParent('close_tab', {
-                message: 'Please close the OTM tab',
-                reason: 'Automation completed'
-            });
-        } catch (error) {
-            debugLog('Error requesting tab close:', error);
-        }
+        debugLog('Closing OTM tab (self + fallback signal)');
+        // Signal parent as a fallback in case self-close is blocked
+        try { sendMessageToParent('close_tab', { reason: 'self_close_fallback' }); } catch(_) {}
+        // Try TM API if available
+        try { if (typeof GM !== 'undefined' && GM.closeTab) { GM.closeTab(); } } catch(_) {}
+        // Try window.close twice with small delays
+        try { window.close(); } catch (_) { /* ignore */ }
+        setTimeout(() => {
+            try { if (typeof GM !== 'undefined' && GM.closeTab) { GM.closeTab(); } } catch(_) {}
+            try { window.close(); } catch(_) {}
+        }, 300);
+        setTimeout(() => {
+            try { if (typeof GM !== 'undefined' && GM.closeTab) { GM.closeTab(); } } catch(_) {}
+            try { window.close(); } catch(_) {}
+        }, 900);
     }
 
     // Function to test if bearer token is still valid
@@ -132,9 +179,12 @@
     // Check if we should run automation - read from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const otmFetchParam = urlParams.get('otm-fetch');
+    const otmFetchUsers = urlParams.has('otm-fetch-users') || urlParams.get('otm-fetch-users') === '1' || urlParams.get('otm-fetch') === 'users';
     // Date range for fetching (filled from URL or defaulted later)
     let fromDate = null;
     let toDate = null;
+    // Correlation id for messages back to parent
+    let requestId = null;
     
     console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam);
     
@@ -149,18 +199,36 @@
 
     // Function to check existing token and start appropriate flow
     async function checkExistingToken() {
-        const savedToken = getSavedBearerToken();
+        let savedToken = await getSavedBearerTokenAsync();
         console.log('[OTM Debug] Checking existing token...');
         if (savedToken) {
             console.log('[OTM Debug] Found saved token, using it immediately');
             sendMessageToParent('progress', { step: 'token_found', message: 'Đã có token OTM, bắt đầu lấy dữ liệu...' });
+            // Ensure global bearerToken is set so fetchSurgeryData can use it immediately
+            try { bearerToken = savedToken; } catch(_) {}
             // Skip pre-validation to save time; fetch will detect 401/403 and fallback
-            if (otmFetchParam) {
+            if (otmFetchUsers) {
+                try {
+                    await fetchOTMUsers();
+                    return;
+                } catch (error) {
+                    console.error('Failed to fetch OTM users with saved token:', error);
+                    sendMessageToParent('error', { message: 'Lỗi khi lấy danh sách OTM: ' + error.message });
+                    closeTab();
+                    return;
+                }
+            } else if (otmFetchParam) {
                 try {
                     const data = JSON.parse(decodeURIComponent(otmFetchParam));
                     fromDate = data.fromDate;
                     toDate = data.toDate;
+                    const preferToken = !!data.preferToken;
                     console.log('Starting direct API fetch for dates:', fromDate, 'to', toDate);
+                    if (preferToken) {
+                        // With preferToken, strictly avoid automation when token is present
+                        await fetchSurgeryData(fromDate, toDate);
+                        return;
+                    }
                     await fetchSurgeryData(fromDate, toDate);
                     return;
                 } catch (error) {
@@ -184,6 +252,36 @@
         } else {
             console.log('[OTM Debug] No saved token found');
             debugLog('No saved token found, starting automation');
+            // Grace period: retry a few times to read GM/local storage in case it's not hydrated yet
+            let tries = 0;
+            while (!savedToken && tries < 5) {
+                await new Promise(r => setTimeout(r, 250));
+                tries++;
+                savedToken = await getSavedBearerTokenAsync();
+            }
+            if (savedToken) {
+                try { bearerToken = savedToken; } catch(_) {}
+                sendMessageToParent('progress', { step: 'token_found', message: 'Đã có token OTM, bắt đầu lấy dữ liệu...' });
+                if (otmFetchUsers) { await fetchOTMUsers(); return; }
+                if (otmFetchParam) {
+                    try {
+                        const data = JSON.parse(decodeURIComponent(otmFetchParam));
+                        fromDate = data.fromDate; toDate = data.toDate;
+                        await fetchSurgeryData(fromDate, toDate);
+                        return;
+                    } catch (e) {
+                        sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + e.message });
+                        closeTab(); return;
+                    }
+                }
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                fromDate = `${yyyy}-${mm}-${dd}`; toDate = fromDate;
+                await fetchSurgeryData(fromDate, toDate);
+                return;
+            }
             sendMessageToParent('progress', { step: 'no_token', message: 'Không tìm thấy token OTM đã lưu, bắt đầu tự động hóa...' });
         }
 
@@ -206,33 +304,29 @@
     }
 
     // Intercept fetch to capture Bearer token
-    let bearerToken = getSavedBearerToken(); // Try to load saved token first
+    let bearerToken = null; // Will be set by checkExistingToken or interceptors
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
         const [url, options] = args;
         if (options && options.headers) {
             // Check for Authorization header
-            if (options.headers.Authorization) {
-                const authHeader = options.headers.Authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured new Bearer token from Authorization header');
+            const getHeaderVal = (h) => {
+                try {
+                    if (!h) return null;
+                    // Headers object vs plain object
+                    if (typeof h.get === 'function') {
+                        return h.get('Authorization') || h.get('authorization') || null;
                     }
-                }
-            }
-            // Also check for lowercase authorization
-            if (options.headers.authorization) {
-                const authHeader = options.headers.authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured new Bearer token from lowercase authorization header');
-                    }
+                    return h.Authorization || h.authorization || null;
+                } catch { return null; }
+            };
+            const authHeader = getHeaderVal(options.headers);
+            if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+                const newToken = authHeader.substring(7);
+                if (isLikelyValidToken(newToken) && newToken !== bearerToken) {
+                    bearerToken = newToken;
+                    saveBearerToken(bearerToken);
+                    debugLog('Captured Bearer token from fetch headers');
                 }
             }
         }
@@ -243,17 +337,17 @@
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url, ...args) {
         this.addEventListener('loadstart', function() {
-            if (this._headers && this._headers.Authorization) {
-                const authHeader = this._headers.Authorization;
-                if (authHeader.startsWith('Bearer ')) {
+            try {
+                const authHeader = this._headers && (this._headers.Authorization || this._headers.authorization);
+                if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
                     const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
+                    if (isLikelyValidToken(newToken) && newToken !== bearerToken) {
                         bearerToken = newToken;
                         saveBearerToken(bearerToken);
                         debugLog('Captured Bearer token from XMLHttpRequest');
                     }
                 }
-            }
+            } catch(_) {}
         });
         return originalOpen.apply(this, [method, url, ...args]);
     };
@@ -262,14 +356,16 @@
     XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
         if (!this._headers) this._headers = {};
         this._headers[header] = value;
-        if (header === 'Authorization' && value.startsWith('Bearer ')) {
-            const newToken = value.substring(7);
-            if (newToken !== bearerToken) {
-                bearerToken = newToken;
-                saveBearerToken(bearerToken);
-                debugLog('Captured Bearer token from XMLHttpRequest setRequestHeader');
+        try {
+            if ((header === 'Authorization' || header === 'authorization') && typeof value === 'string' && value.startsWith('Bearer ')) {
+                const newToken = value.substring(7);
+                if (isLikelyValidToken(newToken) && newToken !== bearerToken) {
+                    bearerToken = newToken;
+                    saveBearerToken(bearerToken);
+                    debugLog('Captured Bearer token from XMLHttpRequest setRequestHeader');
+                }
             }
-        }
+        } catch(_) {}
         return originalSetRequestHeader.apply(this, [header, value]);
     };
 
@@ -430,7 +526,9 @@
                 sendMessageToParent('progress', { step: 'page_ready', message: 'Trang đặt lịch đã sẵn sàng' });
 
                 // Now we can fetch the surgery data if date range is available
-                if (fromDate && toDate) {
+                if (otmFetchUsers) {
+                    await fetchOTMUsers();
+                } else if (fromDate && toDate) {
                     await fetchSurgeryData(fromDate, toDate);
                 } else {
                     debugLog('No date range provided; token should be captured by now. Closing tab.');
@@ -453,6 +551,182 @@
         }
     }
 
+    // Fetch OTM users list and return to parent
+    async function fetchOTMUsers() {
+        try {
+            sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token xác thực...' });
+            let attempts = 0;
+            while (!bearerToken && attempts < 10) {
+                await new Promise(r => setTimeout(r, 1000));
+                attempts++;
+            }
+            if (!bearerToken) {
+                sendMessageToParent('error', { message: 'Không thể lấy token xác thực sau 10 lần thử' });
+                closeTab();
+                return;
+            }
+
+            const query = 'ishsoft=null&page=1&limit=10000';
+            const url = `https://otm.tahospital.vn/api/user?${query}&_=${Date.now()}`;
+            debugLog('Fetching OTM users:', url);
+            debugLog('Using Bearer token (prefix):', (bearerToken || '').slice(0, 12) + '...');
+
+            const res = await fetch(url, {
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+                    'authorization': `Bearer ${bearerToken}`,
+                    'logintype': '2',
+                    'priority': 'u=1, i',
+                    'sec-ch-ua': '"Not;A=Brand";v="99", "Microsoft Edge";v="139", "Chromium";v="139"',
+                    'sec-ch-ua-mobile': '?0',
+                    'sec-ch-ua-platform': '"Windows"',
+                    'sec-fetch-dest': 'empty',
+                    'sec-fetch-mode': 'cors',
+                    'sec-fetch-site': 'same-origin',
+                    'siteid': '1'
+                },
+                referrer: 'https://otm.tahospital.vn/surgery/booking',
+                body: null,
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-store',
+                credentials: 'include'
+            });
+
+            debugLog('Users fetch status:', res.status, 'ok:', res.ok);
+            debugLog('Users fetch headers etag:', res.headers && res.headers.get ? res.headers.get('etag') : undefined);
+            let effectiveRes = res;
+            if (res.status === 304) {
+                // Retry once without caches using a cache-busting param
+                debugLog('Received 304 for OTM users. Retrying with cache-busting...');
+                const bustUrl = `${url}&_=${Date.now()}`;
+                const retry = await fetch(bustUrl, {
+                    headers: {
+                        'accept': 'application/json, text/plain, */*',
+                        'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+                        'authorization': `Bearer ${bearerToken}`,
+                        'logintype': '2',
+                        'siteid': '1'
+                    },
+                    referrer: 'https://otm.tahospital.vn/surgery/booking',
+                    body: null,
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-store',
+                    credentials: 'include'
+                });
+                effectiveRes = retry;
+                debugLog('Retry users fetch status:', effectiveRes.status, 'ok:', effectiveRes.ok);
+            }
+
+            if (!effectiveRes.ok) {
+                if (effectiveRes.status === 401 || effectiveRes.status === 403) {
+                    sendMessageToParent('progress', { step: 'token_invalid', message: 'Token hết hạn, chuyển sang tự động hóa để lấy token mới...' });
+                    startAutomation();
+                    return;
+                }
+                throw new Error('HTTP ' + effectiveRes.status);
+            }
+            let json;
+            try {
+                json = await effectiveRes.json();
+            } catch (parseErr) {
+                debugLog('Users JSON parse error:', parseErr);
+                try {
+                    const txt = await effectiveRes.clone().text();
+                    debugLog('Users raw text (first 300 chars):', (txt || '').slice(0, 300));
+                } catch {}
+                throw parseErr;
+            }
+
+            const keys = json && typeof json === 'object' ? Object.keys(json) : [];
+            debugLog('Users response type:', Array.isArray(json) ? 'array' : typeof json, 'keys:', keys);
+
+            function pickArrayPayload(obj) {
+                if (Array.isArray(obj)) return { arr: obj, via: 'root' };
+                if (!obj || typeof obj !== 'object') return { arr: [], via: 'none' };
+                const candidates = ['data', 'items', 'result', 'rows', 'content', 'users', 'records', 'list'];
+                for (const k of candidates) {
+                    const v = obj[k];
+                    if (Array.isArray(v)) return { arr: v, via: k };
+                    if (v && typeof v === 'object') {
+                        for (const kk of candidates) {
+                            const v2 = v[kk];
+                            if (Array.isArray(v2)) return { arr: v2, via: `${k}.${kk}` };
+                        }
+                    }
+                }
+                return { arr: [], via: 'not_found' };
+            }
+
+            const { arr: usersArray, via } = pickArrayPayload(json);
+            debugLog('Users array source:', via, 'length:', usersArray.length || 0);
+            let users = (usersArray || []).map(u => ({ id: u.id ?? u.taid ?? u.userid ?? u.userId ?? null, fullname: u.fullname || u.fullName || u.name || '' }));
+
+            if ((users?.length || 0) === 0) {
+                // Extra diagnostics for empty payloads
+                debugLog('Empty users after parse. Sample payload snapshot:', JSON.stringify(json).slice(0, 400));
+                sendMessageToParent('progress', { step: 'users_empty', via, keys, hint: 'Parsed 0 users from payload', url });
+
+                // Optional fallback: drop ishsoft param if enabled
+                if (localStorage.getItem('dr_otm_users_alt') === 'drop_ishsoft') {
+                    const altUrl = 'https://otm.tahospital.vn/api/user?page=1&limit=10000&_=' + Date.now();
+                    debugLog('Fallback fetch without ishsoft:', altUrl);
+                    sendMessageToParent('progress', { step: 'users_alt_fetch', message: 'Thử lại không có ishsoft', altUrl });
+                    const altRes = await fetch(altUrl, {
+                        headers: {
+                            'accept': 'application/json, text/plain, */*',
+                            'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+                            'authorization': `Bearer ${bearerToken}`,
+                            'logintype': '2',
+                            'priority': 'u=1, i',
+                            'sec-ch-ua': '"Not;A=Brand";v="99", "Microsoft Edge";v="139", "Chromium";v="139"',
+                            'sec-ch-ua-mobile': '?0',
+                            'sec-ch-ua-platform': '"Windows"',
+                            'sec-fetch-dest': 'empty',
+                            'sec-fetch-mode': 'cors',
+                            'sec-fetch-site': 'same-origin',
+                            'siteid': '1'
+                        },
+                        referrer: 'https://otm.tahospital.vn/surgery/booking',
+                        body: null,
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-store',
+                        credentials: 'include'
+                    });
+                    if (altRes.ok) {
+                        let altJson;
+                        try { altJson = await altRes.json(); } catch {}
+                        const altKeys = altJson && typeof altJson === 'object' ? Object.keys(altJson) : [];
+                        const pickAlt = pickArrayPayload(altJson);
+                        debugLog('Alt users array source:', pickAlt.via, 'length:', (pickAlt.arr || []).length || 0, 'keys:', altKeys);
+                        users = (pickAlt.arr || []).map(u => ({ id: u.id ?? u.taid ?? u.userid ?? u.userId ?? null, fullname: u.fullname || u.fullName || u.name || '' }));
+                        sendMessageToParent('progress', { step: 'users_alt_parsed', count: users.length, via: pickAlt.via });
+                    } else {
+                        debugLog('Alt users fetch failed:', altRes.status);
+                        sendMessageToParent('progress', { step: 'users_alt_failed', status: altRes.status });
+                    }
+                }
+            }
+
+            // Emit a parse summary to parent for debugging
+            const sample = (users || []).slice(0, 3).map(u => u.fullname);
+            sendMessageToParent('progress', { step: 'users_parsed', count: users.length, via, sample });
+
+            sendMessageToParent('success', {
+                otmUsers: users,
+                count: users.length,
+                summary: `Đã tải ${users.length} người dùng từ OTM`
+            });
+            closeTab();
+        } catch (e) {
+            sendMessageToParent('error', { message: 'Lỗi khi lấy DS người dùng OTM: ' + (e.message || e) });
+            closeTab();
+        }
+    }
+
     // Function to fetch surgery data for a date range
     async function fetchSurgeryData(fromDate, toDate) {
         try {
@@ -460,18 +734,7 @@
             // Keep original requested range for reporting
             const requestedFrom = fromDate;
             const requestedTo = toDate;
-
-            // Adjust range: shift back 1 day for actual fetching
-            const adjFrom = new Date(fromDate);
-            adjFrom.setDate(adjFrom.getDate() - 2);
-            const adjustedFromStr = adjFrom.toISOString().split('T')[0];
-
-            const adjTo = new Date(toDate);
-            adjTo.setDate(adjTo.getDate() - 2);
-            const adjustedToStr = adjTo.toISOString().split('T')[0];
-
             debugLog('Requested range:', requestedFrom, 'to', requestedTo);
-            debugLog('Adjusted (fetch) range:', adjustedFromStr, 'to', adjustedToStr);
 
             // Send progress update to parent
             sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token xác thực...' });
@@ -494,13 +757,22 @@
             debugLog('Bearer token available:', bearerToken.substring(0, 20) + '...');
             sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng, đang lấy dữ liệu...' });
 
-            // Generate array of dates from adjustedFromStr to adjustedToStr
+            // Generate array of dates from requestedFrom to requestedTo (inclusive)
+            function toDateOnly(dateStr) {
+                // Always treat as date-only without timezone shifting
+                const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+                return new Date(Date.UTC(y, (m - 1), d)); // UTC midnight for stability
+            }
             const dates = [];
-            const startDate = new Date(adjustedFromStr);
-            const endDate = new Date(adjustedToStr);
-            
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                dates.push(date.toISOString().split('T')[0]);
+            const startDate = toDateOnly(requestedFrom);
+            const endDate = toDateOnly(requestedTo);
+            const cur = new Date(startDate.getTime());
+            while (cur.getTime() <= endDate.getTime()) {
+                const y = cur.getUTCFullYear();
+                const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
+                const d = String(cur.getUTCDate()).padStart(2, '0');
+                dates.push(`${y}-${m}-${d}`);
+                cur.setUTCDate(cur.getUTCDate() + 1);
             }
 
             debugLog('Dates to fetch:', dates);
@@ -520,19 +792,18 @@
                     message: `Đang gọi API cho ngày ${currentDate}...`
                 });
 
-                // Convert date to ISO format with 17:00:00.000Z (next day at 00:00 Vietnam time)
-                const dateObj = new Date(currentDate);
-                dateObj.setDate(dateObj.getDate() + 1); // Next day
-                const isoDate = dateObj.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+                // Convert local Vietnam midnight (UTC+07:00) to exact Z time for API
+                // e.g., '2025-09-07T00:00:00+07:00' -> '2025-09-06T17:00:00.000Z'
+                const isoDate = new Date(`${currentDate}T00:00:00+07:00`).toISOString();
 
                 debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
+                sendMessageToParent('progress', { step: 'api_call', message: `GET /api/booking?date=${isoDate}`, currentDate, isoDate });
 
-                const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
+                let response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
                     headers: {
                         "accept": "application/json, text/plain, */*",
                         "accept-language": "en-US,en;q=0.9,vi;q=0.8",
                         "authorization": `Bearer ${bearerToken}`,
-                        "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
                         "logintype": "2",
                         "priority": "u=1, i",
                         "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
@@ -547,8 +818,27 @@
                     body: null,
                     method: "GET",
                     mode: "cors",
+                    cache: "no-store",
                     credentials: "include"
                 });
+                if (response.status === 304) {
+                    debugLog(`Received 304 for ${currentDate}. Retrying with cache-busting...`);
+                    const retryUrl = `https://otm.tahospital.vn/api/booking?date=${isoDate}&_=${Date.now()}`;
+                    response = await fetch(retryUrl, {
+                        headers: {
+                            "accept": "application/json, text/plain, */*",
+                            "authorization": `Bearer ${bearerToken}`,
+                            "logintype": "2",
+                            "siteid": "1"
+                        },
+                        referrer: "https://otm.tahospital.vn/surgery/booking",
+                        body: null,
+                        method: "GET",
+                        mode: "cors",
+                        cache: "no-store",
+                        credentials: "include"
+                    });
+                }
 
                 if (!response.ok) {
                     debugLog(`HTTP error for ${currentDate}: ${response.status}`);
@@ -559,13 +849,18 @@
                     }
                     return { surgeriesWithDate: [], count: 0 };
                 }
-
-                const data = await response.json();
+                let data;
+                try { data = await response.json(); }
+                catch (parseErr) {
+                    debugLog('Booking JSON parse error:', parseErr);
+                    try { const raw = await response.clone().text(); debugLog('Booking raw (first 300):', (raw||'').slice(0,300)); } catch {}
+                    return { surgeriesWithDate: [], count: 0 };
+                }
                 debugLog(`Surgery data received for ${currentDate}:`, data);
                 if (!Array.isArray(data) || data.length === 0) return { surgeriesWithDate: [], count: 0 };
 
                 const surgeriesWithDate = data.map(surgery => ({ ...surgery, fetchDate: currentDate }));
-                console.log(`=== SURGERY DATA FOR ${currentDate} (FULL) ===`, data);
+                debugLog(`Full surgery data for ${currentDate}:`, data);
                 return { surgeriesWithDate, count: data.length };
             }
 
@@ -604,7 +899,7 @@
                 }
             }
 
-            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API' });
+            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API', days: dates.length, totalCandidate: allSurgeryData.length });
 
             // Send success data to parent with all collected data (raw + filtered)
             const filteredSurgeryData = filterSurgeryData(allSurgeryData);
@@ -634,7 +929,8 @@
                 });
             }
 
-            closeTab();
+            // Small delay to let storage events propagate before closing
+            setTimeout(() => { try { closeTab(); } catch(_) {} }, 350);
 
         } catch (error) {
             debugLog('Error fetching surgery data:', error);
@@ -643,7 +939,7 @@
                 message: 'Lỗi khi lấy dữ liệu mổ: ' + error.message,
                 error: error.toString()
             });
-            closeTab();
+            setTimeout(() => { try { closeTab(); } catch(_) {} }, 350);
         }
     }
 

@@ -391,7 +391,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":34}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":39}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -441,6 +441,11 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./pages/page.dashboard');
     const { showSettingsIfNeeded } = require('./pages/page.settings');
+        // Lịch mổ hôm nay route hook
+        try {
+            const { showLichMoHomNayIfNeeded } = require('./pages/page.lichmo.homnay');
+            showLichMoHomNayIfNeeded();
+        } catch(_) {}
     const { initCopyDienTienAI } = require('./components/copyDienTienAI');
     const ChecklistService = require('./services/checklistService');
     showDashboardBenhNhanIfNeeded();
@@ -781,7 +786,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":16,"./pages/otm-entry":17,"./pages/page.dashboard":19,"./pages/page.settings":22,"./services/checklistService":24,"./utils":29}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":34}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -904,7 +909,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":20,"../services/checklistService":24,"../services/reportService":26}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":29}],5:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -2121,7 +2126,112 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":24,"./dialogManager":7}],9:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"./dialogManager":7}],9:[function(require,module,exports){
+// components/khoaSelect.js - Reusable khoa selection button with dropdown
+
+const ApiService = require('../services/apiService');
+
+function ensureStyles() {
+  if (document.getElementById('dr-khoa-select-css')) return;
+  const st = document.createElement('style');
+  st.id = 'dr-khoa-select-css';
+  st.textContent = `
+    .dr-khoa-select{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;color:#0f172a;font-size:13px;cursor:pointer}
+    .dr-khoa-caret{border:solid #64748b;border-width:0 2px 2px 0;display:inline-block;padding:2px;transform:rotate(45deg);margin-left:2px}
+    .dr-khoa-select-wrap{position:relative;display:inline-block}
+    .dr-khoa-menu{position:absolute;top:110%;left:0;min-width:220px;max-height:320px;overflow:auto;background:#fff;border:1px solid #e5e7eb;border-radius:8px;box-shadow:0 10px 20px rgba(2,6,23,.08);z-index:9999;padding:6px}
+    .dr-khoa-item{padding:6px 8px;border-radius:6px;cursor:pointer}
+    .dr-khoa-item:hover{background:#f1f5f9}
+    .dr-khoa-active{background:#e0f2fe}
+    .dr-khoa-search{display:block;width:100%;box-sizing:border-box;margin:4px 0 6px 0;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px}
+  `;
+  document.head.appendChild(st);
+}
+
+function getStoredKhoaId(defaultId) {
+  try { return localStorage.getItem('bsnt_khoa_dashboard') || defaultId; } catch(_) { return defaultId; }
+}
+function setStoredKhoaId(id) {
+  try { localStorage.setItem('bsnt_khoa_dashboard', String(id)); } catch(_) {}
+}
+
+function createKhoaSelect(opts) {
+  ensureStyles();
+  const { container, onChange } = opts || {};
+  const wrap = document.createElement('span');
+  wrap.className = 'dr-khoa-select-wrap';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'dr-khoa-select';
+  btn.id = 'dr-khoa-select';
+  const label = document.createElement('span');
+  label.textContent = 'Chọn khoa';
+  const caret = document.createElement('i'); caret.className = 'dr-khoa-caret';
+  btn.appendChild(label); btn.appendChild(caret);
+  const menu = document.createElement('div'); menu.className = 'dr-khoa-menu'; menu.style.display = 'none';
+  const search = document.createElement('input'); search.className = 'dr-khoa-search'; search.placeholder = 'Tìm khoa...';
+  const listBox = document.createElement('div');
+  menu.appendChild(search); menu.appendChild(listBox);
+  wrap.appendChild(btn); wrap.appendChild(menu);
+  if (container) container.innerHTML = '', container.appendChild(wrap);
+
+  let allKhoa = [];
+  let currentId = getStoredKhoaId('551');
+
+  function renderList(filter='') {
+    listBox.innerHTML = '';
+    const f = filter.trim().toLowerCase();
+    allKhoa
+      .filter(k => !f || (k.name||'').toLowerCase().includes(f) || String(k.id).includes(f))
+      .forEach(k => {
+        const item = document.createElement('div');
+        item.className = 'dr-khoa-item' + (String(k.id) === String(currentId) ? ' dr-khoa-active' : '');
+        item.textContent = `${k.name || 'Khoa'} (${k.id})`;
+        item.addEventListener('click', () => {
+          currentId = String(k.id);
+          setStoredKhoaId(currentId);
+          label.textContent = k.name || `Khoa ${k.id}`;
+          if (typeof onChange === 'function') onChange(currentId, k.name || `Khoa ${k.id}`);
+          menu.style.display = 'none';
+        });
+        listBox.appendChild(item);
+      });
+  }
+
+  async function init() {
+    try {
+      const list = await ApiService.fetchKhoaPhong();
+      allKhoa = Array.isArray(list) ? list : [];
+      const found = allKhoa.find(k => String(k.id) === String(currentId));
+      label.textContent = (found && found.name) || `Khoa ${currentId}`;
+      renderList();
+    } catch(_) {
+      label.textContent = `Khoa ${currentId}`;
+    }
+  }
+
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (menu.style.display === 'none') {
+      if (!allKhoa.length) await init();
+      menu.style.display = 'block';
+      search.focus();
+    } else {
+      menu.style.display = 'none';
+    }
+  });
+  search.addEventListener('input', () => renderList(search.value || ''));
+  document.addEventListener('click', (e) => {
+    if (!wrap.contains(e.target)) menu.style.display = 'none';
+  });
+
+  init();
+  return { el: wrap, button: btn, refreshLabel: init, getKhoaId: () => currentId };
+}
+
+module.exports = { createKhoaSelect };
+
+},{"../services/apiService":26}],10:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -2201,7 +2311,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":20,"../services/checklistService":24,"../services/reportService":26,"../utils":29,"../utils/domUpdaters":32,"../utils/htmlUtils":33,"../utils/patientDataMapper":35,"../utils/tagUtils":37,"./actionButtons":4}],10:[function(require,module,exports){
+},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":29,"../utils":34,"../utils/domUpdaters":37,"../utils/htmlUtils":38,"../utils/patientDataMapper":40,"../utils/tagUtils":42,"./actionButtons":4}],11:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -2230,7 +2340,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 let SidebarSession = null;
 try { SidebarSession = require('./sidebarSession'); } catch(_) {}
@@ -2301,7 +2411,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":14}],12:[function(require,module,exports){
+},{"./sidebarSession":15}],13:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -2565,7 +2675,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":24,"../services/reportService":26,"../utils":29,"./phauThuatHandlers":13,"./yLenhHandlers":15}],13:[function(require,module,exports){
+},{"../services/checklistService":27,"../services/reportService":29,"../utils":34,"./phauThuatHandlers":14,"./yLenhHandlers":16}],14:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -2925,7 +3035,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":24,"../utils/surgeryUtils":36}],14:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/surgeryUtils":41}],15:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -2960,7 +3070,7 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],15:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -3434,7 +3544,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":24}],16:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27}],17:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -3520,7 +3630,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 // otm-entry.js - Entry point for OTM content script
 (function() {
     'use strict';
@@ -3541,7 +3651,7 @@ module.exports = {
 
 })();
 
-},{"./otm.content.script":18}],18:[function(require,module,exports){
+},{"./otm.content.script":19}],19:[function(require,module,exports){
 // otm.content.js - Content script for OTM surgery data fetching
 (function() {
     'use strict';
@@ -3560,26 +3670,66 @@ module.exports = {
         }
     }
 
-    // Function to save bearer token to localStorage
+    // Lightweight validation for access tokens to avoid saving 'undefined'/'null'/too-short values
+    function isLikelyValidToken(tok) {
+        try {
+            if (typeof tok !== 'string') return false;
+            const t = tok.trim();
+            if (!t) return false;
+            const low = t.toLowerCase();
+            if (low === 'undefined' || low === 'null') return false;
+            if (t.length < 16) return false; // heuristic: tokens are typically long
+            // avoid whitespace in token
+            if (/\s/.test(t)) return false;
+            return true;
+        } catch { return false; }
+    }
+
+    // Function to save bearer token to GM and localStorage (only if valid)
     function saveBearerToken(token) {
         try {
-            localStorage.setItem('otm_bearer_token', token);
-            debugLog('Bearer token saved to localStorage');
+            if (!isLikelyValidToken(token)) {
+                debugLog('Refusing to save invalid bearer token candidate');
+                return;
+            }
+            try { sessionStorage.setItem('otm_bearer_token', token); } catch(_) {}
+            try { localStorage.setItem('otm_bearer_token', token); } catch(_) {}
+            try { if (typeof GM !== 'undefined' && GM.setValue) { GM.setValue('otm_bearer_token', token); } } catch(_) {}
+            debugLog('Bearer token saved');
         } catch (error) {
             debugLog('Error saving bearer token:', error);
         }
     }
 
-    // Function to get bearer token from localStorage
-    function getSavedBearerToken() {
+    // Function to get bearer token from GM or localStorage (awaits GM when needed)
+    async function getSavedBearerTokenAsync() {
         try {
-            const token = localStorage.getItem('otm_bearer_token');
+            let token = null;
+            try { token = sessionStorage.getItem('otm_bearer_token'); } catch(_) { token = null; }
+            if (!token) { try { token = localStorage.getItem('otm_bearer_token'); } catch(_) { token = null; } }
+            if (!token && typeof GM !== 'undefined' && GM.getValue) {
+                try {
+                    token = await GM.getValue('otm_bearer_token', '');
+                    if (token) {
+                        try { sessionStorage.setItem('otm_bearer_token', token); } catch(_) {}
+                        try { localStorage.setItem('otm_bearer_token', token); } catch(_) {}
+                    }
+                } catch(_) { token = null; }
+            }
             if (token) {
-                debugLog('Found saved bearer token');
+                // Guard against polluted storage values like 'undefined' or too short strings
+                if (!isLikelyValidToken(token)) {
+                    debugLog('Found invalid token in storage; cleaning up');
+                    try { sessionStorage.removeItem('otm_bearer_token'); } catch(_) {}
+                    try { localStorage.removeItem('otm_bearer_token'); } catch(_) {}
+                    try { if (typeof GM !== 'undefined' && GM.deleteValue) { GM.deleteValue('otm_bearer_token'); } } catch(_) {}
+                    return null;
+                }
+                debugLog('Found saved bearer token (async)');
                 return token;
             }
         } catch (error) {
-            debugLog('Error getting saved bearer token:', error);
+            debugLog('Error getting saved bearer token (async):', error);
         }
         return null;
     }
@@ -3590,7 +3740,9 @@ module.exports = {
         try {
             const key = `otm_${type}`;
             const value = JSON.stringify({
-                data: data,
+                data: {
+                    ...(data || {})
+                },
                 timestamp: Date.now(),
                 tabId: Math.random().toString(36).substr(2, 9)
             });
@@ -3607,18 +3759,23 @@ module.exports = {
         }
     }
 
-    // Function to close this tab
+    // Function to close this tab - always self-close like ?nln flow, with robust fallbacks
     function closeTab() {
-        debugLog('Requesting parent to close OTM tab');
-        try {
-            // Send message to parent to close this tab
-            sendMessageToParent('close_tab', {
-                message: 'Please close the OTM tab',
-                reason: 'Automation completed'
-            });
-        } catch (error) {
-            debugLog('Error requesting tab close:', error);
-        }
+        debugLog('Closing OTM tab (self + fallback signal)');
+        // Signal parent as a fallback in case self-close is blocked
+        try { sendMessageToParent('close_tab', { reason: 'self_close_fallback' }); } catch(_) {}
+        // Try TM API if available
+        try { if (typeof GM !== 'undefined' && GM.closeTab) { GM.closeTab(); } } catch(_) {}
+        // Try window.close twice with small delays
+        try { window.close(); } catch (_) { /* ignore */ }
+        setTimeout(() => {
+            try { if (typeof GM !== 'undefined' && GM.closeTab) { GM.closeTab(); } } catch(_) {}
+            try { window.close(); } catch(_) {}
+        }, 300);
+        setTimeout(() => {
+            try { if (typeof GM !== 'undefined' && GM.closeTab) { GM.closeTab(); } } catch(_) {}
+            try { window.close(); } catch(_) {}
+        }, 900);
     }
 
     // Function to test if bearer token is still valid
@@ -3676,9 +3833,12 @@ module.exports = {
     // Check if we should run automation - read from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const otmFetchParam = urlParams.get('otm-fetch');
+    const otmFetchUsers = urlParams.has('otm-fetch-users') || urlParams.get('otm-fetch-users') === '1' || urlParams.get('otm-fetch') === 'users';
     // Date range for fetching (filled from URL or defaulted later)
     let fromDate = null;
     let toDate = null;
+    // Correlation id for messages back to parent
+    let requestId = null;
     
     console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam);
     
@@ -3693,18 +3853,36 @@ module.exports = {
 
     // Function to check existing token and start appropriate flow
     async function checkExistingToken() {
-        const savedToken = getSavedBearerToken();
+        let savedToken = await getSavedBearerTokenAsync();
         console.log('[OTM Debug] Checking existing token...');
         if (savedToken) {
             console.log('[OTM Debug] Found saved token, using it immediately');
             sendMessageToParent('progress', { step: 'token_found', message: 'Đã có token OTM, bắt đầu lấy dữ liệu...' });
+            // Ensure global bearerToken is set so fetchSurgeryData can use it immediately
+            try { bearerToken = savedToken; } catch(_) {}
             // Skip pre-validation to save time; fetch will detect 401/403 and fallback
-            if (otmFetchParam) {
+            if (otmFetchUsers) {
+                try {
+                    await fetchOTMUsers();
+                    return;
+                } catch (error) {
+                    console.error('Failed to fetch OTM users with saved token:', error);
+                    sendMessageToParent('error', { message: 'Lỗi khi lấy danh sách OTM: ' + error.message });
+                    closeTab();
+                    return;
+                }
+            } else if (otmFetchParam) {
                 try {
                     const data = JSON.parse(decodeURIComponent(otmFetchParam));
                     fromDate = data.fromDate;
                     toDate = data.toDate;
+                    const preferToken = !!data.preferToken;
                     console.log('Starting direct API fetch for dates:', fromDate, 'to', toDate);
+                    if (preferToken) {
+                        // With preferToken, strictly avoid automation when token is present
+                        await fetchSurgeryData(fromDate, toDate);
+                        return;
+                    }
                     await fetchSurgeryData(fromDate, toDate);
                     return;
                 } catch (error) {
@@ -3728,6 +3906,36 @@ module.exports = {
         } else {
             console.log('[OTM Debug] No saved token found');
             debugLog('No saved token found, starting automation');
+            // Grace period: retry a few times to read GM/local storage in case it's not hydrated yet
+            let tries = 0;
+            while (!savedToken && tries < 5) {
+                await new Promise(r => setTimeout(r, 250));
+                tries++;
+                savedToken = await getSavedBearerTokenAsync();
+            }
+            if (savedToken) {
+                try { bearerToken = savedToken; } catch(_) {}
+                sendMessageToParent('progress', { step: 'token_found', message: 'Đã có token OTM, bắt đầu lấy dữ liệu...' });
+                if (otmFetchUsers) { await fetchOTMUsers(); return; }
+                if (otmFetchParam) {
+                    try {
+                        const data = JSON.parse(decodeURIComponent(otmFetchParam));
+                        fromDate = data.fromDate; toDate = data.toDate;
+                        await fetchSurgeryData(fromDate, toDate);
+                        return;
+                    } catch (e) {
+                        sendMessageToParent('error', { message: 'Lỗi khi phân tích dữ liệu URL: ' + e.message });
+                        closeTab(); return;
+                    }
+                }
+                const today = new Date();
+                const yyyy = today.getFullYear();
+                const mm = String(today.getMonth() + 1).padStart(2, '0');
+                const dd = String(today.getDate()).padStart(2, '0');
+                fromDate = `${yyyy}-${mm}-${dd}`; toDate = fromDate;
+                await fetchSurgeryData(fromDate, toDate);
+                return;
+            }
             sendMessageToParent('progress', { step: 'no_token', message: 'Không tìm thấy token OTM đã lưu, bắt đầu tự động hóa...' });
         }
 
@@ -3750,33 +3958,29 @@ module.exports = {
     }
 
     // Intercept fetch to capture Bearer token
-    let bearerToken = getSavedBearerToken(); // Try to load saved token first
+    let bearerToken = null; // Will be set by checkExistingToken or interceptors
     const originalFetch = window.fetch;
     window.fetch = function(...args) {
         const [url, options] = args;
         if (options && options.headers) {
             // Check for Authorization header
-            if (options.headers.Authorization) {
-                const authHeader = options.headers.Authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured new Bearer token from Authorization header');
+            const getHeaderVal = (h) => {
+                try {
+                    if (!h) return null;
+                    // Headers object vs plain object
+                    if (typeof h.get === 'function') {
+                        return h.get('Authorization') || h.get('authorization') || null;
                     }
-                }
-            }
-            // Also check for lowercase authorization
-            if (options.headers.authorization) {
-                const authHeader = options.headers.authorization;
-                if (authHeader.startsWith('Bearer ')) {
-                    const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
-                        bearerToken = newToken;
-                        saveBearerToken(bearerToken);
-                        debugLog('Captured new Bearer token from lowercase authorization header');
-                    }
+                    return h.Authorization || h.authorization || null;
+                } catch { return null; }
+            };
+            const authHeader = getHeaderVal(options.headers);
+            if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+                const newToken = authHeader.substring(7);
+                if (isLikelyValidToken(newToken) && newToken !== bearerToken) {
+                    bearerToken = newToken;
+                    saveBearerToken(bearerToken);
+                    debugLog('Captured Bearer token from fetch headers');
                 }
             }
         }
@@ -3787,17 +3991,17 @@ module.exports = {
     const originalOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function(method, url, ...args) {
         this.addEventListener('loadstart', function() {
-            if (this._headers && this._headers.Authorization) {
-                const authHeader = this._headers.Authorization;
-                if (authHeader.startsWith('Bearer ')) {
+            try {
+                const authHeader = this._headers && (this._headers.Authorization || this._headers.authorization);
+                if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
                     const newToken = authHeader.substring(7);
-                    if (newToken !== bearerToken) {
+                    if (isLikelyValidToken(newToken) && newToken !== bearerToken) {
                         bearerToken = newToken;
                         saveBearerToken(bearerToken);
                         debugLog('Captured Bearer token from XMLHttpRequest');
                     }
                 }
-            }
+            } catch(_) {}
         });
         return originalOpen.apply(this, [method, url, ...args]);
     };
@@ -3806,14 +4010,16 @@ module.exports = {
     XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
         if (!this._headers) this._headers = {};
         this._headers[header] = value;
-        if (header === 'Authorization' && value.startsWith('Bearer ')) {
-            const newToken = value.substring(7);
-            if (newToken !== bearerToken) {
-                bearerToken = newToken;
-                saveBearerToken(bearerToken);
-                debugLog('Captured Bearer token from XMLHttpRequest setRequestHeader');
+        try {
+            if ((header === 'Authorization' || header === 'authorization') && typeof value === 'string' && value.startsWith('Bearer ')) {
+                const newToken = value.substring(7);
+                if (isLikelyValidToken(newToken) && newToken !== bearerToken) {
+                    bearerToken = newToken;
+                    saveBearerToken(bearerToken);
+                    debugLog('Captured Bearer token from XMLHttpRequest setRequestHeader');
+                }
             }
-        }
+        } catch(_) {}
         return originalSetRequestHeader.apply(this, [header, value]);
     };
 
@@ -3974,7 +4180,9 @@ module.exports = {
                 sendMessageToParent('progress', { step: 'page_ready', message: 'Trang đặt lịch đã sẵn sàng' });
 
                 // Now we can fetch the surgery data if date range is available
-                if (fromDate && toDate) {
+                if (otmFetchUsers) {
+                    await fetchOTMUsers();
+                } else if (fromDate && toDate) {
                     await fetchSurgeryData(fromDate, toDate);
                 } else {
                     debugLog('No date range provided; token should be captured by now. Closing tab.');
@@ -3997,6 +4205,182 @@ module.exports = {
         }
     }
 
+    // Fetch OTM users list and return to parent
+    async function fetchOTMUsers() {
+        try {
+            sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token xác thực...' });
+            let attempts = 0;
+            while (!bearerToken && attempts < 10) {
+                await new Promise(r => setTimeout(r, 1000));
+                attempts++;
+            }
+            if (!bearerToken) {
+                sendMessageToParent('error', { message: 'Không thể lấy token xác thực sau 10 lần thử' });
+                closeTab();
+                return;
+            }
+
+            const query = 'ishsoft=null&page=1&limit=10000';
+            const url = `https://otm.tahospital.vn/api/user?${query}&_=${Date.now()}`;
+            debugLog('Fetching OTM users:', url);
+            debugLog('Using Bearer token (prefix):', (bearerToken || '').slice(0, 12) + '...');
+
+            const res = await fetch(url, {
+                headers: {
+                    'accept': 'application/json, text/plain, */*',
+                    'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+                    'authorization': `Bearer ${bearerToken}`,
+                    'logintype': '2',
+                    'priority': 'u=1, i',
+                    'sec-ch-ua': '"Not;A=Brand";v="99", "Microsoft Edge";v="139", "Chromium";v="139"',
+                    'sec-ch-ua-mobile': '?0',
+                    'sec-ch-ua-platform': '"Windows"',
+                    'sec-fetch-dest': 'empty',
+                    'sec-fetch-mode': 'cors',
+                    'sec-fetch-site': 'same-origin',
+                    'siteid': '1'
+                },
+                referrer: 'https://otm.tahospital.vn/surgery/booking',
+                body: null,
+                method: 'GET',
+                mode: 'cors',
+                cache: 'no-store',
+                credentials: 'include'
+            });
+
+            debugLog('Users fetch status:', res.status, 'ok:', res.ok);
+            debugLog('Users fetch headers etag:', res.headers && res.headers.get ? res.headers.get('etag') : undefined);
+            let effectiveRes = res;
+            if (res.status === 304) {
+                // Retry once without caches using a cache-busting param
+                debugLog('Received 304 for OTM users. Retrying with cache-busting...');
+                const bustUrl = `${url}&_=${Date.now()}`;
+                const retry = await fetch(bustUrl, {
+                    headers: {
+                        'accept': 'application/json, text/plain, */*',
+                        'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+                        'authorization': `Bearer ${bearerToken}`,
+                        'logintype': '2',
+                        'siteid': '1'
+                    },
+                    referrer: 'https://otm.tahospital.vn/surgery/booking',
+                    body: null,
+                    method: 'GET',
+                    mode: 'cors',
+                    cache: 'no-store',
+                    credentials: 'include'
+                });
+                effectiveRes = retry;
+                debugLog('Retry users fetch status:', effectiveRes.status, 'ok:', effectiveRes.ok);
+            }
+
+            if (!effectiveRes.ok) {
+                if (effectiveRes.status === 401 || effectiveRes.status === 403) {
+                    sendMessageToParent('progress', { step: 'token_invalid', message: 'Token hết hạn, chuyển sang tự động hóa để lấy token mới...' });
+                    startAutomation();
+                    return;
+                }
+                throw new Error('HTTP ' + effectiveRes.status);
+            }
+            let json;
+            try {
+                json = await effectiveRes.json();
+            } catch (parseErr) {
+                debugLog('Users JSON parse error:', parseErr);
+                try {
+                    const txt = await effectiveRes.clone().text();
+                    debugLog('Users raw text (first 300 chars):', (txt || '').slice(0, 300));
+                } catch {}
+                throw parseErr;
+            }
+
+            const keys = json && typeof json === 'object' ? Object.keys(json) : [];
+            debugLog('Users response type:', Array.isArray(json) ? 'array' : typeof json, 'keys:', keys);
+
+            function pickArrayPayload(obj) {
+                if (Array.isArray(obj)) return { arr: obj, via: 'root' };
+                if (!obj || typeof obj !== 'object') return { arr: [], via: 'none' };
+                const candidates = ['data', 'items', 'result', 'rows', 'content', 'users', 'records', 'list'];
+                for (const k of candidates) {
+                    const v = obj[k];
+                    if (Array.isArray(v)) return { arr: v, via: k };
+                    if (v && typeof v === 'object') {
+                        for (const kk of candidates) {
+                            const v2 = v[kk];
+                            if (Array.isArray(v2)) return { arr: v2, via: `${k}.${kk}` };
+                        }
+                    }
+                }
+                return { arr: [], via: 'not_found' };
+            }
+
+            const { arr: usersArray, via } = pickArrayPayload(json);
+            debugLog('Users array source:', via, 'length:', usersArray.length || 0);
+            let users = (usersArray || []).map(u => ({ id: u.id ?? u.taid ?? u.userid ?? u.userId ?? null, fullname: u.fullname || u.fullName || u.name || '' }));
+
+            if ((users?.length || 0) === 0) {
+                // Extra diagnostics for empty payloads
+                debugLog('Empty users after parse. Sample payload snapshot:', JSON.stringify(json).slice(0, 400));
+                sendMessageToParent('progress', { step: 'users_empty', via, keys, hint: 'Parsed 0 users from payload', url });
+
+                // Optional fallback: drop ishsoft param if enabled
+                if (localStorage.getItem('dr_otm_users_alt') === 'drop_ishsoft') {
+                    const altUrl = 'https://otm.tahospital.vn/api/user?page=1&limit=10000&_=' + Date.now();
+                    debugLog('Fallback fetch without ishsoft:', altUrl);
+                    sendMessageToParent('progress', { step: 'users_alt_fetch', message: 'Thử lại không có ishsoft', altUrl });
+                    const altRes = await fetch(altUrl, {
+                        headers: {
+                            'accept': 'application/json, text/plain, */*',
+                            'accept-language': 'en-US,en;q=0.9,vi;q=0.8',
+                            'authorization': `Bearer ${bearerToken}`,
+                            'logintype': '2',
+                            'priority': 'u=1, i',
+                            'sec-ch-ua': '"Not;A=Brand";v="99", "Microsoft Edge";v="139", "Chromium";v="139"',
+                            'sec-ch-ua-mobile': '?0',
+                            'sec-ch-ua-platform': '"Windows"',
+                            'sec-fetch-dest': 'empty',
+                            'sec-fetch-mode': 'cors',
+                            'sec-fetch-site': 'same-origin',
+                            'siteid': '1'
+                        },
+                        referrer: 'https://otm.tahospital.vn/surgery/booking',
+                        body: null,
+                        method: 'GET',
+                        mode: 'cors',
+                        cache: 'no-store',
+                        credentials: 'include'
+                    });
+                    if (altRes.ok) {
+                        let altJson;
+                        try { altJson = await altRes.json(); } catch {}
+                        const altKeys = altJson && typeof altJson === 'object' ? Object.keys(altJson) : [];
+                        const pickAlt = pickArrayPayload(altJson);
+                        debugLog('Alt users array source:', pickAlt.via, 'length:', (pickAlt.arr || []).length || 0, 'keys:', altKeys);
+                        users = (pickAlt.arr || []).map(u => ({ id: u.id ?? u.taid ?? u.userid ?? u.userId ?? null, fullname: u.fullname || u.fullName || u.name || '' }));
+                        sendMessageToParent('progress', { step: 'users_alt_parsed', count: users.length, via: pickAlt.via });
+                    } else {
+                        debugLog('Alt users fetch failed:', altRes.status);
+                        sendMessageToParent('progress', { step: 'users_alt_failed', status: altRes.status });
+                    }
+                }
+            }
+
+            // Emit a parse summary to parent for debugging
+            const sample = (users || []).slice(0, 3).map(u => u.fullname);
+            sendMessageToParent('progress', { step: 'users_parsed', count: users.length, via, sample });
+
+            sendMessageToParent('success', {
+                otmUsers: users,
+                count: users.length,
+                summary: `Đã tải ${users.length} người dùng từ OTM`
+            });
+            closeTab();
+        } catch (e) {
+            sendMessageToParent('error', { message: 'Lỗi khi lấy DS người dùng OTM: ' + (e.message || e) });
+            closeTab();
+        }
+    }
+
     // Function to fetch surgery data for a date range
     async function fetchSurgeryData(fromDate, toDate) {
         try {
@@ -4004,18 +4388,7 @@ module.exports = {
             // Keep original requested range for reporting
             const requestedFrom = fromDate;
             const requestedTo = toDate;
-
-            // Adjust range: shift back 1 day for actual fetching
-            const adjFrom = new Date(fromDate);
-            adjFrom.setDate(adjFrom.getDate() - 2);
-            const adjustedFromStr = adjFrom.toISOString().split('T')[0];
-
-            const adjTo = new Date(toDate);
-            adjTo.setDate(adjTo.getDate() - 2);
-            const adjustedToStr = adjTo.toISOString().split('T')[0];
-
             debugLog('Requested range:', requestedFrom, 'to', requestedTo);
-            debugLog('Adjusted (fetch) range:', adjustedFromStr, 'to', adjustedToStr);
 
             // Send progress update to parent
             sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token xác thực...' });
@@ -4038,13 +4411,22 @@ module.exports = {
             debugLog('Bearer token available:', bearerToken.substring(0, 20) + '...');
             sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng, đang lấy dữ liệu...' });
 
-            // Generate array of dates from adjustedFromStr to adjustedToStr
+            // Generate array of dates from requestedFrom to requestedTo (inclusive)
+            function toDateOnly(dateStr) {
+                // Always treat as date-only without timezone shifting
+                const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+                return new Date(Date.UTC(y, (m - 1), d)); // UTC midnight for stability
+            }
             const dates = [];
-            const startDate = new Date(adjustedFromStr);
-            const endDate = new Date(adjustedToStr);
-            
-            for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                dates.push(date.toISOString().split('T')[0]);
+            const startDate = toDateOnly(requestedFrom);
+            const endDate = toDateOnly(requestedTo);
+            const cur = new Date(startDate.getTime());
+            while (cur.getTime() <= endDate.getTime()) {
+                const y = cur.getUTCFullYear();
+                const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
+                const d = String(cur.getUTCDate()).padStart(2, '0');
+                dates.push(`${y}-${m}-${d}`);
+                cur.setUTCDate(cur.getUTCDate() + 1);
             }
 
             debugLog('Dates to fetch:', dates);
@@ -4064,19 +4446,18 @@ module.exports = {
                     message: `Đang gọi API cho ngày ${currentDate}...`
                 });
 
-                // Convert date to ISO format with 17:00:00.000Z (next day at 00:00 Vietnam time)
-                const dateObj = new Date(currentDate);
-                dateObj.setDate(dateObj.getDate() + 1); // Next day
-                const isoDate = dateObj.toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+                // Convert local Vietnam midnight (UTC+07:00) to exact Z time for API
+                // e.g., '2025-09-07T00:00:00+07:00' -> '2025-09-06T17:00:00.000Z'
+                const isoDate = new Date(`${currentDate}T00:00:00+07:00`).toISOString();
 
                 debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
+                sendMessageToParent('progress', { step: 'api_call', message: `GET /api/booking?date=${isoDate}`, currentDate, isoDate });
 
-                const response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
+                let response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
                     headers: {
                         "accept": "application/json, text/plain, */*",
                         "accept-language": "en-US,en;q=0.9,vi;q=0.8",
                         "authorization": `Bearer ${bearerToken}`,
-                        "if-none-match": "W/\"3de9d-aNgxHg6vKhdB2PNct3jxHFKkaaU\"",
                         "logintype": "2",
                         "priority": "u=1, i",
                         "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
@@ -4091,8 +4472,27 @@ module.exports = {
                     body: null,
                     method: "GET",
                     mode: "cors",
+                    cache: "no-store",
                     credentials: "include"
                 });
+                if (response.status === 304) {
+                    debugLog(`Received 304 for ${currentDate}. Retrying with cache-busting...`);
+                    const retryUrl = `https://otm.tahospital.vn/api/booking?date=${isoDate}&_=${Date.now()}`;
+                    response = await fetch(retryUrl, {
+                        headers: {
+                            "accept": "application/json, text/plain, */*",
+                            "authorization": `Bearer ${bearerToken}`,
+                            "logintype": "2",
+                            "siteid": "1"
+                        },
+                        referrer: "https://otm.tahospital.vn/surgery/booking",
+                        body: null,
+                        method: "GET",
+                        mode: "cors",
+                        cache: "no-store",
+                        credentials: "include"
+                    });
+                }
 
                 if (!response.ok) {
                     debugLog(`HTTP error for ${currentDate}: ${response.status}`);
@@ -4103,13 +4503,18 @@ module.exports = {
                     }
                     return { surgeriesWithDate: [], count: 0 };
                 }
-
-                const data = await response.json();
+                let data;
+                try { data = await response.json(); }
+                catch (parseErr) {
+                    debugLog('Booking JSON parse error:', parseErr);
+                    try { const raw = await response.clone().text(); debugLog('Booking raw (first 300):', (raw||'').slice(0,300)); } catch {}
+                    return { surgeriesWithDate: [], count: 0 };
+                }
                 debugLog(`Surgery data received for ${currentDate}:`, data);
                 if (!Array.isArray(data) || data.length === 0) return { surgeriesWithDate: [], count: 0 };
 
                 const surgeriesWithDate = data.map(surgery => ({ ...surgery, fetchDate: currentDate }));
-                console.log(`=== SURGERY DATA FOR ${currentDate} (FULL) ===`, data);
+                debugLog(`Full surgery data for ${currentDate}:`, data);
                 return { surgeriesWithDate, count: data.length };
             }
 
@@ -4148,7 +4553,7 @@ module.exports = {
                 }
             }
 
-            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API' });
+            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API', days: dates.length, totalCandidate: allSurgeryData.length });
 
             // Send success data to parent with all collected data (raw + filtered)
             const filteredSurgeryData = filterSurgeryData(allSurgeryData);
@@ -4178,7 +4583,8 @@ module.exports = {
                 });
             }
 
-            closeTab();
+            // Small delay to let storage events propagate before closing
+            setTimeout(() => { try { closeTab(); } catch(_) {} }, 350);
 
         } catch (error) {
             debugLog('Error fetching surgery data:', error);
@@ -4187,7 +4593,7 @@ module.exports = {
                 message: 'Lỗi khi lấy dữ liệu mổ: ' + error.message,
                 error: error.toString()
             });
-            closeTab();
+            setTimeout(() => { try { closeTab(); } catch(_) {} }, 350);
         }
     }
 
@@ -4202,7 +4608,7 @@ module.exports = {
 
 })();
 
-},{}],19:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
@@ -5853,7 +6259,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":9,"../components/loginHandler":10,"../components/modalManager":11,"../components/patientInfoSection":12,"../components/phauThuatHandlers":13,"../components/sidebarSession":14,"../services/apiService":23,"../services/checklistService":24,"../services/patientService":25,"../utils":29,"../utils/checklistUtils":30,"../utils/domUpdaters":32,"../utils/htmlUtils":33,"../utils/khoaUtils":34,"../utils/patientDataMapper":35,"../utils/surgeryUtils":36,"../utils/tagUtils":37,"../utils/uiUtils":38,"./page.dashboard.support":20}],20:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":28,"../utils":34,"../utils/checklistUtils":35,"../utils/domUpdaters":37,"../utils/htmlUtils":38,"../utils/khoaUtils":39,"../utils/patientDataMapper":40,"../utils/surgeryUtils":41,"../utils/tagUtils":42,"../utils/uiUtils":43,"./page.dashboard.support":21}],21:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -6686,7 +7092,480 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":7,"../services/apiService":23,"../services/reportService":26,"../utils/dateUtils":31}],21:[function(require,module,exports){
+},{"../components/dialogManager":7,"../services/apiService":26,"../services/reportService":29,"../utils/dateUtils":36}],22:[function(require,module,exports){
+// page.lichmo.homnay.js - Lịch mổ hôm nay (today's surgery schedule)
+
+const { showToast } = require('../utils/uiUtils');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
+const ApiService = require('../services/apiService');
+const SurgeonSettingsService = require('../services/surgeonSettingsService');
+const { createKhoaSelect } = require('../components/khoaSelect');
+
+function stylesOnce() {
+  if (document.getElementById('dr-qh-lichmo-css')) return;
+  const st = document.createElement('style');
+  st.id = 'dr-qh-lichmo-css';
+  st.textContent = `
+    .dr-qh-lichmo-wrap{min-height:100vh;background:#fff;color:#0f172a;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .dr-qh-lichmo-head{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid #e5e7eb;position:sticky;top:0;background:#fff;z-index:10;gap:12px}
+    .dr-qh-lichmo-left{display:flex;align-items:center;gap:10px}
+    .dr-qh-lichmo-title{margin:0;font-size:18px}
+    .dr-qh-lichmo-khoa{color:#475569;font-size:13px;background:#f1f5f9;border-radius:8px;padding:3px 8px}
+    .dr-qh-lichmo-mid{display:flex;align-items:center;gap:6px}
+    .dr-qh-lichmo-date{font-weight:600}
+    .dr-qh-lichmo-btn{border:1px solid #e5e7eb;background:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
+    .dr-qh-lichmo-btn:hover{background:#f8fafc}
+    .dr-qh-lichmo-right{display:flex;align-items:center;gap:8px}
+    .dr-qh-lichmo-status{color:#64748b;font-size:13px}
+    .dr-qh-lichmo-loading{width:16px;height:16px;border:2px solid #94a3b8;border-top-color:#0ea5e9;border-radius:50%;animation:drspin 1s linear infinite;display:none}
+    .dr-qh-lichmo-loading.active{display:inline-block}
+    @keyframes drspin{to{transform:rotate(360deg)}}
+  .dr-qh-lichmo-content{padding:16px 18px;height:calc(100vh - 58px);overflow:auto;overscroll-behavior:contain}
+  /* Timeline container */
+  .dr-qh-timeline{position:relative;border-left:1px dashed #e2e8f0;padding-left:12px}
+  .dr-qh-timegrid{position:relative;height:720px;background:linear-gradient(180deg,#fff 0,#fff 49%,#f8fafc 50%,#f8fafc 100%);background-size:100% 60px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
+  .dr-qh-timeaxis{position:absolute;left:0;top:0;bottom:0;width:54px;border-right:1px solid #e5e7eb;background:#fff;z-index:2}
+  .dr-qh-timeaxis .tick{position:absolute;left:0;right:0;height:1px;background:#e5e7eb}
+  .dr-qh-timeaxis .label{position:absolute;left:6px;transform:translateY(-50%);font-size:12px;color:#64748b;background:#fff;padding:0 2px}
+  .dr-qh-lanes{position:absolute;left:54px;right:0;top:0;bottom:0}
+  .dr-qh-lane{position:relative;height:100%}
+  .dr-qh-evtbar{position:absolute;left:8px;right:12px;border-radius:12px;display:flex;flex-direction:column;align-items:flex-start;padding:10px 14px;color:#0f172a;box-shadow:0 8px 20px rgba(2,6,23,.12);border:1px solid rgba(15,23,42,.08)}
+  .dr-qh-evtbar .row{display:flex;gap:8px;align-items:center;min-width:0;width:100%}
+  .dr-qh-evtbar .row+.row{margin-top:4px}
+  .dr-qh-evtbar .time{font-size:12px;opacity:.85;white-space:nowrap;color:#334155}
+  .dr-qh-evtbar .patient{font-weight:800;font-size:16px;text-transform:uppercase;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dr-qh-evtbar .method{font-size:14px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.95;flex:1}
+  .dr-qh-evtbar .docs{font-size:12px;color:#2563ebb3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:auto}
+  /* Emphasize OR row: largest and bold */
+  .dr-qh-evtbar .or{font-size:16px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+  /* Make meta as prominent as patient */
+  .dr-qh-evtbar .meta{font-size:14px;font-weight:700;color:#0f172a;opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dr-qh-evtbar.tight{padding:4px 10px}
+  .dr-qh-evtbar.tight .method,.dr-qh-evtbar.tight .docs{display:none}
+  .dr-qh-empty{padding:12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;background:#f8fafc}
+  @media (max-width: 1100px){.dr-qh-timeaxis{width:46px}.dr-qh-lanes{left:46px}}
+  `;
+  document.head.appendChild(st);
+}
+
+function subscribeOTMMessages(onSuccess, onProgress, onError) {
+  try {
+    if (typeof GM !== 'undefined' && GM.addValueChangeListener) {
+      const unsubIds = [];
+      unsubIds.push(GM.addValueChangeListener('otm_success', (n, o, v) => {
+        try {
+          const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+          const data = parsed && parsed.data;
+          onSuccess && onSuccess(data);
+          // Close the background OTM tab immediately after data is processed
+          try { closeOTMTabIfAny(); } catch (_) {}
+          scheduleCloseAfterSignal(3000);
+        } catch(_) {}
+      }));
+      unsubIds.push(GM.addValueChangeListener('otm_progress', (n, o, v) => {
+        try {
+          const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+          const data = parsed && parsed.data;
+          onProgress && onProgress(data);
+        } catch(_) {}
+      }));
+      unsubIds.push(GM.addValueChangeListener('otm_error', (n, o, v) => {
+        try {
+          const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+          const data = parsed && parsed.data;
+          onError && onError(data);
+        } catch(_) {}
+      }));
+      // Listen for close request to ensure background tab is closed if self-close failed
+      unsubIds.push(GM.addValueChangeListener('otm_close_tab', (n, o, v) => {
+  try { closeOTMTabIfAny(); } catch(_) {}
+  scheduleCloseAfterSignal(5000);
+      }));
+      return () => { try { unsubIds.forEach(id => { try { GM.removeValueChangeListener && GM.removeValueChangeListener(id); } catch(_) {} }); } catch(_) {} };
+    }
+  } catch(_) {}
+  // Fallback localStorage polling
+  const tid = setInterval(() => {
+    try {
+      const s = localStorage.getItem('otm_success');
+  if (s) { localStorage.removeItem('otm_success'); const p = JSON.parse(s); onSuccess && onSuccess(p && p.data); try { closeOTMTabIfAny(); } catch(_) {} scheduleCloseAfterSignal(3000); }
+      const pr = localStorage.getItem('otm_progress');
+  if (pr) { localStorage.removeItem('otm_progress'); const p = JSON.parse(pr); onProgress && onProgress(p && p.data); }
+      const er = localStorage.getItem('otm_error');
+  if (er) { localStorage.removeItem('otm_error'); const p = JSON.parse(er); onError && onError(p && p.data); }
+  const ct = localStorage.getItem('otm_close_tab');
+  if (ct) { localStorage.removeItem('otm_close_tab'); try { closeOTMTabIfAny(); } catch(_) {} scheduleCloseAfterSignal(5000); }
+    } catch(_) {}
+  }, 800);
+  return () => clearInterval(tid);
+}
+
+let lastOTMTab = null;
+let pendingCloseTimer = null;
+let pendingCloseDeadline = 0;
+function closeOTMTabIfAny() {
+  try {
+    if (lastOTMTab && !lastOTMTab.closed) { lastOTMTab.close(); }
+  } catch(_) {}
+  lastOTMTab = null;
+}
+function scheduleCloseAfterSignal(ms = 5000) {
+  try { if (pendingCloseTimer) { clearInterval(pendingCloseTimer); } } catch(_) {}
+  pendingCloseDeadline = Date.now() + Math.max(1000, ms);
+  pendingCloseTimer = setInterval(() => {
+    try { closeOTMTabIfAny(); } catch(_) {}
+    if (!lastOTMTab || lastOTMTab.closed || Date.now() > pendingCloseDeadline) {
+      try { clearInterval(pendingCloseTimer); } catch(_) {}
+      pendingCloseTimer = null; pendingCloseDeadline = 0;
+    }
+  }, 250);
+}
+
+function openOTMSurgeriesTab(fromDate, toDate) {
+  // Avoid tab accumulation: close previous background tab if still open
+  try { closeOTMTabIfAny(); } catch(_) {}
+  const payload = encodeURIComponent(JSON.stringify({ fromDate, toDate, preferToken: true }));
+  const url = `https://otm.tahospital.vn/?otm-fetch=${payload}`;
+  if (typeof GM !== 'undefined' && GM.openInTab) {
+  try {
+    const ret = GM.openInTab(url, { active: false, insert: true, setParent: true });
+    // Tampermonkey may return a Tab or a Promise<Tab>
+    if (ret && typeof ret.then === 'function') {
+      ret.then(h => { try { if (h && h.close) { lastOTMTab = h; } } catch(_) {} });
+    } else {
+      lastOTMTab = ret && ret.close ? ret : null;
+    }
+    return;
+  } catch(_) {}
+  }
+  try { lastOTMTab = window.open(url, '_blank'); } catch(_) { /* ignore */ }
+}
+
+function formatTimeRange(start, end) {
+  try {
+    const s = start ? new Date(start) : null;
+    const e = end ? new Date(end) : null;
+    const fmt = (d)=> d ? d.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'}) : '';
+    const sStr = fmt(s);
+    const eStr = fmt(e);
+    return sStr + (eStr ? ` - ${eStr}` : '');
+  } catch(_) { return start || ''; }
+}
+
+function filterBySelectedSurgeons(surgeries, selectedNames) {
+  if (!Array.isArray(surgeries) || surgeries.length === 0) return [];
+  const set = new Set((selectedNames || []).map(s => (s || '').toString().trim().toLowerCase()).filter(Boolean));
+  if (set.size === 0) return surgeries; // If nothing selected, show all
+  return surgeries.filter(item => {
+    const all = [
+      ...(Array.isArray(item.userexec) ? item.userexec : []),
+      ...(Array.isArray(item.userassistant) ? item.userassistant : [])
+    ];
+    return all.some(u => set.has(((u && (u.fullname || u.name)) || '').toString().trim().toLowerCase()));
+  });
+}
+
+function sortByStart(a, b) {
+  const as = a && a.start ? Date.parse(a.start) : 0;
+  const bs = b && b.start ? Date.parse(b.start) : 0;
+  return as - bs;
+}
+
+function renderUI(container, dateStr, surgeries) {
+  container.innerHTML = '';
+  if (!surgeries || surgeries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'dr-qh-empty';
+    empty.textContent = 'Không có ca mổ nào trong ngày này.';
+    container.appendChild(empty);
+    return;
+  }
+
+  // Prepare timeline range (07:00 - 19:00 default)
+  const startHour = 7, endHour = 19; // can be tuned later
+  const totalMinutes = (endHour - startHour) * 60; // maps to 720px grid height
+  const pxPerMin = 720 / totalMinutes;
+
+  // Create base structure
+  const timeline = document.createElement('div'); timeline.className = 'dr-qh-timeline';
+  const grid = document.createElement('div'); grid.className = 'dr-qh-timegrid';
+  const axis = document.createElement('div'); axis.className = 'dr-qh-timeaxis';
+  const lanesWrap = document.createElement('div'); lanesWrap.className = 'dr-qh-lanes';
+
+  // Axis ticks each hour
+  for (let h = startHour; h <= endHour; h++) {
+  const y = (h - startHour) * (720 / (endHour - startHour));
+    const tick = document.createElement('div'); tick.className = 'tick'; tick.style.top = `${y}px`;
+    const lab = document.createElement('div'); lab.className = 'label'; lab.style.top = `${y}px`; lab.textContent = `${String(h).padStart(2,'0')}:00`;
+    axis.appendChild(tick); axis.appendChild(lab);
+  }
+
+  // Compute bars with overlap lanes
+  const items = surgeries.map((s, idx) => {
+    const sMs = s && s.start ? Date.parse(s.start) : NaN;
+    const eMs = s && s.end ? Date.parse(s.end) : NaN;
+    const sD = isNaN(sMs) ? null : new Date(sMs);
+    const eD = isNaN(eMs) ? null : new Date(eMs);
+    const clamp = (d) => Math.max(0, Math.min(totalMinutes - 5, (d.getHours() - startHour) * 60 + d.getMinutes()));
+    const topMin = sD ? clamp(sD) : 0;
+    const endMin = eD ? clamp(eD) : (topMin + 45);
+    const height = Math.max(28, endMin - topMin);
+    return { s, idx, topMin, height };
+  }).sort((a,b)=>a.topMin-b.topMin);
+
+  // Assign lanes so overlapping bars go to different horizontal lanes
+  const lanes = []; // each lane stores last end (minute)
+  items.forEach(it => {
+    let placed = false;
+    for (let i=0;i<lanes.length;i++) {
+      if (lanes[i] <= it.topMin - 4) { // small gap to avoid touching
+        it.lane = i; lanes[i] = it.topMin + it.height; placed = true; break;
+      }
+    }
+    if (!placed) { it.lane = lanes.length; lanes.push(it.topMin + it.height); }
+  });
+
+  // Render lanes container widths
+  const laneWidthPercent = 100 / Math.max(1, lanes.length);
+  for (let i=0;i<lanes.length;i++) {
+    const laneEl = document.createElement('div');
+    laneEl.className = 'dr-qh-lane';
+    laneEl.style.position = 'absolute';
+    laneEl.style.left = `${i * laneWidthPercent}%`;
+    laneEl.style.width = `${laneWidthPercent}%`;
+    laneEl.style.top = '0';
+    laneEl.style.bottom = '0';
+    lanesWrap.appendChild(laneEl);
+  }
+
+  // Render bars into lanes
+  const palette = ['#93c5fd','#a5b4fc','#f0abfc','#f9a8d4','#fda4af','#fcd34d','#86efac'];
+  items.forEach(it => {
+    const laneEl = lanesWrap.children[it.lane];
+    const bar = document.createElement('div'); bar.className = 'dr-qh-evtbar';
+  bar.style.top = `${it.topMin * pxPerMin}px`;
+    bar.style.height = `${it.height * pxPerMin}px`;
+    bar.style.background = palette[it.idx % palette.length];
+    if (it.height * pxPerMin < 36) bar.classList.add('tight');
+    const row0 = document.createElement('div'); row0.className = 'row';
+    const row1 = document.createElement('div'); row1.className = 'row';
+    const row2 = document.createElement('div'); row2.className = 'row';
+    const time = document.createElement('span'); time.className = 'time'; time.textContent = formatTimeRange(it.s.start, it.s.end) || '—';
+  const patientEl = document.createElement('span'); patientEl.className = 'patient';
+    const patient = (it.s.customer && (it.s.customer.fullname || '')) || '';
+    const method = it.s.surgerymethod || '';
+    const exec = (it.s.userexec||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
+    const assistant = (it.s.userassistant||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
+    patientEl.textContent = patient || '';
+    const methodEl = document.createElement('span'); methodEl.className = 'method'; methodEl.textContent = method || '';
+    const docsEl = document.createElement('span'); docsEl.className = 'docs'; docsEl.textContent = [exec, assistant? `(phụ: ${assistant})` : ''].filter(Boolean).join(' ');
+    const pid = (it.s.customer && (it.s.customer.pid || it.s.customer.code || '')) || '';
+    const phong = it.s.phongDieuTri || '';
+    const giuong = it.s.giuongDieuTri || '';
+    const metaEl = document.createElement('span'); metaEl.className = 'meta';
+    metaEl.textContent = [pid? `PID: ${pid}`:'', phong? `Phòng: ${phong}`:'', giuong? `Giường: ${giuong}`:''].filter(Boolean).join(' • ');
+    const orEl = document.createElement('span'); orEl.className = 'or';
+    const opRoom = it.s.operating_room || (it.s.room && it.s.room.name) || '';
+    orEl.textContent = opRoom ? `Phòng mổ: ${opRoom}` : '';
+    bar.title = [
+      `Phòng mổ: ${it.s.operating_room || (it.s.room && it.s.room.name) || ''}`,
+      `Bệnh nhân: ${patient}`,
+      `PID: ${(it.s.customer && (it.s.customer.pid || it.s.customer.code || '')) || ''}`,
+      it.s.phongDieuTri ? `Phòng: ${it.s.phongDieuTri}` : '',
+      it.s.giuongDieuTri ? `Giường: ${it.s.giuongDieuTri}` : '',
+      it.s.diagnose ? `Chẩn đoán: ${it.s.diagnose}` : '',
+      `PPPT: ${method}`,
+      exec ? `BS chính: ${exec}` : '',
+      assistant ? `BS phụ: ${assistant}` : '',
+      it.s.status ? `Ghi chú: ${it.s.status}` : ''
+    ].filter(Boolean).join('\n');
+    row0.appendChild(orEl);
+    row1.appendChild(time); row1.appendChild(patientEl); row1.appendChild(metaEl);
+    row2.appendChild(methodEl); row2.appendChild(docsEl);
+    if (opRoom) bar.appendChild(row0);
+    bar.appendChild(row1); bar.appendChild(row2);
+    laneEl.appendChild(bar);
+  });
+
+  grid.appendChild(axis); grid.appendChild(lanesWrap);
+  timeline.appendChild(grid);
+  container.appendChild(timeline);
+}
+
+async function showLichMoHomNayIfNeeded() {
+  const url = new URL(window.location.href);
+  const hasLm = /[?&]lm(=|&|$)/.test(url.search);
+  const hasLichmo = /[?&]lichmo(=|&|$)/.test(url.search) || (url.searchParams.get('otm')||'').toLowerCase() === 'lichmo';
+  if (!hasLm && !hasLichmo) return;
+
+  stylesOnce();
+  document.body.innerHTML = '';
+  const wrap = document.createElement('div'); wrap.className = 'dr-qh-lichmo-wrap';
+  const head = document.createElement('div'); head.className = 'dr-qh-lichmo-head';
+  head.innerHTML = `
+    <div class="dr-qh-lichmo-left">
+      <h3 class="dr-qh-lichmo-title">Lịch mổ hôm nay</h3>
+      <span id="dr-qh-lichmo-khoa" class="dr-qh-lichmo-khoa"></span>
+    </div>
+    <div class="dr-qh-lichmo-mid">
+      <button id="dr-qh-lichmo-prev" class="dr-qh-lichmo-btn" title="Ngày trước">◀</button>
+      <input id="dr-qh-lichmo-date" class="dr-qh-lichmo-date" type="date" />
+      <button id="dr-qh-lichmo-next" class="dr-qh-lichmo-btn" title="Ngày sau">▶</button>
+      <button id="dr-qh-lichmo-today" class="dr-qh-lichmo-btn" title="Hôm nay">Hôm nay</button>
+    </div>
+    <div class="dr-qh-lichmo-right">
+      <div id="dr-qh-lichmo-loading" class="dr-qh-lichmo-loading" aria-label="Đang tải" title="Đang tải"></div>
+      <div id="dr-qh-lichmo-status" class="dr-qh-lichmo-status">Chuẩn bị lấy dữ liệu...</div>
+      <button id="dr-qh-lichmo-refresh" class="dr-qh-lichmo-btn">Làm mới</button>
+    </div>
+  `;
+  const content = document.createElement('div'); content.className = 'dr-qh-lichmo-content';
+  wrap.appendChild(head); wrap.appendChild(content); document.body.appendChild(wrap);
+
+  const statusEl = head.querySelector('#dr-qh-lichmo-status');
+  const loadingEl = head.querySelector('#dr-qh-lichmo-loading');
+  const dateEl = head.querySelector('#dr-qh-lichmo-date');
+  const prevBtn = head.querySelector('#dr-qh-lichmo-prev');
+  const nextBtn = head.querySelector('#dr-qh-lichmo-next');
+  const todayBtn = head.querySelector('#dr-qh-lichmo-today');
+  const refreshBtn = head.querySelector('#dr-qh-lichmo-refresh');
+  const khoaEl = head.querySelector('#dr-qh-lichmo-khoa');
+  // mount reusable khoa select at vị trí "dr-qh-lichmo-khoa"
+  const khoaComp = createKhoaSelect({ container: khoaEl, onChange: async (newId, newName) => {
+    khoaId = String(newId);
+    await doRefresh();
+    scheduleAutoRefresh();
+  }});
+
+  // State
+  let currentDate = new Date();
+  let refreshTimer = null;
+  let selectedNames = [];
+  let khoaId = getSelectedKhoa('551');
+  let khoaNameCache = '';
+  let isBusy = false; // single-flight lock
+  let activeUnsub = null;
+  let busyWatchdog = null;
+  let closeRetryTimer = null; // no longer used; child self-closes
+
+  function fmtVietnam(d) {
+    const yyyy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
+    return { iso: `${yyyy}-${mm}-${dd}`, human: `${dd}/${mm}/${yyyy}` };
+  }
+
+  async function loadKhoaNameOnce() {
+    try {
+      const list = await ApiService.fetchKhoaPhong();
+      const found = (list||[]).find(k => String(k.id) === String(khoaId));
+      khoaNameCache = (found && found.name) || `Khoa ${khoaId}`;
+    } catch(_) { khoaNameCache = `Khoa ${khoaId}`; }
+    // Label is handled by component; keep cache for title/other use if needed
+  }
+
+  async function loadSelectedSurgeons() {
+    try {
+      const { list } = await SurgeonSettingsService.loadSurgeonList(khoaId);
+      selectedNames = (list || []).map(x => typeof x === 'string' ? x : x.fullname).filter(Boolean);
+    } catch(_) { selectedNames = []; }
+  }
+
+  function setLoading(flag, message) {
+    if (flag) loadingEl.classList.add('active'); else loadingEl.classList.remove('active');
+    if (message) statusEl.textContent = message;
+  }
+
+  function disableControls(disabled) {
+    [prevBtn, nextBtn, todayBtn, refreshBtn, dateEl].forEach(el => { try { el.disabled = !!disabled; el.classList.toggle('dr-disabled', !!disabled); } catch(_) {} });
+  }
+
+  function subscribeAndFetch(dateIso) {
+    if (isBusy) {
+      showToast('Đang lấy dữ liệu, vui lòng đợi tác vụ hiện tại hoàn tất...', { background: '#0284c7' });
+      return;
+    }
+    isBusy = true;
+    disableControls(true);
+    setLoading(true, `Đang mở OTM để lấy lịch mổ ngày ${dateIso}...`);
+    showToast(`Đang lấy dữ liệu ngày ${dateIso}...`);
+    const unsub = subscribeOTMMessages((data) => {
+      try {
+        const arr = data && (data.surgeryData || []);
+        const usable = Array.isArray(arr) && arr.length ? arr : (data && data.surgeryDataRaw) || [];
+        const filtered = filterBySelectedSurgeons(usable, selectedNames);
+        content.innerHTML = '';
+        renderUI(content, dateIso, filtered);
+        statusEl.textContent = `Đã tải ${usable.length} ca, hiển thị ${filtered.length} ca (lọc theo bác sĩ).`;
+        showToast('Đã lấy dữ liệu.', { background: '#16a34a' });
+      } finally {
+        try { unsub && unsub(); } catch(_) {}
+        setLoading(false);
+        isBusy = false; activeUnsub = null; disableControls(false);
+      }
+    }, (prog) => {
+      if (prog && prog.message) { statusEl.textContent = prog.message; }
+    }, (err) => {
+      statusEl.textContent = (err && err.message) ? err.message : 'Lỗi khi lấy dữ liệu lịch mổ.';
+      showToast('Lỗi khi lấy dữ liệu lịch mổ.', { background: '#ef4444' });
+      try { unsub && unsub(); } catch(_) {}
+      setLoading(false);
+      isBusy = false; activeUnsub = null; disableControls(false);
+    });
+    activeUnsub = unsub;
+    openOTMSurgeriesTab(dateIso, dateIso);
+
+    // Watchdog to avoid stuck busy state if no response arrives
+    if (busyWatchdog) { try { clearTimeout(busyWatchdog); } catch(_) {} }
+  busyWatchdog = setTimeout(() => {
+      if (isBusy) {
+        showToast('Quá thời gian chờ OTM phản hồi. Tác vụ bị hủy.', { background: '#ef4444' });
+        try { activeUnsub && activeUnsub(); } catch(_) {}
+        setLoading(false);
+        isBusy = false; activeUnsub = null; disableControls(false);
+      }
+    }, 75000);
+  }
+
+  async function doRefresh() {
+    const { iso } = fmtVietnam(currentDate);
+    if (dateEl && dateEl.type === 'date') { dateEl.value = iso; }
+    await loadSelectedSurgeons();
+    subscribeAndFetch(iso);
+  }
+
+  function scheduleAutoRefresh() {
+    const ms = Math.max(60000, parseInt(localStorage.getItem('dr_qh_lichmo_refresh_ms') || '300000', 10));
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    refreshTimer = setInterval(() => { doRefresh(); }, ms);
+  }
+
+  // Wire header controls
+  prevBtn.addEventListener('click', () => { currentDate.setDate(currentDate.getDate()-1); doRefresh(); scheduleAutoRefresh(); });
+  nextBtn.addEventListener('click', () => { currentDate.setDate(currentDate.getDate()+1); doRefresh(); scheduleAutoRefresh(); });
+  todayBtn.addEventListener('click', () => { currentDate = new Date(); doRefresh(); scheduleAutoRefresh(); });
+  refreshBtn.addEventListener('click', () => { doRefresh(); scheduleAutoRefresh(); });
+  // Allow manual date selection
+  dateEl.addEventListener('change', () => {
+    const v = dateEl.value; // yyyy-mm-dd
+    if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
+      const [y,m,d] = v.split('-').map(n=>parseInt(n,10));
+      const nd = new Date(y, m-1, d);
+      if (!isNaN(nd.getTime())) {
+        currentDate = nd;
+        doRefresh();
+        scheduleAutoRefresh();
+      }
+    }
+  });
+
+  // Initial
+  await loadKhoaNameOnce();
+  await doRefresh();
+  scheduleAutoRefresh();
+}
+
+module.exports = { showLichMoHomNayIfNeeded };
+
+},{"../components/khoaSelect":9,"../services/apiService":26,"../services/surgeonSettingsService":32,"../utils/khoaUtils":39,"../utils/uiUtils":43}],23:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -6841,11 +7720,17 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":23,"../services/settingsService":28}],22:[function(require,module,exports){
+},{"../services/apiService":26,"../services/settingsService":31}],24:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
-const { mountOpenWorldTab } = require('../pages/page.settings-open-world');
+let mountOpenWorldTab;
+try {
+        ({ mountOpenWorldTab } = require('./page.settings-open-world'));
+} catch (e) {
+        try { ({ mountOpenWorldTab } = require('../settings-open-world')); }
+        catch (e2) { console.warn('Open World settings module not found', e2); }
+}
 
 async function showSettingsIfNeeded() {
         // Support selecting tab via ?caidat or ?tab param, e.g., ?caidat=account or ?caidat, ?tab=discharge
@@ -6893,6 +7778,7 @@ async function showSettingsIfNeeded() {
                 <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
                 <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
                                 <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
+                                <button data-tab="otm-surgeons" class="${targetTab==='otm-surgeons'?'active':''}">Quản lý phẫu thuật</button>
             </div>
             <div class="dr-st-footer" id="dr-st-doctor"></div>
         `;
@@ -6902,7 +7788,7 @@ async function showSettingsIfNeeded() {
         right.className = 'dr-st-right';
                 right.innerHTML = `
             <div class="dr-st-head">
-                        <h3 class="dr-st-title">${targetTab==='account'?'Account':'Lời dặn dò ra viện'}</h3>
+                        <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':'Lời dặn dò ra viện'))}</h3>
                 <div>
                     <button class="dr-st-btn" id="reload-tab">Tải lại</button>
                     <button class="dr-st-btn primary" id="save-tab">Lưu</button>
@@ -6926,6 +7812,9 @@ async function showSettingsIfNeeded() {
                                 </div>
                                                                 <div id="tab-openworld" class="dr-st-tab ${targetTab==='openworld'?'active':''}">
                                                                         <div id="dr-openworld-container"></div>
+                                                                </div>
+                                                                <div id="tab-otm-surgeons" class="dr-st-tab ${targetTab==='otm-surgeons'?'active':''}">
+                                                                        <div id="dr-otm-surgeons-container"></div>
                                                                 </div>
             </div>
         `;
@@ -7090,7 +7979,7 @@ async function showSettingsIfNeeded() {
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : btn.textContent.trim()));
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim())));
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
@@ -7106,6 +7995,17 @@ async function showSettingsIfNeeded() {
                                         if (mountEl && !mountEl.dataset.mounted) {
                                                 mountEl.dataset.mounted = '1';
                                                 mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
+                                        }
+                                } else if (tab === 'otm-surgeons') {
+                                        try {
+                                                const { mountOTMSurgeonsTab } = require('../pages/page.settings.otm.quanlyphauthuat');
+                                                const mountEl = right.querySelector('#dr-otm-surgeons-container');
+                                                if (mountEl && !mountEl.dataset.mounted) {
+                                                        mountEl.dataset.mounted = '1';
+                                                        mountOTMSurgeonsTab({ container: mountEl });
+                                                }
+                                        } catch (e) {
+                                                console.warn('OTM Surgeons tab mount failed', e);
                                         }
                                 }
         });
@@ -7168,13 +8068,367 @@ async function showSettingsIfNeeded() {
                                         mountEl.dataset.mounted = '1';
                                         mountOpenWorldTab({ container: mountEl, doctorName, checklistObj, settings });
                                 }
+                        } else if (targetTab === 'otm-surgeons') {
+                                try {
+                                        const { mountOTMSurgeonsTab } = require('../pages/page.settings.otm.quanlyphauthuat');
+                                        const mountEl = right.querySelector('#dr-otm-surgeons-container');
+                                        if (mountEl) {
+                                                mountEl.dataset.mounted = '1';
+                                                mountOTMSurgeonsTab({ container: mountEl });
+                                        }
+                                } catch (e) { console.warn('Init OTM Surgeons tab failed', e); }
                         }
                 } catch(_) {}
 }
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":5,"../pages/page.settings-open-world":21,"../services/settingsService":28}],23:[function(require,module,exports){
+},{"../components/autoLoginToggle":5,"../pages/page.settings.otm.quanlyphauthuat":25,"../services/settingsService":31,"../settings-open-world":33,"./page.settings-open-world":23}],25:[function(require,module,exports){
+// page.settings.otm.quanlyphauthuat.js - Manage surgeons list per Khoa using OTM users
+
+const ApiService = require('../services/apiService');
+const SurgeonSettingsService = require('../services/surgeonSettingsService');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
+
+function stylesOnce() {
+    if (document.getElementById('dr-otm-surgeon-styles')) return;
+    const st = document.createElement('style');
+    st.id = 'dr-otm-surgeon-styles';
+    st.textContent = `
+    .dr-os-wrap { display:flex; flex-direction:column; gap:12px; }
+    .dr-os-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .dr-os-select, .dr-os-search { padding:8px 10px; border:1px solid #e5e7eb; border-radius:8px; }
+    .dr-os-columns { display:grid; grid-template-columns: 320px 1fr; gap:12px; align-items:start; }
+    .dr-os-selected { border:1px solid #e5e7eb; border-radius:10px; padding:10px; background:#fff; max-height:55vh; overflow:auto; }
+    .dr-os-selected h4 { margin:0 0 8px; font-size:14px; color:#334155; }
+    .dr-os-chip { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:#f1f5f9; border:1px solid #e5e7eb; border-radius:999px; margin:4px; font-size:13px; }
+    .dr-os-chip button { appearance:none; border:none; background:transparent; cursor:pointer; color:#64748b; }
+    .dr-os-list { border:1px solid #e5e7eb; border-radius:10px; padding:10px; max-height:55vh; overflow:auto; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    .dr-os-item { display:flex; align-items:center; gap:8px; padding:8px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; }
+        .dr-os-actions { display:flex; gap:8px; }
+        .dr-os-btn { appearance:none; border:1px solid #e5e7eb; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer }
+        .dr-os-btn.primary { border-color:#2563eb; background:#2563eb; color:#fff }
+    @media (max-width: 1100px) { .dr-os-columns { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .dr-os-list { grid-template-columns: 1fr; } }
+    `;
+    document.head.appendChild(st);
+}
+
+// In-memory cache for OTM users (heavy list)
+const _otmUsersCache = { list: null, at: 0 };
+
+function getBearerToken() {
+    try { return localStorage.getItem('otm_bearer_token') || ''; } catch { return ''; }
+}
+
+async function ensureOTMUsers() {
+    if (Array.isArray(_otmUsersCache.list) && _otmUsersCache.list.length > 0) return _otmUsersCache.list;
+    const token = getBearerToken();
+    if (!token) throw new Error('NO_TOKEN');
+    // Use the same query and cache-busting approach as the content script to avoid 304/empty payloads
+    const url = `https://otm.tahospital.vn/api/user?ishsoft=null&page=1&limit=10000&_=${Date.now()}`;
+    const res = await fetch(url, {
+        headers: {
+            'accept': 'application/json, text/plain, */*',
+            'authorization': `Bearer ${token}`,
+            'logintype': '2',
+            'siteid': '1'
+        },
+        method: 'GET',
+        mode: 'cors',
+        cache: 'no-store',
+        credentials: 'include'
+    });
+    if (!res.ok) {
+        if (res.status === 401 || res.status === 403) throw new Error('TOKEN_EXPIRED');
+        throw new Error('HTTP_' + res.status);
+    }
+    const json = await res.json();
+    // Robustly pick the array from possible containers
+    function pickArrayPayload(obj) {
+        if (Array.isArray(obj)) return obj;
+        if (!obj || typeof obj !== 'object') return [];
+        const candidates = ['data', 'items', 'result', 'rows', 'content', 'users', 'records', 'list'];
+        for (const k of candidates) {
+            const v = obj[k];
+            if (Array.isArray(v)) return v;
+            if (v && typeof v === 'object') {
+                for (const kk of candidates) {
+                    const v2 = v[kk];
+                    if (Array.isArray(v2)) return v2;
+                }
+            }
+        }
+        return [];
+    }
+    const arr = pickArrayPayload(json);
+    _otmUsersCache.list = arr;
+    _otmUsersCache.at = Date.now();
+    return arr;
+}
+
+function subscribeOTMMessages(onUsers, onProgress, onError) {
+    // GM listeners (preferred)
+    try {
+        if (typeof GM !== 'undefined' && GM.addValueChangeListener) {
+            const unsub = [];
+            unsub.push(GM.addValueChangeListener('otm_success', (n, o, v) => {
+                try {
+                    const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+                    const data = parsed && parsed.data;
+                    if (data && Array.isArray(data.otmUsers)) {
+                        onUsers(data.otmUsers);
+                    }
+                } catch(_) {}
+            }));
+            unsub.push(GM.addValueChangeListener('otm_progress', (n, o, v) => {
+                try { const parsed = typeof v === 'string' ? JSON.parse(v) : v; onProgress && onProgress(parsed && parsed.data); } catch(_) {}
+            }));
+            unsub.push(GM.addValueChangeListener('otm_error', (n, o, v) => {
+                try { const parsed = typeof v === 'string' ? JSON.parse(v) : v; onError && onError(parsed && parsed.data); } catch(_) {}
+            }));
+            return () => { try { unsub.forEach(x => typeof x === 'function' && x()); } catch(_) {} };
+        }
+    } catch(_) {}
+    // Fallback: poll localStorage keys once per second for a short time
+    const tid = setInterval(() => {
+        try {
+            const successData = localStorage.getItem('otm_success');
+            if (successData) {
+                localStorage.removeItem('otm_success');
+                const parsed = JSON.parse(successData);
+                const data = parsed && parsed.data;
+                if (data && Array.isArray(data.otmUsers)) onUsers(data.otmUsers);
+            }
+            const progressData = localStorage.getItem('otm_progress');
+            if (progressData) {
+                localStorage.removeItem('otm_progress');
+                const parsed = JSON.parse(progressData); onProgress && onProgress(parsed && parsed.data);
+            }
+            const errorData = localStorage.getItem('otm_error');
+            if (errorData) {
+                localStorage.removeItem('otm_error');
+                const parsed = JSON.parse(errorData); onError && onError(parsed && parsed.data);
+            }
+        } catch(_) {}
+    }, 1000);
+    return () => clearInterval(tid);
+}
+
+function openOTMUsersTab() {
+    const url = 'https://otm.tahospital.vn/?otm-fetch-users=1';
+    if (typeof GM !== 'undefined' && GM.openInTab) {
+        try { GM.openInTab(url, { active: false, insert: true }); return; } catch(_) {}
+    }
+    window.open(url, '_blank');
+}
+
+function filterSurgeonUsers(users) {
+    if (!Array.isArray(users)) return [];
+    // Accepted doctor title prefixes
+    const prefixes = [
+        'BS.', 'Bác sĩ', 'BSCKI', 'BS.CKI', 'BS.CKII', 'ThS.BS', 'ThS.BS.CKI', 'ThS.BS.CKII', 'PGS.TS.BS', 'PGS.TS.BS.CKI', 'PGS.TS.BS.CKII', 'TS.BS'
+    ].map(p => p.toLowerCase());
+    const norm = s => (s || '').toString().trim();
+    function looksLikeDoctorName(name) {
+        const n = norm(name);
+        if (!n) return false;
+        const ln = n.toLowerCase();
+        return prefixes.some(p => ln.startsWith(p));
+    }
+    // Return mapped consistent shape: { id, fullname, khoaId? }
+    return users
+        .filter(u => looksLikeDoctorName(u?.fullname || u?.name || ''))
+        .map(u => ({ id: u.id ?? u.taid ?? u.userid ?? null, fullname: u.fullname || u.name || '', raw: u }));
+}
+
+function uniqueByFullname(arr) {
+    const seen = new Set();
+    const out = [];
+    for (const x of arr || []) {
+        const n = (x.fullname || '').trim();
+        if (!n || seen.has(n)) continue;
+        seen.add(n); out.push({ fullname: n });
+    }
+    return out;
+}
+
+async function render(container, state) {
+    stylesOnce();
+    container.innerHTML = `
+        <div class="dr-os-wrap">
+            <div style="color:#6b7280">Chọn khoa và tick các bác sĩ phẫu thuật cần dùng. Danh sách lấy từ OTM, chỉ tải một lần mỗi phiên.</div>
+            <div class="dr-os-row">
+                <label>Khoa:</label>
+                <select id="dr-os-khoa" class="dr-os-select"></select>
+                <input id="dr-os-search" class="dr-os-search" placeholder="Tìm theo tên..." />
+                    <div class="dr-os-actions">
+                        <button id="dr-os-reload-users" class="dr-os-btn">Tải lại DS từ OTM</button>
+                    </div>
+            </div>
+            <div id="dr-os-info" style="color:#6b7280"></div>
+            <div class="dr-os-columns">
+                <div class="dr-os-selected">
+                    <h4>Đã chọn (<span id="dr-os-selected-count">0</span>)</h4>
+                    <div id="dr-os-selected-chips"></div>
+                </div>
+                <div id="dr-os-list" class="dr-os-list"></div>
+            </div>
+        </div>
+    `;
+
+    const khoaSel = container.querySelector('#dr-os-khoa');
+    const searchInput = container.querySelector('#dr-os-search');
+    const listEl = container.querySelector('#dr-os-list');
+    const chipsWrap = container.querySelector('#dr-os-selected-chips');
+    const selCountEl = container.querySelector('#dr-os-selected-count');
+    const infoEl = container.querySelector('#dr-os-info');
+
+    // Load khoa list via ApiService
+    let khoaList = [];
+    try { khoaList = await ApiService.fetchKhoaPhong(); } catch { khoaList = []; }
+    khoaSel.innerHTML = '';
+    for (const k of khoaList) {
+        const opt = document.createElement('option');
+        opt.value = String(k.id);
+        opt.textContent = k.name || `Khoa ${k.id}`;
+        khoaSel.appendChild(opt);
+    }
+    const selectedKhoa = getSelectedKhoa(khoaList[0] ? String(khoaList[0].id) : '551');
+    if (khoaSel.querySelector(`option[value="${selectedKhoa}"]`)) khoaSel.value = selectedKhoa;
+
+    let otmUsers = [];
+    let surgeonUsers = [];
+    let selected = new Set();
+
+    async function loadUsers() {
+        infoEl.textContent = 'Đang tải danh sách người dùng OTM...';
+        try {
+            otmUsers = await ensureOTMUsers();
+            surgeonUsers = filterSurgeonUsers(otmUsers);
+            infoEl.textContent = `Lọc được ${surgeonUsers.length} bác sĩ từ OTM.`;
+        } catch (e) {
+            if (e && (e.message === 'NO_TOKEN' || e.message === 'TOKEN_EXPIRED')) {
+                infoEl.textContent = 'Chưa có/ hết hạn token OTM. Đang mở tab OTM để lấy dữ liệu...';
+                const unsubscribe = subscribeOTMMessages((users) => {
+                    _otmUsersCache.list = users; _otmUsersCache.at = Date.now();
+                    otmUsers = users; surgeonUsers = filterSurgeonUsers(otmUsers);
+                    infoEl.textContent = `Đã tải ${users.length} người dùng từ OTM. Lọc được ${surgeonUsers.length} bác sĩ.`;
+                    renderList();
+                    try { unsubscribe && unsubscribe(); } catch(_) {}
+                }, (prog) => {
+                    // optional progress updates
+                }, (err) => {
+                    infoEl.textContent = (err && err.message) ? err.message : 'Lỗi khi lấy dữ liệu OTM';
+                });
+                openOTMUsersTab();
+            } else {
+                infoEl.textContent = e && e.message ? e.message : 'Không thể tải danh sách OTM';
+                surgeonUsers = [];
+            }
+        }
+    }
+
+    function renderSelectedChips() {
+        const arr = Array.from(selected.values()).sort((a,b)=>a.localeCompare(b));
+        chipsWrap.innerHTML = '';
+        for (const name of arr) {
+            const chip = document.createElement('span');
+            chip.className = 'dr-os-chip';
+            chip.innerHTML = `<span>${name}</span><button title="Bỏ chọn">✕</button>`;
+            const btn = chip.querySelector('button');
+            btn.addEventListener('click', async () => {
+                selected.delete(name);
+                renderSelectedChips();
+                renderList();
+                // Auto-save on removal
+                const khoaId = khoaSel.value;
+                const names = Array.from(selected.values());
+                try { await SurgeonSettingsService.saveSurgeonList(khoaId, names); } catch(_) {}
+            });
+            chipsWrap.appendChild(chip);
+        }
+        selCountEl.textContent = String(arr.length);
+    }
+
+    function renderList() {
+        const q = (searchInput.value || '').trim().toLowerCase();
+        const items = surgeonUsers.filter(u => !q || (u.fullname || '').toLowerCase().includes(q));
+        listEl.innerHTML = '';
+        for (const u of items) {
+            const id = `dr-os-${btoa(unescape(encodeURIComponent(u.fullname))).replace(/=/g,'')}`;
+            const div = document.createElement('label');
+            div.className = 'dr-os-item';
+            div.innerHTML = `
+                <input type="checkbox" data-name="${u.fullname.replace(/"/g,'&quot;')}" ${selected.has(u.fullname) ? 'checked' : ''} />
+                <span>${u.fullname}</span>
+            `;
+            const cb = div.querySelector('input[type="checkbox"]');
+                cb.addEventListener('change', async () => {
+                    if (cb.checked) selected.add(u.fullname); else selected.delete(u.fullname);
+                    renderSelectedChips();
+                    // Auto-save on change
+                    const khoaId = khoaSel.value;
+                    const names = Array.from(selected.values());
+                    try { await SurgeonSettingsService.saveSurgeonList(khoaId, names); } catch(_) {}
+                });
+            listEl.appendChild(div);
+        }
+        if (items.length === 0) listEl.innerHTML = '<div class="dr-os-item" style="opacity:.7">Không có kết quả.</div>';
+    }
+
+    async function loadSelectionForCurrentKhoa() {
+        const khoaId = khoaSel.value;
+        infoEl.textContent = 'Đang tải danh sách đã lưu...';
+        try {
+            const { list } = await SurgeonSettingsService.loadSurgeonList(khoaId);
+            selected = new Set((list || []).map(x => (typeof x === 'string' ? x : x.fullname)).filter(Boolean));
+            infoEl.textContent = `Đã tải danh sách lưu (${selected.size}).`;
+            renderList();
+            renderSelectedChips();
+        } catch (e) {
+            infoEl.textContent = 'Không thể tải danh sách đã lưu';
+        }
+    }
+
+    await loadUsers();
+    await loadSelectionForCurrentKhoa();
+    renderList();
+
+    searchInput.addEventListener('input', () => renderList());
+    khoaSel.addEventListener('change', async () => { await loadSelectionForCurrentKhoa(); });
+
+    container.querySelector('#dr-os-reload-users').addEventListener('click', async () => {
+        // Always fetch via OTM tab to mirror otm-entry flow
+        infoEl.textContent = 'Đang mở tab OTM để tải lại danh sách...';
+        const unsubscribe = subscribeOTMMessages((users) => {
+            _otmUsersCache.list = users; _otmUsersCache.at = Date.now();
+            otmUsers = users; surgeonUsers = filterSurgeonUsers(otmUsers);
+            infoEl.textContent = `Đã tải ${users.length} người dùng từ OTM. Lọc được ${surgeonUsers.length} bác sĩ.`;
+            renderList();
+            renderSelectedChips();
+            try { unsubscribe && unsubscribe(); } catch(_) {}
+        }, null, (err) => {
+            infoEl.textContent = (err && err.message) ? err.message : 'Lỗi khi lấy dữ liệu OTM';
+        });
+        openOTMUsersTab();
+    });
+
+    container.querySelector('#dr-os-save').addEventListener('click', async () => {
+        const khoaId = khoaSel.value;
+        const names = Array.from(selected.values());
+        // Removed explicit Save button; selection changes are auto-saved.
+    });
+}
+
+async function mountOTMSurgeonsTab({ container }) {
+    if (!container) return;
+    await render(container, {});
+}
+
+module.exports = { mountOTMSurgeonsTab };
+
+},{"../services/apiService":26,"../services/surgeonSettingsService":32,"../utils/khoaUtils":39}],26:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -7331,7 +8585,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":34}],24:[function(require,module,exports){
+},{"../utils/khoaUtils":39}],27:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -7599,7 +8853,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":31,"./apiService":23,"./saveQueue":27}],25:[function(require,module,exports){
+},{"../utils/dateUtils":36,"./apiService":26,"./saveQueue":30}],28:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
@@ -7828,7 +9082,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":10,"../pages/page.dashboard.support":20,"../utils/patientDataMapper":35,"./checklistService":24}],26:[function(require,module,exports){
+},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":40,"./checklistService":27}],29:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -8031,7 +9285,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":31,"../utils/patientDataMapper":35,"../utils/surgeryUtils":36,"./checklistService":24}],27:[function(require,module,exports){
+},{"../utils/dateUtils":36,"../utils/patientDataMapper":40,"../utils/surgeryUtils":41,"./checklistService":27}],30:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -8095,7 +9349,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],28:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -8237,7 +9491,109 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":34,"./apiService":23}],29:[function(require,module,exports){
+},{"../utils/khoaUtils":39,"./apiService":26}],32:[function(require,module,exports){
+// surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
+
+const ApiService = require('./apiService');
+
+function makeKeyForKhoa(khoaId) {
+    return `${String(khoaId)}%h991h otm.dsbacsi`;
+}
+
+async function loadRecordForKhoa(khoaId) {
+    const key = makeKeyForKhoa(khoaId);
+    const formData = new FormData();
+    formData.append('mabn', key);
+    // Use a very wide range to ensure the special record is returned
+    formData.append('tungay', '01/01/1001 01:01');
+    formData.append('denngay', '01/01/3001 01:01');
+    const resp = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+    });
+    const result = await resp.json();
+    const data = (result && result.data) || [];
+    const found = data.find(item => item && item.mabn === key && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+    return found;
+}
+
+async function createRecordForKhoa(khoaId) {
+    const key = makeKeyForKhoa(khoaId);
+    const formData = new FormData();
+    formData.append('status', '1');
+    formData.append('thebaohiemyte', 'Không');
+    // Initialize with empty list
+    formData.append('chuky', JSON.stringify({ otm: { dsbacsi: [] } }));
+    formData.append('khac', '--*--');
+    formData.append('khu', '1');
+    formData.append('mabn', key);
+    formData.append('bieumauid', '027');
+    // Use a fixed marker date as per convention
+    formData.append('makp', '551');
+    formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
+    formData.append('actiontype', '');
+    formData.append('hoten', `${key}%`);
+    formData.append('ngaysinh', '10/10/1010');
+    formData.append('gioitinh', 'Nam');
+    const response = await fetch('/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/CreateAjax', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData
+    });
+    return response.json();
+}
+
+function parseState(obj) {
+    if (!obj || !obj.chuky) return { otm: { dsbacsi: [] } };
+    try {
+        const parsed = JSON.parse(obj.chuky);
+        if (parsed && parsed.otm && Array.isArray(parsed.otm.dsbacsi)) return parsed;
+        // normalize
+        const arr = parsed && (parsed.dsbacsi || parsed.surgeons || []);
+        return { otm: { dsbacsi: Array.isArray(arr) ? arr : [] } };
+    } catch (_) {
+        return { otm: { dsbacsi: [] } };
+    }
+}
+
+const SurgeonSettingsService = {
+    makeKeyForKhoa,
+    async getOrCreateRecord(khoaId) {
+        let obj = await loadRecordForKhoa(khoaId);
+        if (!obj) {
+            const created = await createRecordForKhoa(khoaId);
+            if (created && (created.isValid || created.Status == 1)) {
+                obj = await loadRecordForKhoa(khoaId);
+            }
+        }
+        return obj;
+    },
+    async loadSurgeonList(khoaId) {
+        const obj = await loadRecordForKhoa(khoaId);
+        const state = parseState(obj);
+        return { list: state.otm.dsbacsi || [], obj };
+    },
+    async saveSurgeonList(khoaId, fullnames) {
+        const obj = await this.getOrCreateRecord(khoaId);
+        if (!obj) return { ok: false };
+        const next = { otm: { dsbacsi: Array.from(new Set((fullnames || []).map(s => String(s).trim()).filter(Boolean))) } };
+        const res = await ApiService.updateChecklistData(obj, next);
+        const ok = res && (res.Status == 1 || res.isValid);
+        return { ok };
+    }
+};
+
+module.exports = SurgeonSettingsService;
+
+},{"./apiService":26}],33:[function(require,module,exports){
+// Top-level compatibility shim for legacy imports
+module.exports = require('./pages/page.settings-open-world');
+// Top-level compatibility shim for legacy imports
+// This allows requiring '../settings-open-world' from files inside src/pages
+module.exports = require('./pages/page.settings-open-world');
+
+},{"./pages/page.settings-open-world":23}],34:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -8332,7 +9688,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],30:[function(require,module,exports){
+},{}],35:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -8492,7 +9848,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":24,"./uiUtils":38}],31:[function(require,module,exports){
+},{"../services/checklistService":27,"./uiUtils":43}],36:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -8572,7 +9928,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],32:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -8689,7 +10045,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":33,"./surgeryUtils":36,"./tagUtils":37}],33:[function(require,module,exports){
+},{"./htmlUtils":38,"./surgeryUtils":41,"./tagUtils":42}],38:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -8704,7 +10060,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],34:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -8720,7 +10076,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],35:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -8958,7 +10314,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],36:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -9231,7 +10587,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],37:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -9524,7 +10880,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],38:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],43:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

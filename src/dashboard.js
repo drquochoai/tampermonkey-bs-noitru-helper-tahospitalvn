@@ -29,7 +29,20 @@ const { escapeHtml } = require('./utils/htmlUtils');
 const DomUpdaters = require('./utils/domUpdaters');
 const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('./utils/checklistUtils');
 
+// Global variable for OTM tabs
+if (typeof window !== 'undefined') {
+    window.openTabs = window.openTabs || [];
+} else if (typeof global !== 'undefined') {
+    global.openTabs = global.openTabs || [];
+} else {
+    this.openTabs = this.openTabs || [];
+}
+
 function showDashboardBenhNhanIfNeeded() {
+    // Use global openTabs variable for OTM tabs
+    if (!window.openTabs) window.openTabs = [];
+    let openTabs = window.openTabs;
+    
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
 
@@ -1052,6 +1065,9 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         document.body.appendChild(bottomBar);
         
+        // Add OTM buttons to bottom bar
+        addOTMButtonsToBottomBar(bottomBar);
+        
     // Bottom bar styles come from addGlobalStyles()
         
         // Setup direct report button
@@ -1099,8 +1115,333 @@ function showDashboardBenhNhanIfNeeded() {
         }
     }
 
+    // Helper function to try closing a tab using multiple methods
+    function tryCloseTab(tab) {
+        // Method 1: Try GM.closeTab with tab object
+        if (typeof GM !== 'undefined' && GM.closeTab) {
+            try {
+                GM.closeTab(tab);
+                console.log('Closed OTM tab using GM.closeTab(tab)');
+                return false; // Remove from array
+            } catch (gmError) {
+                console.log('GM.closeTab(tab) failed, trying alternatives:', gmError);
+            }
+        }
+
+        // Method 2: Try tab.close() if available
+        if (tab.close && typeof tab.close === 'function') {
+            try {
+                tab.close();
+                console.log('Closed OTM tab using tab.close()');
+                return false; // Remove from array
+            } catch (closeError) {
+                console.log('tab.close() failed:', closeError);
+            }
+        }
+
+        // Method 3: Try window.close() on the tab
+        if (tab.window && tab.window.close) {
+            try {
+                tab.window.close();
+                console.log('Closed OTM tab using tab.window.close()');
+                return false; // Remove from array
+            } catch (windowError) {
+                console.log('tab.window.close() failed:', windowError);
+            }
+        }
+
+        // Method 4: For GM tabs, try posting a message to close
+        if (tab.postMessage) {
+            try {
+                tab.postMessage({ type: 'close-otm-tab' }, '*');
+                console.log('Sent close message to OTM tab');
+                return false; // Remove from array
+            } catch (msgError) {
+                console.log('postMessage failed:', msgError);
+            }
+        }
+
+        console.log('All close methods failed for OTM tab');
+        return true; // Keep in array
+    }
+
+    // Handle OTM close tab messages
+    function handleOTMCloseTab(name, oldValue, newValue, remote) {
+        try {
+            const data = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
+            console.log('[OTM Close Tab] Received close request:', data.data);
+            console.log('[OTM Close Tab] Current openTabs:', window.openTabs);
+            console.log('[OTM Close Tab] openTabs length:', window.openTabs.length);
+            
+            // Close OTM tabs from stored references
+            if (window.openTabs && window.openTabs.length > 0) {
+                window.openTabs = window.openTabs.filter(tabInfo => {
+                    if (tabInfo && tabInfo.hostname === 'otm.tahospital.vn') {
+                        try {
+                            const tab = tabInfo.tab;
+                            
+                            // Handle case where tab is a Promise (from GM.openInTab)
+                            if (tab && typeof tab.then === 'function') {
+                                console.log('Tab is a Promise, waiting for resolution...');
+                                tab.then(actualTab => {
+                                    if (actualTab && !actualTab.closed) {
+                                        tryCloseTab(actualTab);
+                                    }
+                                }).catch(error => {
+                                    console.error('Error resolving tab Promise:', error);
+                                });
+                                return false; // Remove from array since we're handling it asynchronously
+                            }
+                            
+                            if (tab && !tab.closed) {
+                                return tryCloseTab(tab);
+                            } else {
+                                console.log('Tab already closed or invalid');
+                                return false; // Remove from array
+                            }
+                        } catch (error) {
+                            console.error('Error closing OTM tab:', error);
+                            return true; // Keep in array
+                        }
+                    }
+                    return true; // Keep in array
+                });
+            } else {
+                console.log('No OTM tabs found to close');
+            }
+        } catch (error) {
+            console.error('Error handling OTM close tab:', error);
+        }
+    }
+
+    // Add GM value change listeners for OTM data
+    if (typeof GM !== 'undefined' && GM.addValueChangeListener) {
+        GM.addValueChangeListener('otm_progress', handleOTMProgress);
+        GM.addValueChangeListener('otm_success', handleOTMSuccess);
+        GM.addValueChangeListener('otm_error', handleOTMError);
+        GM.addValueChangeListener('otm_close_tab', handleOTMCloseTab);
+    } else {
+        // Fallback to localStorage polling for non-Greasemonkey environments
+        setInterval(() => {
+            const progressData = localStorage.getItem('otm_progress');
+            const successData = localStorage.getItem('otm_success');
+            const errorData = localStorage.getItem('otm_error');
+            const closeTabData = localStorage.getItem('otm_close_tab');
+
+            if (progressData) {
+                try {
+                    const parsed = JSON.parse(progressData);
+                    handleOTMProgress('otm_progress', null, parsed, null);
+                    localStorage.removeItem('otm_progress');
+                } catch (e) {
+                    console.error('Error parsing OTM progress data:', e);
+                }
+            }
+
+            if (successData) {
+                try {
+                    const parsed = JSON.parse(successData);
+                    handleOTMSuccess('otm_success', null, parsed, null);
+                    localStorage.removeItem('otm_success');
+                } catch (e) {
+                    console.error('Error parsing OTM success data:', e);
+                }
+            }
+
+            if (errorData) {
+                try {
+                    const parsed = JSON.parse(errorData);
+                    handleOTMError('otm_error', null, parsed, null);
+                    localStorage.removeItem('otm_error');
+                } catch (e) {
+                    console.error('Error parsing OTM error data:', e);
+                }
+            }
+
+            if (closeTabData) {
+                try {
+                    const parsed = JSON.parse(closeTabData);
+                    handleOTMCloseTab('otm_close_tab', null, parsed, null);
+                    localStorage.removeItem('otm_close_tab');
+                } catch (e) {
+                    console.error('Error parsing OTM close tab data:', e);
+                }
+            }
+        }, 1000);
+    }
+
     // Start dashboard initialization
     initializeDashboard();
+}
+
+// Handle OTM progress messages
+function handleOTMProgress(name, oldValue, newValue, remote) {
+    try {
+        const data = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
+        showToast(`🔄 ${data.data.message}`, 'info', 3000);
+        console.log('[OTM Progress]', data.data.step, data.data.message);
+    } catch (error) {
+        console.error('Error handling OTM progress:', error);
+    }
+}
+
+// Handle OTM success messages
+function handleOTMSuccess(name, oldValue, newValue, remote) {
+    try {
+        const data = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
+        showToast(`✅ ${data.data.count} ca mổ đã được tải về!`, 'success', 5000);
+        console.log('[OTM Success]', data.data);
+
+        // Log detailed surgery data
+        if (data.data.surgeryData && data.data.surgeryData.length > 0) {
+            console.log('=== SURGERY DATA RECEIVED ===');
+            data.data.surgeryData.forEach((item, index) => {
+                console.log(`${index + 1}. ${item.customer?.fullname || 'N/A'} - ${item.surgerymethod || 'N/A'}`);
+                console.log(`   Time: ${item.start || 'N/A'}`);
+                console.log(`   Room: ${item.room?.displayname || 'N/A'}`);
+                console.log(`   Department: ${item.department?.displayname || 'N/A'}`);
+                console.log(`   Status: ${item.status || 'N/A'}`);
+                console.log('---');
+            });
+        }
+    } catch (error) {
+        console.error('Error handling OTM success:', error);
+    }
+}
+
+// Handle OTM error messages
+function handleOTMError(name, oldValue, newValue, remote) {
+    try {
+        const data = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
+        showToast(`❌ ${data.data.message}`, 'error', 5000);
+        console.error('[OTM Error]', data.data);
+    } catch (error) {
+        console.error('Error handling OTM error:', error);
+    }
+}
+
+// OTM buttons integration
+function addOTMButtonsToBottomBar(bottomBar) {
+    const bottomBarLeft = bottomBar.querySelector('.dr-bottom-bar-left');
+    if (!bottomBarLeft) return;
+
+    // Date range button (integrated today functionality)
+    const dateBtn = document.createElement('button');
+    dateBtn.id = 'dr-otm-date-btn';
+    dateBtn.className = 'dr-btn dr-otm-btn';
+    dateBtn.textContent = 'Mổ theo ngày';
+    dateBtn.title = 'Chọn khoảng thời gian để lấy dữ liệu mổ từ OTM';
+    dateBtn.addEventListener('click', () => handleOTMDateClick());
+
+    bottomBarLeft.appendChild(dateBtn);
+    console.log('OTM button added to dashboard');
+
+    function handleOTMDateClick() {
+        const DialogManager = require('./components/dialogManager');
+        const dialog = DialogManager.createDialog('otm-date-dialog');
+        
+        // Get today's date in YYYY-MM-DD format
+        const today = new Date().toISOString().split('T')[0];
+        
+        dialog.inner.innerHTML = `
+            <h3>Chọn khoảng thời gian</h3>
+            <div style="margin: 10px 0;">
+                <div style="margin-bottom: 10px;">
+                    <label for="otm-start-date">Ngày bắt đầu:</label>
+                    <input type="date" id="otm-start-date" style="margin-left: 10px;" value="${today}">
+                </div>
+                <div>
+                    <label for="otm-end-date">Ngày kết thúc:</label>
+                    <input type="date" id="otm-end-date" style="margin-left: 10px;" value="${today}">
+                </div>
+            </div>
+        `;
+
+        const actionButtons = DialogManager.createActionButtons([
+            {
+                id: 'otm-fetch-btn',
+                className: 'dr-btn-primary',
+                text: 'Lấy dữ liệu',
+                onclick: () => {
+                    const startDateInput = document.getElementById('otm-start-date');
+                    const endDateInput = document.getElementById('otm-end-date');
+                    if (startDateInput && startDateInput.value && endDateInput && endDateInput.value) {
+                        openOTMTab(startDateInput.value, endDateInput.value);
+                        dialog.close();
+                    } else {
+                        alert('Vui lòng chọn ngày bắt đầu và ngày kết thúc');
+                    }
+                }
+            },
+            {
+                id: 'otm-cancel-btn',
+                className: 'dr-btn-secondary',
+                text: 'Hủy',
+                onclick: () => dialog.close()
+            }
+        ]);
+
+        dialog.inner.appendChild(actionButtons);
+        dialog.show();
+    }
+
+    function openOTMTab(fromDate, toDate) {
+        const url = `https://otm.tahospital.vn/?otm-fetch=${encodeURIComponent(JSON.stringify({ fromDate, toDate }))}`;
+        console.log('[OTM Open Tab] Opening tab with URL:', url);
+        console.log('[OTM Open Tab] Current openTabs before:', window.openTabs);
+
+        if (typeof GM !== 'undefined' && GM.openInTab) {
+            const tabPromise = GM.openInTab(url, {
+                active: false,
+                insert: true,
+                setParent: true
+            });
+            
+            // Handle the Promise returned by GM.openInTab
+            if (tabPromise && typeof tabPromise.then === 'function') {
+                tabPromise.then(tab => {
+                    if (tab) {
+                        window.openTabs.push({
+                            tab: tab,
+                            url: url,
+                            openedAt: Date.now(),
+                            hostname: 'otm.tahospital.vn'
+                        });
+                        console.log('[OTM Open Tab] Tab added to openTabs. New length:', window.openTabs.length);
+                    } else {
+                        console.log('[OTM Open Tab] GM.openInTab resolved to null/undefined');
+                    }
+                }).catch(error => {
+                    console.error('[OTM Open Tab] Error opening tab:', error);
+                });
+            } else if (tabPromise) {
+                // Fallback if it's not a Promise (older GM versions)
+                window.openTabs.push({
+                    tab: tabPromise,
+                    url: url,
+                    openedAt: Date.now(),
+                    hostname: 'otm.tahospital.vn'
+                });
+                console.log('[OTM Open Tab] Tab added to openTabs. New length:', window.openTabs.length);
+            } else {
+                console.log('[OTM Open Tab] GM.openInTab returned null/undefined');
+            }
+        } else {
+            // Fallback for non-Greasemonkey environments
+            const tab = window.open(url, '_blank');
+            if (tab) {
+                window.openTabs.push({
+                    tab: tab,
+                    url: url,
+                    openedAt: Date.now(),
+                    hostname: 'otm.tahospital.vn'
+                });
+                console.log('[OTM Open Tab] Fallback tab added to openTabs. New length:', window.openTabs.length);
+            } else {
+                console.log('[OTM Open Tab] window.open returned null/undefined');
+            }
+        }
+    }
 }
 
 module.exports = {

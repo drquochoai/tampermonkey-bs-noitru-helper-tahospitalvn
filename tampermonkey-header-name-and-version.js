@@ -4,12 +4,13 @@ const path = require('path');
 const header = `// ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.8.4
+// @version      1.8.6
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
 // @match        https://dd-noitru.tahospital.vn/*
 // @match        https://hsba.tahospital.vn/*
+// @match        https://otm.tahospital.vn/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_openInTab
 // @grant        GM_setValue

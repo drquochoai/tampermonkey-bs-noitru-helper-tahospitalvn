@@ -28,25 +28,28 @@ function stylesOnce() {
   .dr-qh-lichmo-content{padding:16px 18px;height:calc(100vh - 58px);overflow:auto;overscroll-behavior:contain}
   /* Timeline container */
   .dr-qh-timeline{position:relative;border-left:1px dashed #e2e8f0;padding-left:12px}
-  .dr-qh-timegrid{position:relative;height:720px;background:linear-gradient(180deg,#fff 0,#fff 49%,#f8fafc 50%,#f8fafc 100%);background-size:100% 60px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
-  .dr-qh-timeaxis{position:absolute;left:0;top:0;bottom:0;width:54px;border-right:1px solid #e5e7eb;background:#fff;z-index:2}
+  .dr-qh-timegrid{position:relative;min-height:720px;background:linear-gradient(180deg,#fff 0,#fff 49%,#f8fafc 50%,#f8fafc 100%);background-size:100% 60px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden}
+  .dr-qh-timeaxis{position:absolute;left:0;top:0;width:54px;border-right:1px solid #e5e7eb;background:#fff;z-index:2}
   .dr-qh-timeaxis .tick{position:absolute;left:0;right:0;height:1px;background:#e5e7eb}
   .dr-qh-timeaxis .label{position:absolute;left:6px;transform:translateY(-50%);font-size:12px;color:#64748b;background:#fff;padding:0 2px}
-  .dr-qh-lanes{position:absolute;left:54px;right:0;top:0;bottom:0}
-  .dr-qh-lane{position:relative;height:100%}
-  .dr-qh-evtbar{position:absolute;left:8px;right:12px;border-radius:12px;display:flex;flex-direction:column;align-items:flex-start;padding:10px 14px;color:#0f172a;box-shadow:0 8px 20px rgba(2,6,23,.12);border:1px solid rgba(15,23,42,.08)}
-  .dr-qh-evtbar .row{display:flex;gap:8px;align-items:center;min-width:0;width:100%}
-  .dr-qh-evtbar .row+.row{margin-top:4px}
-  .dr-qh-evtbar .time{font-size:12px;opacity:.85;white-space:nowrap;color:#334155}
-  .dr-qh-evtbar .patient{font-weight:800;font-size:16px;text-transform:uppercase;letter-spacing:.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dr-qh-evtbar .method{font-size:14px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.95;flex:1}
-  .dr-qh-evtbar .docs{font-size:12px;color:#2563ebb3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:auto}
+  .dr-qh-lanes{position:absolute;left:54px;right:0;top:0}
+  .dr-qh-lane{position:relative}
+  .dr-qh-evtbar{position:absolute;left:8px;right:12px;border-radius:16px;display:flex;flex-direction:column;align-items:flex-start;padding:14px 18px;color:#0f172a;box-shadow:0 8px 20px rgba(2,6,23,.12);border:1px solid rgba(15,23,42,.08);min-height:80px;transition:all .2s ease;overflow:hidden}
+  .dr-qh-evtbar:hover{box-shadow:0 12px 30px rgba(2,6,23,.18);transform:translateY(-1px)}
+  .dr-qh-evtbar .row{display:flex;gap:8px;align-items:flex-start;min-width:0;width:100%;line-height:1.4;margin-bottom:6px}
+  .dr-qh-evtbar .row:last-child{margin-bottom:0}
+  .dr-qh-evtbar .time{font-size:14px;font-weight:600;color:#1976d2;white-space:nowrap;margin-left:auto}
+  .dr-qh-evtbar .patient{font-weight:800;font-size:18px;text-transform:uppercase;letter-spacing:.3px;color:#1976d2;line-height:1.2;word-wrap:break-word;overflow-wrap:break-word;flex:1}
+  .dr-qh-evtbar .method{font-size:14px;color:#374151;font-weight:500;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .dr-qh-evtbar .docs{font-size:14px;color:#7c3aed;font-weight:500;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;flex:1}
   /* Emphasize OR row: largest and bold */
-  .dr-qh-evtbar .or{font-size:16px;font-weight:800;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px}
+  .dr-qh-evtbar .or{font-size:16px;font-weight:800;color:#1976d2;background:#fef3c7;padding:4px 10px;border-radius:8px;border:1px solid #fbbf24;margin-bottom:4px;word-wrap:break-word;overflow-wrap:break-word;flex:1}
   /* Make meta as prominent as patient */
-  .dr-qh-evtbar .meta{font-size:14px;font-weight:700;color:#0f172a;opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dr-qh-evtbar.tight{padding:4px 10px}
-  .dr-qh-evtbar.tight .method,.dr-qh-evtbar.tight .docs{display:none}
+  .dr-qh-evtbar .meta{font-size:14px;font-weight:600;color:#1f2937;background:#f3f4f6;padding:3px 8px;border-radius:6px;border:1px solid #d1d5db;word-wrap:break-word;overflow-wrap:break-word;flex:1}
+  .dr-qh-evtbar .diagnose{font-size:14px;color:#374151;font-weight:500;line-height:1.3;word-wrap:break-word;overflow-wrap:break-word;flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .dr-qh-evtbar.tight{padding:8px 12px;min-height:80px}
+  .dr-qh-evtbar.tight .method{font-size:13px}
+  .dr-qh-evtbar.tight .docs{font-size:12px}
   .dr-qh-empty{padding:12px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;background:#f8fafc}
   @media (max-width: 1100px){.dr-qh-timeaxis{width:46px}.dr-qh-lanes{left:46px}}
   `;
@@ -173,36 +176,169 @@ function sortByStart(a, b) {
   return as - bs;
 }
 
+function renderTimeAxisHTML(startHour, endHour, timelineHeight = 720) {
+  let ticksHTML = '';
+  for (let h = startHour; h <= endHour; h++) {
+    const y = (h - startHour) * (timelineHeight / (endHour - startHour));
+    ticksHTML += `
+      <div class="tick" style="top: ${y}px;"></div>
+      <div class="label" style="top: ${y}px;">${String(h).padStart(2,'0')}:00</div>
+    `;
+  }
+  return `<div class="dr-qh-timeaxis" style="height: ${timelineHeight}px;">${ticksHTML}</div>`;
+}
+
+function calculateContentHeight(item) {
+  const { s } = item;
+  
+  // Count content rows
+  let rowCount = 0;
+  
+  // Operating room + time row
+  const opRoom = s.operating_room || (s.room && s.room.name) || '';
+  if (opRoom) rowCount++;
+  
+  // Patient name row (always present)
+  rowCount++;
+  
+  // Meta info row
+  const pid = (s.customer && (s.customer.pid || s.customer.code || '')) || '';
+  const phong = s.phongDieuTri || '';
+  const giuong = s.giuongDieuTri || '';
+  if (pid || phong || giuong) rowCount++;
+  
+  // Diagnosis row (now before surgery method)
+  const diagnose = s.diagnose || '';
+  if (diagnose) {
+    // Count lines for diagnosis (might wrap to 2 lines)
+    const diagnosisLineCount = Math.min(2, Math.ceil(diagnose.length / 50));
+    rowCount += diagnosisLineCount;
+  }
+  
+  // Surgery method row
+  const method = s.surgerymethod || '';
+  if (method) {
+    // Count lines for method (might wrap to 2 lines)
+    const methodLineCount = Math.min(2, Math.ceil(method.length / 50));
+    rowCount += methodLineCount;
+  }
+  
+  // Doctors row
+  const exec = (s.userexec||[]).map(u => u && (u.fullname || u.name)).filter(Boolean);
+  const assistant = (s.userassistant||[]).map(u => u && (u.fullname || u.name)).filter(Boolean);
+  if (exec.length || assistant.length) rowCount++;
+  
+  // Calculate height: base padding + row height * count + gaps
+  const basePadding = 28; // 14px top + 14px bottom
+  const rowHeight = 24; // estimated height per row including line-height
+  const gapHeight = 6; // gap between rows
+  const calculatedHeight = basePadding + (rowHeight * rowCount) + (gapHeight * Math.max(0, rowCount - 1));
+  
+  return Math.max(80, calculatedHeight); // minimum 80px
+}
+
+function renderSurgeryBarHTML(item, pxPerMin, palette) {
+  const { s, idx, topMin, height } = item;
+  
+  // Extract data
+  const patient = (s.customer && (s.customer.fullname || '')) || '';
+  const method = s.surgerymethod || '';
+  const exec = (s.userexec||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
+  const assistant = (s.userassistant||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
+  const pid = (s.customer && (s.customer.pid || s.customer.code || '')) || '';
+  const phong = s.phongDieuTri || '';
+  const giuong = s.giuongDieuTri || '';
+  const opRoom = s.operating_room || (s.room && s.room.name) || '';
+  const timeRange = formatTimeRange(s.start, s.end) || '—';
+  const diagnose = s.diagnose || '';
+  
+  // Create tooltip
+  const tooltip = [
+    `Phòng mổ: ${opRoom}`,
+    `Bệnh nhân: ${patient}`,
+    `PID: ${pid}`,
+    phong ? `Phòng: ${phong}` : '',
+    giuong ? `Giường: ${giuong}` : '',
+    diagnose ? `Chẩn đoán: ${diagnose}` : '',
+    `PPPT: ${method}`,
+    exec ? `BS chính: ${exec}` : '',
+    assistant ? `BS phụ: ${assistant}` : '',
+    s.status ? `Ghi chú: ${s.status}` : ''
+  ].filter(Boolean).join('\n');
+  
+  // Meta info
+  const metaInfo = [
+    pid ? `PID: ${pid}` : '', 
+    phong ? `Phòng: ${phong}` : '', 
+    giuong ? `Giường: ${giuong}` : ''
+  ].filter(Boolean).join(' • ');
+  
+  const docsInfo = [exec, assistant ? `(phụ: ${assistant})` : ''].filter(Boolean).join(' ');
+  
+  // Style properties with content-based height
+  const contentHeight = calculateContentHeight(item);
+  const displayHeight = Math.max(contentHeight, height * pxPerMin); // Use larger of content or time-based height
+  
+  const barStyle = `
+    top: ${topMin * pxPerMin}px;
+    height: ${displayHeight}px;
+    background: ${palette[idx % palette.length]};
+  `;
+  
+  const tightClass = displayHeight < 100 ? ' tight' : '';
+  
+  return `
+    <div class="dr-qh-evtbar${tightClass}" style="${barStyle}" title="${tooltip}">
+      ${opRoom ? `
+        <div class="row">
+          <span class="or">Phòng mổ: ${opRoom}</span>
+          <span class="time">${timeRange}</span>
+        </div>
+      ` : ''}
+      
+      <div class="row">
+        <span class="patient">${patient}</span>
+      </div>
+      
+      ${metaInfo ? `
+        <div class="row">
+          <span class="meta">${metaInfo}</span>
+        </div>
+      ` : ''}
+      
+      ${diagnose ? `
+        <div class="row">
+          <span class="diagnose"><b>CĐ:</b> ${diagnose}</span>
+        </div>
+      ` : ''}
+      
+      ${method ? `
+        <div class="row">
+          <span class="method"><b>PPPT:</b> ${method}</span>
+        </div>
+      ` : ''}
+      
+      ${docsInfo ? `
+        <div class="row">
+          <span class="docs">${docsInfo}</span>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function renderUI(container, dateStr, surgeries) {
-  container.innerHTML = '';
   if (!surgeries || surgeries.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'dr-qh-empty';
-    empty.textContent = 'Không có ca mổ nào trong ngày này.';
-    container.appendChild(empty);
+    container.innerHTML = '<div class="dr-qh-empty">Không có ca mổ nào trong ngày này.</div>';
     return;
   }
 
-  // Prepare timeline range (07:00 - 19:00 default)
-  const startHour = 7, endHour = 19; // can be tuned later
-  const totalMinutes = (endHour - startHour) * 60; // maps to 720px grid height
+  // Prepare timeline range
+  const startHour = 7, endHour = 24;
+  const totalMinutes = (endHour - startHour) * 60;
   const pxPerMin = 720 / totalMinutes;
 
-  // Create base structure
-  const timeline = document.createElement('div'); timeline.className = 'dr-qh-timeline';
-  const grid = document.createElement('div'); grid.className = 'dr-qh-timegrid';
-  const axis = document.createElement('div'); axis.className = 'dr-qh-timeaxis';
-  const lanesWrap = document.createElement('div'); lanesWrap.className = 'dr-qh-lanes';
-
-  // Axis ticks each hour
-  for (let h = startHour; h <= endHour; h++) {
-  const y = (h - startHour) * (720 / (endHour - startHour));
-    const tick = document.createElement('div'); tick.className = 'tick'; tick.style.top = `${y}px`;
-    const lab = document.createElement('div'); lab.className = 'label'; lab.style.top = `${y}px`; lab.textContent = `${String(h).padStart(2,'0')}:00`;
-    axis.appendChild(tick); axis.appendChild(lab);
-  }
-
-  // Compute bars with overlap lanes
+  // Compute bars with overlap lanes and content-based heights
   const items = surgeries.map((s, idx) => {
     const sMs = s && s.start ? Date.parse(s.start) : NaN;
     const eMs = s && s.end ? Date.parse(s.end) : NaN;
@@ -210,88 +346,75 @@ function renderUI(container, dateStr, surgeries) {
     const eD = isNaN(eMs) ? null : new Date(eMs);
     const clamp = (d) => Math.max(0, Math.min(totalMinutes - 5, (d.getHours() - startHour) * 60 + d.getMinutes()));
     const topMin = sD ? clamp(sD) : 0;
-    const endMin = eD ? clamp(eD) : (topMin + 45);
-    const height = Math.max(28, endMin - topMin);
-    return { s, idx, topMin, height };
-  }).sort((a,b)=>a.topMin-b.topMin);
+    const endMin = eD ? clamp(eD) : (topMin + 60);
+    const timeBasedHeight = Math.max(60, endMin - topMin); // Reduced minimum for time-based
+    return { s, idx, topMin, height: timeBasedHeight };
+  }).sort((a,b) => a.topMin - b.topMin);
 
-  // Assign lanes so overlapping bars go to different horizontal lanes
-  const lanes = []; // each lane stores last end (minute)
+  // Calculate content heights and determine actual display heights
+  items.forEach(item => {
+    const contentHeight = calculateContentHeight(item);
+    const timeHeight = item.height;
+    item.displayHeight = Math.max(contentHeight, timeHeight);
+    // Convert back to minutes for lane calculation
+    item.heightInMinutes = item.displayHeight / pxPerMin;
+  });
+
+  // Assign lanes using display heights for overlapping bars
+  const lanes = [];
   items.forEach(it => {
     let placed = false;
-    for (let i=0;i<lanes.length;i++) {
-      if (lanes[i] <= it.topMin - 4) { // small gap to avoid touching
-        it.lane = i; lanes[i] = it.topMin + it.height; placed = true; break;
+    for (let i = 0; i < lanes.length; i++) {
+      if (lanes[i] <= it.topMin - 4) {
+        it.lane = i; 
+        lanes[i] = it.topMin + it.heightInMinutes; 
+        placed = true; 
+        break;
       }
     }
-    if (!placed) { it.lane = lanes.length; lanes.push(it.topMin + it.height); }
+    if (!placed) { 
+      it.lane = lanes.length; 
+      lanes.push(it.topMin + it.heightInMinutes); 
+    }
   });
 
-  // Render lanes container widths
+  // Calculate required timeline height based on content
+  const maxEndTime = Math.max(...items.map(item => item.topMin + item.heightInMinutes));
+  const requiredTimelineHeight = Math.max(720, maxEndTime * pxPerMin + 40); // 40px bottom padding
+
+  // Generate lanes HTML
   const laneWidthPercent = 100 / Math.max(1, lanes.length);
-  for (let i=0;i<lanes.length;i++) {
-    const laneEl = document.createElement('div');
-    laneEl.className = 'dr-qh-lane';
-    laneEl.style.position = 'absolute';
-    laneEl.style.left = `${i * laneWidthPercent}%`;
-    laneEl.style.width = `${laneWidthPercent}%`;
-    laneEl.style.top = '0';
-    laneEl.style.bottom = '0';
-    lanesWrap.appendChild(laneEl);
+  const palette = ['#e0f2fe','#f0f9ff','#fdf4ff','#fef7ed','#fef2f2','#fffbeb','#f0fdf4'];
+  
+  let lanesHTML = '';
+  for (let i = 0; i < lanes.length; i++) {
+    const laneStyle = `
+      position: absolute;
+      left: ${i * laneWidthPercent}%;
+      width: ${laneWidthPercent}%;
+      top: 0;
+      height: ${requiredTimelineHeight}px;
+    `;
+    
+    const barsInLane = items
+      .filter(item => item.lane === i)
+      .map(item => renderSurgeryBarHTML(item, pxPerMin, palette))
+      .join('');
+    
+    lanesHTML += `<div class="dr-qh-lane" style="${laneStyle}">${barsInLane}</div>`;
   }
 
-  // Render bars into lanes
-  const palette = ['#93c5fd','#a5b4fc','#f0abfc','#f9a8d4','#fda4af','#fcd34d','#86efac'];
-  items.forEach(it => {
-    const laneEl = lanesWrap.children[it.lane];
-    const bar = document.createElement('div'); bar.className = 'dr-qh-evtbar';
-  bar.style.top = `${it.topMin * pxPerMin}px`;
-    bar.style.height = `${it.height * pxPerMin}px`;
-    bar.style.background = palette[it.idx % palette.length];
-    if (it.height * pxPerMin < 36) bar.classList.add('tight');
-    const row0 = document.createElement('div'); row0.className = 'row';
-    const row1 = document.createElement('div'); row1.className = 'row';
-    const row2 = document.createElement('div'); row2.className = 'row';
-    const time = document.createElement('span'); time.className = 'time'; time.textContent = formatTimeRange(it.s.start, it.s.end) || '—';
-  const patientEl = document.createElement('span'); patientEl.className = 'patient';
-    const patient = (it.s.customer && (it.s.customer.fullname || '')) || '';
-    const method = it.s.surgerymethod || '';
-    const exec = (it.s.userexec||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
-    const assistant = (it.s.userassistant||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
-    patientEl.textContent = patient || '';
-    const methodEl = document.createElement('span'); methodEl.className = 'method'; methodEl.textContent = method || '';
-    const docsEl = document.createElement('span'); docsEl.className = 'docs'; docsEl.textContent = [exec, assistant? `(phụ: ${assistant})` : ''].filter(Boolean).join(' ');
-    const pid = (it.s.customer && (it.s.customer.pid || it.s.customer.code || '')) || '';
-    const phong = it.s.phongDieuTri || '';
-    const giuong = it.s.giuongDieuTri || '';
-    const metaEl = document.createElement('span'); metaEl.className = 'meta';
-    metaEl.textContent = [pid? `PID: ${pid}`:'', phong? `Phòng: ${phong}`:'', giuong? `Giường: ${giuong}`:''].filter(Boolean).join(' • ');
-    const orEl = document.createElement('span'); orEl.className = 'or';
-    const opRoom = it.s.operating_room || (it.s.room && it.s.room.name) || '';
-    orEl.textContent = opRoom ? `Phòng mổ: ${opRoom}` : '';
-    bar.title = [
-      `Phòng mổ: ${it.s.operating_room || (it.s.room && it.s.room.name) || ''}`,
-      `Bệnh nhân: ${patient}`,
-      `PID: ${(it.s.customer && (it.s.customer.pid || it.s.customer.code || '')) || ''}`,
-      it.s.phongDieuTri ? `Phòng: ${it.s.phongDieuTri}` : '',
-      it.s.giuongDieuTri ? `Giường: ${it.s.giuongDieuTri}` : '',
-      it.s.diagnose ? `Chẩn đoán: ${it.s.diagnose}` : '',
-      `PPPT: ${method}`,
-      exec ? `BS chính: ${exec}` : '',
-      assistant ? `BS phụ: ${assistant}` : '',
-      it.s.status ? `Ghi chú: ${it.s.status}` : ''
-    ].filter(Boolean).join('\n');
-    row0.appendChild(orEl);
-    row1.appendChild(time); row1.appendChild(patientEl); row1.appendChild(metaEl);
-    row2.appendChild(methodEl); row2.appendChild(docsEl);
-    if (opRoom) bar.appendChild(row0);
-    bar.appendChild(row1); bar.appendChild(row2);
-    laneEl.appendChild(bar);
-  });
-
-  grid.appendChild(axis); grid.appendChild(lanesWrap);
-  timeline.appendChild(grid);
-  container.appendChild(timeline);
+  // Render complete timeline with dynamic height
+  const timelineHTML = `
+    <div class="dr-qh-timeline">
+      <div class="dr-qh-timegrid" style="height: ${requiredTimelineHeight}px;">
+        ${renderTimeAxisHTML(startHour, endHour, requiredTimelineHeight)}
+        <div class="dr-qh-lanes" style="height: ${requiredTimelineHeight}px;">${lanesHTML}</div>
+      </div>
+    </div>
+  `;
+  
+  container.innerHTML = timelineHTML;
 }
 
 async function showLichMoHomNayIfNeeded() {

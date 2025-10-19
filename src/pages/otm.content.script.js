@@ -180,22 +180,31 @@
     const urlParams = new URLSearchParams(window.location.search);
     const otmFetchParam = urlParams.get('otm-fetch');
     const otmFetchUsers = urlParams.has('otm-fetch-users') || urlParams.get('otm-fetch-users') === '1' || urlParams.get('otm-fetch') === 'users';
+    const otmTokenParam = urlParams.get('otm-token'); // New parameter for token-only extraction
     // Date range for fetching (filled from URL or defaulted later)
     let fromDate = null;
     let toDate = null;
     // Correlation id for messages back to parent
     let requestId = null;
     
-    console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam);
+    console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam, 'otmTokenParam:', !!otmTokenParam);
     
-    // Always check existing token first
-    console.log('[OTM Debug] Will check existing token first');
-    debugLog('Checking for existing token...');
-    // Schedule immediately (next tick) to start as soon as possible
-    setTimeout(() => {
-        console.log('[OTM Debug] Calling checkExistingToken ASAP');
-        checkExistingToken();
-    }, 0);
+    // Handle token-only extraction requests
+    if (otmTokenParam) {
+        console.log('[OTM Debug] Token extraction request detected');
+        setTimeout(() => {
+            checkExistingTokenForExtraction();
+        }, 0);
+    } else {
+        // Always check existing token first for normal operations
+        console.log('[OTM Debug] Will check existing token first');
+        debugLog('Checking for existing token...');
+        // Schedule immediately (next tick) to start as soon as possible
+        setTimeout(() => {
+            console.log('[OTM Debug] Calling checkExistingToken ASAP');
+            checkExistingToken();
+        }, 0);
+    }
 
     // Function to check existing token and start appropriate flow
     async function checkExistingToken() {
@@ -301,6 +310,129 @@
             }
         }
         startAutomation();
+    }
+
+    // Function specifically for token extraction requests
+    async function checkExistingTokenForExtraction() {
+        console.log('[OTM Debug] Starting token extraction flow...');
+        
+        // Check for existing token first
+        let savedToken = await getSavedBearerTokenAsync();
+        
+        if (savedToken && isLikelyValidToken(savedToken)) {
+            console.log('[OTM Debug] Found valid saved token, returning it');
+            debugLog('Token extraction: using saved token');
+            bearerToken = savedToken;
+            
+            // Validate the token to make sure it's still working
+            const isValid = await testTokenValidity(savedToken);
+            if (isValid) {
+                console.log('[OTM Debug] Token validation passed, sending to parent');
+                sendMessageToParent('token_success', {
+                    token: savedToken,
+                    expiry: Date.now() + (24 * 60 * 60 * 1000), // Default 24h expiry
+                    source: 'saved_token'
+                });
+                closeTab();
+                return;
+            } else {
+                console.log('[OTM Debug] Saved token is invalid, need to get fresh one');
+                debugLog('Token extraction: saved token invalid, starting automation');
+            }
+        } else {
+            console.log('[OTM Debug] No valid saved token found');
+            debugLog('Token extraction: no saved token, starting automation');
+        }
+
+        // No valid token available, start automation to get a fresh one
+        sendMessageToParent('progress', { step: 'token_automation', message: 'Bắt đầu tự động hóa để lấy token mới...' });
+        startAutomationForTokenExtraction();
+    }
+
+    // Modified automation specifically for token extraction
+    async function startAutomationForTokenExtraction() {
+        try {
+            debugLog('=== STARTING TOKEN EXTRACTION AUTOMATION ===');
+            sendMessageToParent('progress', { step: 'start', message: 'Bắt đầu tự động hóa để lấy token OTM...' });
+
+            // Wait for page to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+            sendMessageToParent('progress', { step: 'page_loaded', message: 'Trang OTM đã tải xong' });
+
+            // Step 1: Find and hover over "Quản lý Phẫu thuật"
+            debugLog('Looking for "Quản lý Phẫu thuật" menu for token extraction...');
+            sendMessageToParent('progress', { step: 'finding_menu', message: 'Đang tìm menu "Quản lý Phẫu thuật"...' });
+            const quanLyPhauThuatElement = await waitForElement('p', 'Quản lý Phẫu thuật', 8000);
+
+            if (!quanLyPhauThuatElement) {
+                debugLog('Token extraction: Cannot find "Quản lý Phẫu thuật" menu');
+                sendMessageToParent('token_error', { message: 'Không tìm thấy menu "Quản lý Phẫu thuật". Có thể tài khoản không có quyền truy cập.' });
+                closeTab();
+                return;
+            }
+
+            debugLog('Token extraction: Found menu, triggering mouseover...');
+            sendMessageToParent('progress', { step: 'menu_found', message: 'Đã tìm thấy menu, đang mở submenu...' });
+
+            // Step 2: Trigger mouseover to show submenu
+            triggerMouseEvent(quanLyPhauThuatElement, 'mouseover');
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Step 3: Find and click submenu
+            debugLog('Token extraction: Looking for submenu...');
+            sendMessageToParent('progress', { step: 'finding_submenu', message: 'Đang tìm submenu "Đặt hẹn Lịch mổ"...' });
+
+            let datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn Lịch mổ', 800);
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn Lịch mổ', 800);
+            }
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn', 900);
+            }
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn', 900);
+            }
+
+            if (datHenLichMoElement) {
+                debugLog('Token extraction: Found submenu, clicking...');
+                sendMessageToParent('progress', { step: 'submenu_found', message: 'Đã tìm thấy submenu, đang chuyển trang...' });
+                datHenLichMoElement.click();
+
+                // Wait for the page to load and token to be captured
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token được tạo...' });
+
+                // Wait for token to be captured by our interceptors
+                let attempts = 0;
+                while (!bearerToken && attempts < 15) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                    debugLog(`Token extraction: waiting for token... (attempt ${attempts}/15)`);
+                }
+
+                if (bearerToken && isLikelyValidToken(bearerToken)) {
+                    console.log('[OTM Debug] Token captured successfully during extraction');
+                    debugLog('Token extraction: success, token captured');
+                    sendMessageToParent('token_success', {
+                        token: bearerToken,
+                        expiry: Date.now() + (24 * 60 * 60 * 1000), // Default 24h expiry
+                        source: 'fresh_automation'
+                    });
+                } else {
+                    console.log('[OTM Debug] Token extraction failed - no token captured');
+                    debugLog('Token extraction: failed, no token captured');
+                    sendMessageToParent('token_error', { message: 'Không thể lấy token sau khi tự động hóa' });
+                }
+            } else {
+                debugLog('Token extraction: submenu not found');
+                sendMessageToParent('token_error', { message: 'Không tìm thấy submenu "Đặt hẹn Lịch mổ"' });
+            }
+        } catch (error) {
+            console.error('Token extraction automation error:', error);
+            sendMessageToParent('token_error', { message: 'Lỗi trong quá trình tự động hóa token: ' + error.message });
+        } finally {
+            closeTab();
+        }
     }
 
     // Intercept fetch to capture Bearer token

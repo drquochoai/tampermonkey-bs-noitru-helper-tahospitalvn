@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.8.7
+// @version      1.8.8
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -391,7 +391,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":39}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":40}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -786,7 +786,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     }
     HSBAV2HideEmptySectionsIfNeeded();
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":34}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":35}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -909,7 +909,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":29}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":30}],5:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -2311,7 +2311,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":29,"../utils":34,"../utils/domUpdaters":37,"../utils/htmlUtils":38,"../utils/patientDataMapper":40,"../utils/tagUtils":42,"./actionButtons":4}],11:[function(require,module,exports){
+},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":30,"../utils":35,"../utils/domUpdaters":38,"../utils/htmlUtils":39,"../utils/patientDataMapper":41,"../utils/tagUtils":43,"./actionButtons":4}],11:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -2385,7 +2385,10 @@ const ModalManager = {
      * Hide modal and backdrop
      */
     hideModal(sidebar, backdrop) {
-        if (sidebar) sidebar.style.display = 'none';
+        if (sidebar) {
+            sidebar.style.display = 'none';
+            sidebar.innerHTML = ''; // Clear content between patients
+        }
         backdrop.style.display = 'none';
     try { if (SidebarSession && typeof SidebarSession.endSession === 'function') SidebarSession.endSession(); } catch(_) {}
     },
@@ -2675,7 +2678,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":27,"../services/reportService":29,"../utils":34,"./phauThuatHandlers":14,"./yLenhHandlers":16}],14:[function(require,module,exports){
+},{"../services/checklistService":27,"../services/reportService":30,"../utils":35,"./phauThuatHandlers":14,"./yLenhHandlers":16}],14:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -3035,7 +3038,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/surgeryUtils":41}],15:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/surgeryUtils":42}],15:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -3834,22 +3837,31 @@ module.exports = {
     const urlParams = new URLSearchParams(window.location.search);
     const otmFetchParam = urlParams.get('otm-fetch');
     const otmFetchUsers = urlParams.has('otm-fetch-users') || urlParams.get('otm-fetch-users') === '1' || urlParams.get('otm-fetch') === 'users';
+    const otmTokenParam = urlParams.get('otm-token'); // New parameter for token-only extraction
     // Date range for fetching (filled from URL or defaulted later)
     let fromDate = null;
     let toDate = null;
     // Correlation id for messages back to parent
     let requestId = null;
     
-    console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam);
+    console.log('[OTM Debug] URL params check - otmFetchParam:', !!otmFetchParam, 'otmTokenParam:', !!otmTokenParam);
     
-    // Always check existing token first
-    console.log('[OTM Debug] Will check existing token first');
-    debugLog('Checking for existing token...');
-    // Schedule immediately (next tick) to start as soon as possible
-    setTimeout(() => {
-        console.log('[OTM Debug] Calling checkExistingToken ASAP');
-        checkExistingToken();
-    }, 0);
+    // Handle token-only extraction requests
+    if (otmTokenParam) {
+        console.log('[OTM Debug] Token extraction request detected');
+        setTimeout(() => {
+            checkExistingTokenForExtraction();
+        }, 0);
+    } else {
+        // Always check existing token first for normal operations
+        console.log('[OTM Debug] Will check existing token first');
+        debugLog('Checking for existing token...');
+        // Schedule immediately (next tick) to start as soon as possible
+        setTimeout(() => {
+            console.log('[OTM Debug] Calling checkExistingToken ASAP');
+            checkExistingToken();
+        }, 0);
+    }
 
     // Function to check existing token and start appropriate flow
     async function checkExistingToken() {
@@ -3955,6 +3967,129 @@ module.exports = {
             }
         }
         startAutomation();
+    }
+
+    // Function specifically for token extraction requests
+    async function checkExistingTokenForExtraction() {
+        console.log('[OTM Debug] Starting token extraction flow...');
+        
+        // Check for existing token first
+        let savedToken = await getSavedBearerTokenAsync();
+        
+        if (savedToken && isLikelyValidToken(savedToken)) {
+            console.log('[OTM Debug] Found valid saved token, returning it');
+            debugLog('Token extraction: using saved token');
+            bearerToken = savedToken;
+            
+            // Validate the token to make sure it's still working
+            const isValid = await testTokenValidity(savedToken);
+            if (isValid) {
+                console.log('[OTM Debug] Token validation passed, sending to parent');
+                sendMessageToParent('token_success', {
+                    token: savedToken,
+                    expiry: Date.now() + (24 * 60 * 60 * 1000), // Default 24h expiry
+                    source: 'saved_token'
+                });
+                closeTab();
+                return;
+            } else {
+                console.log('[OTM Debug] Saved token is invalid, need to get fresh one');
+                debugLog('Token extraction: saved token invalid, starting automation');
+            }
+        } else {
+            console.log('[OTM Debug] No valid saved token found');
+            debugLog('Token extraction: no saved token, starting automation');
+        }
+
+        // No valid token available, start automation to get a fresh one
+        sendMessageToParent('progress', { step: 'token_automation', message: 'Bắt đầu tự động hóa để lấy token mới...' });
+        startAutomationForTokenExtraction();
+    }
+
+    // Modified automation specifically for token extraction
+    async function startAutomationForTokenExtraction() {
+        try {
+            debugLog('=== STARTING TOKEN EXTRACTION AUTOMATION ===');
+            sendMessageToParent('progress', { step: 'start', message: 'Bắt đầu tự động hóa để lấy token OTM...' });
+
+            // Wait for page to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+            sendMessageToParent('progress', { step: 'page_loaded', message: 'Trang OTM đã tải xong' });
+
+            // Step 1: Find and hover over "Quản lý Phẫu thuật"
+            debugLog('Looking for "Quản lý Phẫu thuật" menu for token extraction...');
+            sendMessageToParent('progress', { step: 'finding_menu', message: 'Đang tìm menu "Quản lý Phẫu thuật"...' });
+            const quanLyPhauThuatElement = await waitForElement('p', 'Quản lý Phẫu thuật', 8000);
+
+            if (!quanLyPhauThuatElement) {
+                debugLog('Token extraction: Cannot find "Quản lý Phẫu thuật" menu');
+                sendMessageToParent('token_error', { message: 'Không tìm thấy menu "Quản lý Phẫu thuật". Có thể tài khoản không có quyền truy cập.' });
+                closeTab();
+                return;
+            }
+
+            debugLog('Token extraction: Found menu, triggering mouseover...');
+            sendMessageToParent('progress', { step: 'menu_found', message: 'Đã tìm thấy menu, đang mở submenu...' });
+
+            // Step 2: Trigger mouseover to show submenu
+            triggerMouseEvent(quanLyPhauThuatElement, 'mouseover');
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Step 3: Find and click submenu
+            debugLog('Token extraction: Looking for submenu...');
+            sendMessageToParent('progress', { step: 'finding_submenu', message: 'Đang tìm submenu "Đặt hẹn Lịch mổ"...' });
+
+            let datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn Lịch mổ', 800);
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn Lịch mổ', 800);
+            }
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('h6', 'Đặt hẹn', 900);
+            }
+            if (!datHenLichMoElement) {
+                datHenLichMoElement = await waitForElement('p', 'Đặt hẹn', 900);
+            }
+
+            if (datHenLichMoElement) {
+                debugLog('Token extraction: Found submenu, clicking...');
+                sendMessageToParent('progress', { step: 'submenu_found', message: 'Đã tìm thấy submenu, đang chuyển trang...' });
+                datHenLichMoElement.click();
+
+                // Wait for the page to load and token to be captured
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                sendMessageToParent('progress', { step: 'token_wait', message: 'Đang chờ token được tạo...' });
+
+                // Wait for token to be captured by our interceptors
+                let attempts = 0;
+                while (!bearerToken && attempts < 15) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    attempts++;
+                    debugLog(`Token extraction: waiting for token... (attempt ${attempts}/15)`);
+                }
+
+                if (bearerToken && isLikelyValidToken(bearerToken)) {
+                    console.log('[OTM Debug] Token captured successfully during extraction');
+                    debugLog('Token extraction: success, token captured');
+                    sendMessageToParent('token_success', {
+                        token: bearerToken,
+                        expiry: Date.now() + (24 * 60 * 60 * 1000), // Default 24h expiry
+                        source: 'fresh_automation'
+                    });
+                } else {
+                    console.log('[OTM Debug] Token extraction failed - no token captured');
+                    debugLog('Token extraction: failed, no token captured');
+                    sendMessageToParent('token_error', { message: 'Không thể lấy token sau khi tự động hóa' });
+                }
+            } else {
+                debugLog('Token extraction: submenu not found');
+                sendMessageToParent('token_error', { message: 'Không tìm thấy submenu "Đặt hẹn Lịch mổ"' });
+            }
+        } catch (error) {
+            console.error('Token extraction automation error:', error);
+            sendMessageToParent('token_error', { message: 'Lỗi trong quá trình tự động hóa token: ' + error.message });
+        } finally {
+            closeTab();
+        }
     }
 
     // Intercept fetch to capture Bearer token
@@ -4689,7 +4824,8 @@ function showDashboardBenhNhanIfNeeded() {
     const checklistItems = BS_CAI_DAT.checklistItems;
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
 
-    function createChecklistSection(patient) {
+    // Helper function to create checklist section
+    async function createChecklistSectionAsync(patient) {
         const checklistDiv = document.createElement('div');
         
         // Determine if patient has discharge tag
@@ -4749,15 +4885,20 @@ function showDashboardBenhNhanIfNeeded() {
             });
         }, 10);
         
-        // Load both checklists
+        // Load both checklists asynchronously
         const bomoList = checklistDiv.querySelector('#checklist-bomo');
         const xuatvienList = checklistDiv.querySelector('#checklist-xuatvien');
         
+        // Await the async loadChecklist for bomo
         if (bomoList) {
-            loadChecklist(patient, bomoList, 'bomo');
+            await loadChecklist(patient, bomoList, 'bomo');
         }
+        
+        // For xuatvien, it's not async but we can wait a bit for the setTimeout
         if (xuatvienList) {
             loadChecklistXuatVien(patient, xuatvienList);
+            // Wait for the setTimeout in loadChecklistXuatVien
+            await new Promise(resolve => setTimeout(resolve, 150));
         }
         
         return checklistDiv;
@@ -4919,9 +5060,23 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Setup checkbox change handlers for xuất viện
         setTimeout(() => {
-            checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
-                    const label = this.parentNode.textContent.trim();
+                    const item = BS_CAI_DAT.checklistXuatVien[idx];
+                    let label = '';
+                    if (typeof item === 'string') {
+                        label = item;
+                    } else if (item.label) {
+                        label = item.label;
+                    } else {
+                        // Fallback for child items - extract from data attribute or parent text
+                        const dataLabel = this.getAttribute('data-original-label');
+                        if (dataLabel) {
+                            label = dataLabel;
+                        } else {
+                            label = this.parentNode.textContent.trim();
+                        }
+                    }
                     const key = `xuatvien_${label}`;
                     
                     if (!window.checklistState) {
@@ -5106,9 +5261,10 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Setup checkbox change handlers
         setTimeout(() => {
-            checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
-                    window.checklistState[this.parentNode.textContent.trim()] = this.checked;
+                    const itemText = checklistItems[idx]; // Use original item text, not display text
+                    window.checklistState[itemText] = this.checked;
                     const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                     if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist thất bại!');
@@ -5126,12 +5282,25 @@ function showDashboardBenhNhanIfNeeded() {
         } catch(_) {}
     };
 
-    function showSidebar(patient) {
+    async function showSidebar(patient) {
         const backdrop = ModalManager.getOrCreateBackdrop();
         const sidebar = ModalManager.getOrCreateSidebar();
         
         // Clear and setup sidebar with responsive layout
-        sidebar.innerHTML = '';
+        sidebar.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 18px; color: #666;">
+                <div style="text-align: center;">
+                    <div style="margin-bottom: 16px;">Đang tải thông tin bệnh nhân...</div>
+                    <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #1976d2; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                </div>
+            </div>
+            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        `;
     // Start a new session for this sidebar open
     const sessionId = SidebarSession.startSession(patient && patient.mabn);
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
@@ -5274,7 +5443,7 @@ function showDashboardBenhNhanIfNeeded() {
             min-width: 0;
         `;
         
-        const checklistDiv = createChecklistSection(patient);
+        const checklistDiv = await createChecklistSectionAsync(patient);
         rightColumn.appendChild(checklistDiv);
         // Add HSBA Data tab into the same tabs bar
         try {
@@ -5291,8 +5460,10 @@ function showDashboardBenhNhanIfNeeded() {
     offlineBanner.className = 'dr-offline-banner';
     offlineBanner.textContent = 'Đang offline — thay đổi sẽ được lưu tạm và đồng bộ khi có mạng.';
     sidebar.appendChild(offlineBanner);
-    // Add container to sidebar
-        sidebar.appendChild(container);
+    // Replace loading content with actual content
+    sidebar.innerHTML = '';
+    sidebar.appendChild(offlineBanner);
+    sidebar.appendChild(container);
         
         // Close button
         const closeBtn = ModalManager.setupCloseHandlers(sidebar, backdrop);
@@ -6259,7 +6430,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":28,"../utils":34,"../utils/checklistUtils":35,"../utils/domUpdaters":37,"../utils/htmlUtils":38,"../utils/khoaUtils":39,"../utils/patientDataMapper":40,"../utils/surgeryUtils":41,"../utils/tagUtils":42,"../utils/uiUtils":43,"./page.dashboard.support":21}],21:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":29,"../utils":35,"../utils/checklistUtils":36,"../utils/domUpdaters":38,"../utils/htmlUtils":39,"../utils/khoaUtils":40,"../utils/patientDataMapper":41,"../utils/surgeryUtils":42,"../utils/tagUtils":43,"../utils/uiUtils":44,"./page.dashboard.support":21}],21:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -7092,14 +7263,14 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":7,"../services/apiService":26,"../services/reportService":29,"../utils/dateUtils":36}],22:[function(require,module,exports){
-// page.lichmo.homnay.js - Lịch mổ hôm nay (today's surgery schedule)
+},{"../components/dialogManager":7,"../services/apiService":26,"../services/reportService":30,"../utils/dateUtils":37}],22:[function(require,module,exports){
+// page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
-const ApiService = require('../services/apiService');
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
 const { createKhoaSelect } = require('../components/khoaSelect');
+const OTMTokenService = require('../services/otm.token');
 
 function stylesOnce() {
   if (document.getElementById('dr-qh-lichmo-css')) return;
@@ -7149,96 +7320,6 @@ function stylesOnce() {
   @media (max-width: 1100px){.dr-qh-timeaxis{width:46px}.dr-qh-lanes{left:46px}}
   `;
   document.head.appendChild(st);
-}
-
-function subscribeOTMMessages(onSuccess, onProgress, onError) {
-  try {
-    if (typeof GM !== 'undefined' && GM.addValueChangeListener) {
-      const unsubIds = [];
-      unsubIds.push(GM.addValueChangeListener('otm_success', (n, o, v) => {
-        try {
-          const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-          const data = parsed && parsed.data;
-          onSuccess && onSuccess(data);
-        } catch(_) {}
-      }));
-      unsubIds.push(GM.addValueChangeListener('otm_progress', (n, o, v) => {
-        try {
-          const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-          const data = parsed && parsed.data;
-          onProgress && onProgress(data);
-        } catch(_) {}
-      }));
-      unsubIds.push(GM.addValueChangeListener('otm_error', (n, o, v) => {
-        try {
-          const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-          const data = parsed && parsed.data;
-          onError && onError(data);
-        } catch(_) {}
-      }));
-      // Listen for close request to ensure background tab is closed if self-close failed
-      unsubIds.push(GM.addValueChangeListener('otm_close_tab', (n, o, v) => {
-  try { closeOTMTabIfAny(); } catch(_) {}
-  scheduleCloseAfterSignal(5000);
-      }));
-      return () => { try { unsubIds.forEach(id => { try { GM.removeValueChangeListener && GM.removeValueChangeListener(id); } catch(_) {} }); } catch(_) {} };
-    }
-  } catch(_) {}
-  // Fallback localStorage polling
-  const tid = setInterval(() => {
-    try {
-      const s = localStorage.getItem('otm_success');
-  if (s) { localStorage.removeItem('otm_success'); const p = JSON.parse(s); onSuccess && onSuccess(p && p.data); }
-      const pr = localStorage.getItem('otm_progress');
-  if (pr) { localStorage.removeItem('otm_progress'); const p = JSON.parse(pr); onProgress && onProgress(p && p.data); }
-      const er = localStorage.getItem('otm_error');
-  if (er) { localStorage.removeItem('otm_error'); const p = JSON.parse(er); onError && onError(p && p.data); }
-  const ct = localStorage.getItem('otm_close_tab');
-  if (ct) { localStorage.removeItem('otm_close_tab'); try { closeOTMTabIfAny(); } catch(_) {} scheduleCloseAfterSignal(5000); }
-    } catch(_) {}
-  }, 800);
-  return () => clearInterval(tid);
-}
-
-let lastOTMTab = null;
-let pendingCloseTimer = null;
-let pendingCloseDeadline = 0;
-function closeOTMTabIfAny() {
-  try {
-    if (lastOTMTab && !lastOTMTab.closed) { lastOTMTab.close(); }
-  } catch(_) {}
-  lastOTMTab = null;
-}
-function scheduleCloseAfterSignal(ms = 5000) {
-  try { if (pendingCloseTimer) { clearInterval(pendingCloseTimer); } } catch(_) {}
-  pendingCloseDeadline = Date.now() + Math.max(1000, ms);
-  pendingCloseTimer = setInterval(() => {
-    try { closeOTMTabIfAny(); } catch(_) {}
-    if (!lastOTMTab || lastOTMTab.closed || Date.now() > pendingCloseDeadline) {
-      try { clearInterval(pendingCloseTimer); } catch(_) {}
-      pendingCloseTimer = null; pendingCloseDeadline = 0;
-    }
-  }, 250);
-}
-
-function openOTMSurgeriesTab(fromDate, toDate) {
-  // Avoid tab accumulation: close previous background tab if still open
-  try { closeOTMTabIfAny(); } catch(_) {}
-  const payload = encodeURIComponent(JSON.stringify({ fromDate, toDate, preferToken: true }));
-  const url = `https://otm.tahospital.vn/?otm-fetch=${payload}`;
-  if (typeof GM !== 'undefined' && GM.openInTab) {
-  try {
-    const ret = GM.openInTab(url, { active: false, insert: true, setParent: true });
-    // Tampermonkey may return a Tab or a Promise<Tab>
-    if (ret && typeof ret.then === 'function') {
-      ret.then(h => { try { if (h && h.close) { lastOTMTab = h; } } catch(_) {} });
-    } else {
-      lastOTMTab = ret && ret.close ? ret : null;
-    }
-    return;
-  } catch(_) {}
-  }
-  try { lastOTMTab = window.open(url, '_blank'); } catch(_) { /* ignore */ }
 }
 
 function formatTimeRange(start, end) {
@@ -7293,399 +7374,353 @@ function calculateContentHeight(item) {
   const opRoom = s.operating_room || (s.room && s.room.name) || '';
   if (opRoom) rowCount++;
   
-  // Patient name row (always present)
-  rowCount++;
-  
-  // Meta info row
-  const pid = (s.customer && (s.customer.pid || s.customer.code || '')) || '';
-  const phong = s.phongDieuTri || '';
-  const giuong = s.giuongDieuTri || '';
-  if (pid || phong || giuong) rowCount++;
-  
-  // Diagnosis row (now before surgery method)
-  const diagnose = s.diagnose || '';
-  if (diagnose) {
-    // Count lines for diagnosis (might wrap to 2 lines)
-    const diagnosisLineCount = Math.min(2, Math.ceil(diagnose.length / 50));
-    rowCount += diagnosisLineCount;
-  }
+  // Patient name row
+  if (s.customer && s.customer.fullname) rowCount++;
   
   // Surgery method row
-  const method = s.surgerymethod || '';
-  if (method) {
-    // Count lines for method (might wrap to 2 lines)
-    const methodLineCount = Math.min(2, Math.ceil(method.length / 50));
-    rowCount += methodLineCount;
-  }
+  if (s.surgerymethod) rowCount++;
   
   // Doctors row
-  const exec = (s.userexec||[]).map(u => u && (u.fullname || u.name)).filter(Boolean);
-  const assistant = (s.userassistant||[]).map(u => u && (u.fullname || u.name)).filter(Boolean);
-  if (exec.length || assistant.length) rowCount++;
+  const docs = [...(s.userexec || []), ...(s.userassistant || [])];
+  if (docs.length > 0) rowCount++;
   
-  // Calculate height: base padding + row height * count + gaps
-  const basePadding = 28; // 14px top + 14px bottom
-  const rowHeight = 24; // estimated height per row including line-height
-  const gapHeight = 6; // gap between rows
-  const calculatedHeight = basePadding + (rowHeight * rowCount) + (gapHeight * Math.max(0, rowCount - 1));
+  // Diagnosis row
+  if (s.diagnose) rowCount++;
   
-  return Math.max(80, calculatedHeight); // minimum 80px
+  // Meta info row
+  const meta = [s.khoaLuuTri, s.khoaDieuTri, s.phongDieuTri, s.giuongDieuTri].filter(Boolean);
+  if (meta.length > 0) rowCount++;
+
+  // Base height + row height * number of rows
+  const baseHeight = 40;
+  const rowHeight = 22;
+  const paddingHeight = 28;
+  
+  return baseHeight + (rowCount * rowHeight) + paddingHeight;
 }
 
-function renderSurgeryBarHTML(item, pxPerMin, palette) {
-  const { s, idx, topMin, height } = item;
-  
-  // Extract data
-  const patient = (s.customer && (s.customer.fullname || '')) || '';
-  const method = s.surgerymethod || '';
-  const exec = (s.userexec||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
-  const assistant = (s.userassistant||[]).map(u => u && (u.fullname || u.name)).filter(Boolean).join(', ');
-  const pid = (s.customer && (s.customer.pid || s.customer.code || '')) || '';
-  const phong = s.phongDieuTri || '';
-  const giuong = s.giuongDieuTri || '';
-  const opRoom = s.operating_room || (s.room && s.room.name) || '';
-  const timeRange = formatTimeRange(s.start, s.end) || '—';
-  const diagnose = s.diagnose || '';
-  
-  // Create tooltip
-  const tooltip = [
-    `Phòng mổ: ${opRoom}`,
-    `Bệnh nhân: ${patient}`,
-    `PID: ${pid}`,
-    phong ? `Phòng: ${phong}` : '',
-    giuong ? `Giường: ${giuong}` : '',
-    diagnose ? `Chẩn đoán: ${diagnose}` : '',
-    `PPPT: ${method}`,
-    exec ? `BS chính: ${exec}` : '',
-    assistant ? `BS phụ: ${assistant}` : '',
-    s.status ? `Ghi chú: ${s.status}` : ''
-  ].filter(Boolean).join('\n');
-  
-  // Meta info
-  const metaInfo = [
-    pid ? `PID: ${pid}` : '', 
-    phong ? `Phòng: ${phong}` : '', 
-    giuong ? `Giường: ${giuong}` : ''
-  ].filter(Boolean).join(' • ');
-  
-  const docsInfo = [exec, assistant ? `(phụ: ${assistant})` : ''].filter(Boolean).join(' ');
-  
-  // Style properties with content-based height
-  const contentHeight = calculateContentHeight(item);
-  const displayHeight = Math.max(contentHeight, height * pxPerMin); // Use larger of content or time-based height
-  
-  const barStyle = `
-    top: ${topMin * pxPerMin}px;
-    height: ${displayHeight}px;
-    background: ${palette[idx % palette.length]};
-  `;
-  
-  const tightClass = displayHeight < 100 ? ' tight' : '';
-  
-  return `
-    <div class="dr-qh-evtbar${tightClass}" style="${barStyle}" title="${tooltip}">
-      ${opRoom ? `
-        <div class="row">
-          <span class="or">Phòng mổ: ${opRoom}</span>
-          <span class="time">${timeRange}</span>
-        </div>
-      ` : ''}
-      
-      <div class="row">
-        <span class="patient">${patient}</span>
-      </div>
-      
-      ${metaInfo ? `
-        <div class="row">
-          <span class="meta">${metaInfo}</span>
-        </div>
-      ` : ''}
-      
-      ${diagnose ? `
-        <div class="row">
-          <span class="diagnose"><b>CĐ:</b> ${diagnose}</span>
-        </div>
-      ` : ''}
-      
-      ${method ? `
-        <div class="row">
-          <span class="method"><b>PPPT:</b> ${method}</span>
-        </div>
-      ` : ''}
-      
-      ${docsInfo ? `
-        <div class="row">
-          <span class="docs">${docsInfo}</span>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderUI(container, dateStr, surgeries) {
-  if (!surgeries || surgeries.length === 0) {
-    container.innerHTML = '<div class="dr-qh-empty">Không có ca mổ nào trong ngày này.</div>';
-    return;
+function renderSurgeryTimeline(surgeries) {
+  if (!Array.isArray(surgeries) || surgeries.length === 0) {
+    return '<div class="dr-qh-empty">Không có lịch mổ nào trong ngày hôm nay</div>';
   }
 
-  // Prepare timeline range
-  const startHour = 7, endHour = 24;
-  const totalMinutes = (endHour - startHour) * 60;
-  const pxPerMin = 720 / totalMinutes;
+  // Sort surgeries by start time
+  const sorted = [...surgeries].sort(sortByStart);
+  
+  const startHour = 6;
+  const endHour = 22;
+  const timelineHeight = 720;
+  const hoursSpan = endHour - startHour;
 
-  // Compute bars with overlap lanes and content-based heights
-  const items = surgeries.map((s, idx) => {
-    const sMs = s && s.start ? Date.parse(s.start) : NaN;
-    const eMs = s && s.end ? Date.parse(s.end) : NaN;
-    const sD = isNaN(sMs) ? null : new Date(sMs);
-    const eD = isNaN(eMs) ? null : new Date(eMs);
-    const clamp = (d) => Math.max(0, Math.min(totalMinutes - 5, (d.getHours() - startHour) * 60 + d.getMinutes()));
-    const topMin = sD ? clamp(sD) : 0;
-    const endMin = eD ? clamp(eD) : (topMin + 60);
-    const timeBasedHeight = Math.max(60, endMin - topMin); // Reduced minimum for time-based
-    return { s, idx, topMin, height: timeBasedHeight };
-  }).sort((a,b) => a.topMin - b.topMin);
+  const timeAxisHTML = renderTimeAxisHTML(startHour, endHour, timelineHeight);
 
-  // Calculate content heights and determine actual display heights
-  items.forEach(item => {
-    const contentHeight = calculateContentHeight(item);
-    const timeHeight = item.height;
-    item.displayHeight = Math.max(contentHeight, timeHeight);
-    // Convert back to minutes for lane calculation
-    item.heightInMinutes = item.displayHeight / pxPerMin;
-  });
-
-  // Assign lanes using display heights for overlapping bars
-  const lanes = [];
-  items.forEach(it => {
-    let placed = false;
-    for (let i = 0; i < lanes.length; i++) {
-      if (lanes[i] <= it.topMin - 4) {
-        it.lane = i; 
-        lanes[i] = it.topMin + it.heightInMinutes; 
-        placed = true; 
-        break;
+  // Generate surgery event bars
+  let eventsHTML = '';
+  sorted.forEach((item, idx) => {
+    const { s } = item;
+    
+    // Calculate position and height
+    const startTime = s.start ? new Date(s.start) : null;
+    const endTime = s.end ? new Date(s.end) : null;
+    
+    let topPercent = 0;
+    let heightPixels = calculateContentHeight(item);
+    
+    if (startTime) {
+      const startHours = startTime.getHours() + (startTime.getMinutes() / 60);
+      const relativeStart = Math.max(0, Math.min(hoursSpan, startHours - startHour));
+      topPercent = (relativeStart / hoursSpan) * 100;
+      
+      if (endTime) {
+        const endHours = endTime.getHours() + (endTime.getMinutes() / 60);
+        const relativeEnd = Math.max(relativeStart, Math.min(hoursSpan, endHours - startHour));
+        const duration = relativeEnd - relativeStart;
+        heightPixels = Math.max(heightPixels, (duration / hoursSpan) * timelineHeight);
       }
     }
-    if (!placed) { 
-      it.lane = lanes.length; 
-      lanes.push(it.topMin + it.heightInMinutes); 
+
+    // Generate content rows
+    let contentRows = '';
+    
+    // Operating room + time row
+    const opRoom = s.operating_room || (s.room && s.room.name) || '';
+    const timeRange = formatTimeRange(s.start, s.end);
+    if (opRoom || timeRange) {
+      contentRows += `
+        <div class="row">
+          <div class="or">${opRoom || 'Phòng mổ'}</div>
+          <div class="time">${timeRange}</div>
+        </div>
+      `;
     }
+
+    // Patient name row
+    if (s.customer && s.customer.fullname) {
+      contentRows += `
+        <div class="row">
+          <div class="patient">${s.customer.fullname}</div>
+        </div>
+      `;
+    }
+
+    // Surgery method row
+    if (s.surgerymethod) {
+      contentRows += `
+        <div class="row">
+          <div class="method">${s.surgerymethod}</div>
+        </div>
+      `;
+    }
+
+    // Doctors row
+    const docs = [...(s.userexec || []), ...(s.userassistant || [])];
+    if (docs.length > 0) {
+      const docNames = docs.map(d => d.fullname).filter(Boolean).join(', ');
+      contentRows += `
+        <div class="row">
+          <div class="docs">BS: ${docNames}</div>
+        </div>
+      `;
+    }
+
+    // Diagnosis row
+    if (s.diagnose) {
+      contentRows += `
+        <div class="row">
+          <div class="diagnose">${s.diagnose}</div>
+        </div>
+      `;
+    }
+
+    // Meta info row
+    const meta = [s.khoaLuuTri, s.khoaDieuTri, s.phongDieuTri, s.giuongDieuTri].filter(Boolean);
+    if (meta.length > 0) {
+      contentRows += `
+        <div class="row">
+          <div class="meta">${meta.join(' • ')}</div>
+        </div>
+      `;
+    }
+
+    // Create event bar
+    eventsHTML += `
+      <div class="dr-qh-evtbar" style="top: ${topPercent}%; height: ${heightPixels}px; z-index: ${100 - idx};">
+        ${contentRows}
+      </div>
+    `;
   });
 
-  // Calculate required timeline height based on content
-  const maxEndTime = Math.max(...items.map(item => item.topMin + item.heightInMinutes));
-  const requiredTimelineHeight = Math.max(720, maxEndTime * pxPerMin + 40); // 40px bottom padding
-
-  // Generate lanes HTML
-  const laneWidthPercent = 100 / Math.max(1, lanes.length);
-  const palette = ['#e0f2fe','#f0f9ff','#fdf4ff','#fef7ed','#fef2f2','#fffbeb','#f0fdf4'];
-  
-  let lanesHTML = '';
-  for (let i = 0; i < lanes.length; i++) {
-    const laneStyle = `
-      position: absolute;
-      left: ${i * laneWidthPercent}%;
-      width: ${laneWidthPercent}%;
-      top: 0;
-      height: ${requiredTimelineHeight}px;
-    `;
-    
-    const barsInLane = items
-      .filter(item => item.lane === i)
-      .map(item => renderSurgeryBarHTML(item, pxPerMin, palette))
-      .join('');
-    
-    lanesHTML += `<div class="dr-qh-lane" style="${laneStyle}">${barsInLane}</div>`;
-  }
-
-  // Render complete timeline with dynamic height
-  const timelineHTML = `
-    <div class="dr-qh-timeline">
-      <div class="dr-qh-timegrid" style="height: ${requiredTimelineHeight}px;">
-        ${renderTimeAxisHTML(startHour, endHour, requiredTimelineHeight)}
-        <div class="dr-qh-lanes" style="height: ${requiredTimelineHeight}px;">${lanesHTML}</div>
+  return `
+    <div class="dr-qh-timegrid">
+      ${timeAxisHTML}
+      <div class="dr-qh-lanes">
+        <div class="dr-qh-lane" style="height: ${timelineHeight}px;">
+          ${eventsHTML}
+        </div>
       </div>
     </div>
   `;
-  
-  container.innerHTML = timelineHTML;
 }
 
+function renderLichMoPage() {
+  stylesOnce();
+
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('vi-VN', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
+
+  return `
+    <div class="dr-qh-lichmo-wrap">
+      <div class="dr-qh-lichmo-head">
+        <div class="dr-qh-lichmo-left">
+          <h2 class="dr-qh-lichmo-title">Lịch mổ hôm nay</h2>
+          <div class="dr-qh-lichmo-khoa" id="dr-qh-lichmo-khoa">Tất cả khoa</div>
+        </div>
+        <div class="dr-qh-lichmo-mid">
+          <div class="dr-qh-lichmo-date">${dateStr}</div>
+        </div>
+        <div class="dr-qh-lichmo-right">
+          <button class="dr-qh-lichmo-btn" id="dr-qh-lichmo-refresh">↻ Làm mới</button>
+          <button class="dr-qh-lichmo-btn" id="dr-qh-lichmo-settings">⚙ Cài đặt</button>
+          <div class="dr-qh-lichmo-status" id="dr-qh-lichmo-status">Sẵn sàng</div>
+          <div class="dr-qh-lichmo-loading" id="dr-qh-lichmo-loading"></div>
+        </div>
+      </div>
+      <div class="dr-qh-lichmo-content" id="dr-qh-lichmo-content">
+        <div class="dr-qh-empty">Đang tải dữ liệu...</div>
+      </div>
+    </div>
+  `;
+}
+
+// Transform raw surgery records into a lean structure required by the UI
+function filterSurgeryData(records) {
+  if (!Array.isArray(records)) return [];
+  const result = [];
+  for (const r of records) {
+    const item = {
+      s: {
+        customer: {
+          fullname: r?.customer?.fullname ?? null,
+          pid: r?.customer?.code ?? null,
+          dob: r?.customer?.dob ?? null,
+        },
+        diagnose: r?.diagnose ?? null,
+        surgerymethod: r?.surgerymethod ?? null,
+        start: r?.start ?? null,
+        end: r?.end ?? null,
+        khoaLuuTri: r?.khoaLuuTri ?? null,
+        khoaDieuTri: r?.khoaDieuTri ?? null,
+        phongDieuTri: r?.phongDieuTri ?? null,
+        giuongDieuTri: r?.giuongDieuTri ?? null,
+        operating_room: r?.room?.name ?? null,
+        status: r?.status ?? null,
+        userexec: Array.isArray(r?.userexec)
+          ? r.userexec.map(u => ({ fullname: u?.fullname ?? null, taid: u?.taid ?? null }))
+          : [],
+        userassistant: Array.isArray(r?.userassistant)
+          ? r.userassistant.map(u => ({ fullname: u?.fullname ?? null, taid: u?.taid ?? null }))
+          : [],
+        room: r?.room || null
+      }
+    };
+    result.push(item);
+  }
+  return result;
+}
+
+async function loadSurgeryData() {
+  const loadingEl = document.getElementById('dr-qh-lichmo-loading');
+  const statusEl = document.getElementById('dr-qh-lichmo-status');
+  const contentEl = document.getElementById('dr-qh-lichmo-content');
+  
+  if (loadingEl) loadingEl.classList.add('active');
+  if (statusEl) statusEl.textContent = 'Đang tải...';
+
+  try {
+    console.log('DEBUG - Starting direct OTM API fetch...');
+    
+    // Use OTMTokenService to fetch today's surgeries
+    const today = new Date().toISOString().split('T')[0];
+    const rawData = await OTMTokenService.fetchSurgeries(today, today);
+    
+    console.log('DEBUG - Raw OTM surgery data:', rawData);
+    
+    // Extract surgery array from response
+    let surgeryArray = [];
+    if (Array.isArray(rawData)) {
+      surgeryArray = rawData;
+    } else if (rawData && Array.isArray(rawData.data)) {
+      surgeryArray = rawData.data;
+    } else if (rawData && typeof rawData === 'object') {
+      // Look for array in various possible properties
+      const candidates = ['bookings', 'surgeries', 'items', 'records', 'results'];
+      for (const prop of candidates) {
+        if (Array.isArray(rawData[prop])) {
+          surgeryArray = rawData[prop];
+          break;
+        }
+      }
+    }
+    
+    console.log('DEBUG - Extracted surgery array:', surgeryArray.length, 'items');
+    
+    // Transform data
+    const surgeries = filterSurgeryData(surgeryArray);
+    console.log('DEBUG - Filtered surgery data:', surgeries.length, 'items');
+    
+    // Apply surgeon filtering if any
+    const selectedSurgeons = await SurgeonSettingsService.getSelectedSurgeons();
+    const filteredSurgeries = filterBySelectedSurgeons(surgeries, selectedSurgeons);
+    console.log('DEBUG - After surgeon filter:', filteredSurgeries.length, 'items');
+    
+    // Render timeline
+    const timelineHTML = renderSurgeryTimeline(filteredSurgeries);
+    if (contentEl) contentEl.innerHTML = timelineHTML;
+    
+    if (statusEl) statusEl.textContent = `${filteredSurgeries.length} ca mổ`;
+    showToast(`Đã tải ${filteredSurgeries.length} ca mổ hôm nay`, 'success');
+    
+  } catch (error) {
+    console.error('DEBUG - Error loading surgery data:', error);
+    
+    let errorMessage = 'Không thể tải dữ liệu lịch mổ';
+    if (error.message === 'TOKEN_EXPIRED') {
+      errorMessage = 'Token OTM đã hết hạn, vui lòng thử lại';
+    } else if (error.message === 'NO_TOKEN') {
+      errorMessage = 'Không có token OTM, vui lòng đăng nhập OTM trước';
+    }
+    
+    if (contentEl) {
+      contentEl.innerHTML = `
+        <div class="dr-qh-empty">
+          <p>${errorMessage}</p>
+          <button class="dr-qh-lichmo-btn" onclick="loadSurgeryData()">Thử lại</button>
+        </div>
+      `;
+    }
+    if (statusEl) statusEl.textContent = 'Lỗi';
+    showToast(errorMessage, 'error');
+  } finally {
+    if (loadingEl) loadingEl.classList.remove('active');
+  }
+}
+
+function attachEventListeners() {
+  const refreshBtn = document.getElementById('dr-qh-lichmo-refresh');
+  const settingsBtn = document.getElementById('dr-qh-lichmo-settings');
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      console.log('DEBUG - Refresh button clicked');
+      loadSurgeryData();
+    });
+  }
+
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', () => {
+      // Navigate to surgeon settings
+      window.location.href = '?caidat&tab=otm-quanlyphauthuat';
+    });
+  }
+}
+
+function initLichMoPage() {
+  console.log('DEBUG - Initializing Lich Mo page with OTMTokenService');
+  
+  // Render the page
+  document.body.innerHTML = renderLichMoPage();
+  
+  // Attach event listeners
+  attachEventListeners();
+  
+  // Load data
+  loadSurgeryData();
+}
+
+// Legacy compatibility function
 async function showLichMoHomNayIfNeeded() {
   const url = new URL(window.location.href);
   const hasLm = /[?&]lm(=|&|$)/.test(url.search);
   const hasLichmo = /[?&]lichmo(=|&|$)/.test(url.search) || (url.searchParams.get('otm')||'').toLowerCase() === 'lichmo';
   if (!hasLm && !hasLichmo) return;
-
-  stylesOnce();
-  document.body.innerHTML = '';
-  const wrap = document.createElement('div'); wrap.className = 'dr-qh-lichmo-wrap';
-  const head = document.createElement('div'); head.className = 'dr-qh-lichmo-head';
-  head.innerHTML = `
-    <div class="dr-qh-lichmo-left">
-      <h3 class="dr-qh-lichmo-title">Lịch mổ hôm nay</h3>
-      <span id="dr-qh-lichmo-khoa" class="dr-qh-lichmo-khoa"></span>
-    </div>
-    <div class="dr-qh-lichmo-mid">
-      <button id="dr-qh-lichmo-prev" class="dr-qh-lichmo-btn" title="Ngày trước">◀</button>
-      <input id="dr-qh-lichmo-date" class="dr-qh-lichmo-date" type="date" />
-      <button id="dr-qh-lichmo-next" class="dr-qh-lichmo-btn" title="Ngày sau">▶</button>
-      <button id="dr-qh-lichmo-today" class="dr-qh-lichmo-btn" title="Hôm nay">Hôm nay</button>
-    </div>
-    <div class="dr-qh-lichmo-right">
-      <div id="dr-qh-lichmo-loading" class="dr-qh-lichmo-loading" aria-label="Đang tải" title="Đang tải"></div>
-      <div id="dr-qh-lichmo-status" class="dr-qh-lichmo-status">Chuẩn bị lấy dữ liệu...</div>
-      <button id="dr-qh-lichmo-refresh" class="dr-qh-lichmo-btn">Làm mới</button>
-    </div>
-  `;
-  const content = document.createElement('div'); content.className = 'dr-qh-lichmo-content';
-  wrap.appendChild(head); wrap.appendChild(content); document.body.appendChild(wrap);
-
-  const statusEl = head.querySelector('#dr-qh-lichmo-status');
-  const loadingEl = head.querySelector('#dr-qh-lichmo-loading');
-  const dateEl = head.querySelector('#dr-qh-lichmo-date');
-  const prevBtn = head.querySelector('#dr-qh-lichmo-prev');
-  const nextBtn = head.querySelector('#dr-qh-lichmo-next');
-  const todayBtn = head.querySelector('#dr-qh-lichmo-today');
-  const refreshBtn = head.querySelector('#dr-qh-lichmo-refresh');
-  const khoaEl = head.querySelector('#dr-qh-lichmo-khoa');
-  // mount reusable khoa select at vị trí "dr-qh-lichmo-khoa"
-  const khoaComp = createKhoaSelect({ container: khoaEl, onChange: async (newId, newName) => {
-    khoaId = String(newId);
-    await doRefresh();
-    scheduleAutoRefresh();
-  }});
-
-  // State
-  let currentDate = new Date();
-  let refreshTimer = null;
-  let selectedNames = [];
-  let khoaId = getSelectedKhoa('551');
-  let khoaNameCache = '';
-  let isBusy = false; // single-flight lock
-  let activeUnsub = null;
-  let busyWatchdog = null;
-  let closeRetryTimer = null; // no longer used; child self-closes
-
-  function fmtVietnam(d) {
-    const yyyy = d.getFullYear(); const mm = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
-    return { iso: `${yyyy}-${mm}-${dd}`, human: `${dd}/${mm}/${yyyy}` };
-  }
-
-  async function loadKhoaNameOnce() {
-    try {
-      const list = await ApiService.fetchKhoaPhong();
-      const found = (list||[]).find(k => String(k.id) === String(khoaId));
-      khoaNameCache = (found && found.name) || `Khoa ${khoaId}`;
-    } catch(_) { khoaNameCache = `Khoa ${khoaId}`; }
-    // Label is handled by component; keep cache for title/other use if needed
-  }
-
-  async function loadSelectedSurgeons() {
-    try {
-      const { list } = await SurgeonSettingsService.loadSurgeonList(khoaId);
-      selectedNames = (list || []).map(x => typeof x === 'string' ? x : x.fullname).filter(Boolean);
-    } catch(_) { selectedNames = []; }
-  }
-
-  function setLoading(flag, message) {
-    if (flag) loadingEl.classList.add('active'); else loadingEl.classList.remove('active');
-    if (message) statusEl.textContent = message;
-  }
-
-  function disableControls(disabled) {
-    [prevBtn, nextBtn, todayBtn, refreshBtn, dateEl].forEach(el => { try { el.disabled = !!disabled; el.classList.toggle('dr-disabled', !!disabled); } catch(_) {} });
-  }
-
-  function subscribeAndFetch(dateIso) {
-    if (isBusy) {
-      showToast('Đang lấy dữ liệu, vui lòng đợi tác vụ hiện tại hoàn tất...', { background: '#0284c7' });
-      return;
-    }
-    isBusy = true;
-    disableControls(true);
-    setLoading(true, `Đang mở OTM để lấy lịch mổ ngày ${dateIso}...`);
-    showToast(`Đang lấy dữ liệu ngày ${dateIso}...`);
-    const unsub = subscribeOTMMessages((data) => {
-      try {
-        const arr = data && (data.surgeryData || []);
-        const usable = Array.isArray(arr) && arr.length ? arr : (data && data.surgeryDataRaw) || [];
-        const filtered = filterBySelectedSurgeons(usable, selectedNames);
-        content.innerHTML = '';
-        renderUI(content, dateIso, filtered);
-        statusEl.textContent = `Đã tải ${usable.length} ca, hiển thị ${filtered.length} ca (lọc theo bác sĩ).`;
-        showToast('Đã lấy dữ liệu.', { background: '#16a34a' });
-      } finally {
-        try { unsub && unsub(); } catch(_) {}
-        setLoading(false);
-        isBusy = false; activeUnsub = null; disableControls(false);
-      }
-    }, (prog) => {
-      if (prog && prog.message) { statusEl.textContent = prog.message; }
-    }, (err) => {
-      statusEl.textContent = (err && err.message) ? err.message : 'Lỗi khi lấy dữ liệu lịch mổ.';
-      showToast('Lỗi khi lấy dữ liệu lịch mổ.', { background: '#ef4444' });
-      try { unsub && unsub(); } catch(_) {}
-      setLoading(false);
-      isBusy = false; activeUnsub = null; disableControls(false);
-    });
-    activeUnsub = unsub;
-    openOTMSurgeriesTab(dateIso, dateIso);
-
-    // Watchdog to avoid stuck busy state if no response arrives
-    if (busyWatchdog) { try { clearTimeout(busyWatchdog); } catch(_) {} }
-  busyWatchdog = setTimeout(() => {
-      if (isBusy) {
-        showToast('Quá thời gian chờ OTM phản hồi. Tác vụ bị hủy.', { background: '#ef4444' });
-        try { activeUnsub && activeUnsub(); } catch(_) {}
-        setLoading(false);
-        isBusy = false; activeUnsub = null; disableControls(false);
-      }
-    }, 75000);
-  }
-
-  async function doRefresh() {
-    const { iso } = fmtVietnam(currentDate);
-    if (dateEl && dateEl.type === 'date') { dateEl.value = iso; }
-    await loadSelectedSurgeons();
-    subscribeAndFetch(iso);
-  }
-
-  function scheduleAutoRefresh() {
-    const ms = Math.max(60000, parseInt(localStorage.getItem('dr_qh_lichmo_refresh_ms') || '300000', 10));
-    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
-    refreshTimer = setInterval(() => { doRefresh(); }, ms);
-  }
-
-  // Wire header controls
-  prevBtn.addEventListener('click', () => { currentDate.setDate(currentDate.getDate()-1); doRefresh(); scheduleAutoRefresh(); });
-  nextBtn.addEventListener('click', () => { currentDate.setDate(currentDate.getDate()+1); doRefresh(); scheduleAutoRefresh(); });
-  todayBtn.addEventListener('click', () => { currentDate = new Date(); doRefresh(); scheduleAutoRefresh(); });
-  refreshBtn.addEventListener('click', () => { doRefresh(); scheduleAutoRefresh(); });
-  // Allow manual date selection
-  dateEl.addEventListener('change', () => {
-    const v = dateEl.value; // yyyy-mm-dd
-    if (v && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
-      const [y,m,d] = v.split('-').map(n=>parseInt(n,10));
-      const nd = new Date(y, m-1, d);
-      if (!isNaN(nd.getTime())) {
-        currentDate = nd;
-        doRefresh();
-        scheduleAutoRefresh();
-      }
-    }
-  });
-
-  // Initial
-  await loadKhoaNameOnce();
-  await doRefresh();
-  scheduleAutoRefresh();
+  
+  console.log('DEBUG - Legacy URL detected, redirecting to initLichMoPage');
+  initLichMoPage();
 }
 
-module.exports = { showLichMoHomNayIfNeeded };
+module.exports = {
+  initLichMoPage,
+  renderLichMoPage,
+  loadSurgeryData,
+  showLichMoHomNayIfNeeded
+};
 
-},{"../components/khoaSelect":9,"../services/apiService":26,"../services/surgeonSettingsService":32,"../utils/khoaUtils":39,"../utils/uiUtils":43}],23:[function(require,module,exports){
+},{"../components/khoaSelect":9,"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":40,"../utils/uiUtils":44}],23:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -7840,7 +7875,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":26,"../services/settingsService":31}],24:[function(require,module,exports){
+},{"../services/apiService":26,"../services/settingsService":32}],24:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
@@ -8203,17 +8238,17 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":5,"../pages/page.settings.otm.quanlyphauthuat":25,"../services/settingsService":31,"../settings-open-world":33,"./page.settings-open-world":23}],25:[function(require,module,exports){
-// page.settings.otm.quanlyphauthuat.js - Manage surgeons list per Khoa using OTM users
+},{"../components/autoLoginToggle":5,"../pages/page.settings.otm.quanlyphauthuat":25,"../services/settingsService":32,"../settings-open-world":34,"./page.settings-open-world":23}],25:[function(require,module,exports){
+// page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
-const ApiService = require('../services/apiService');
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
+const OTMTokenService = require('../services/otm.token');
 
 function stylesOnce() {
-    if (document.getElementById('dr-otm-surgeon-styles')) return;
+    if (document.getElementById('dr-otm-surgeon-styles-v2')) return;
     const st = document.createElement('style');
-    st.id = 'dr-otm-surgeon-styles';
+    st.id = 'dr-otm-surgeon-styles-v2';
     st.textContent = `
     .dr-os-wrap { display:flex; flex-direction:column; gap:12px; }
     .dr-os-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -8228,327 +8263,373 @@ function stylesOnce() {
         .dr-os-actions { display:flex; gap:8px; }
         .dr-os-btn { appearance:none; border:1px solid #e5e7eb; background:#fff; padding:8px 12px; border-radius:8px; cursor:pointer }
         .dr-os-btn.primary { border-color:#2563eb; background:#2563eb; color:#fff }
+        .dr-os-status { padding:12px; text-align:center; color:#64748b; font-size:14px; }
+        .dr-os-error { color:#dc2626; background:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:12px; margin:8px 0; }
+        .dr-os-loading { display:inline-block; width:16px; height:16px; border:2px solid #e5e7eb; border-top-color:#2563eb; border-radius:50%; animation:spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 1100px) { .dr-os-columns { grid-template-columns: 1fr; } }
     @media (max-width: 900px) { .dr-os-list { grid-template-columns: 1fr; } }
     `;
     document.head.appendChild(st);
 }
 
-// In-memory cache for OTM users (heavy list)
-const _otmUsersCache = { list: null, at: 0 };
-
-function getBearerToken() {
-    try { return localStorage.getItem('otm_bearer_token') || ''; } catch { return ''; }
-}
+// In-memory cache for OTM users
+const _otmUsersCache = { list: null, at: 0, loading: false };
 
 async function ensureOTMUsers() {
-    if (Array.isArray(_otmUsersCache.list) && _otmUsersCache.list.length > 0) return _otmUsersCache.list;
-    const token = getBearerToken();
-    if (!token) throw new Error('NO_TOKEN');
-    // Use the same query and cache-busting approach as the content script to avoid 304/empty payloads
-    const url = `https://otm.tahospital.vn/api/user?ishsoft=null&page=1&limit=10000&_=${Date.now()}`;
-    const res = await fetch(url, {
-        headers: {
-            'accept': 'application/json, text/plain, */*',
-            'authorization': `Bearer ${token}`,
-            'logintype': '2',
-            'siteid': '1'
-        },
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-store',
-        credentials: 'include'
-    });
-    if (!res.ok) {
-        if (res.status === 401 || res.status === 403) throw new Error('TOKEN_EXPIRED');
-        throw new Error('HTTP_' + res.status);
+    if (Array.isArray(_otmUsersCache.list) && _otmUsersCache.list.length > 0) {
+        console.log('DEBUG - Using cached OTM users:', _otmUsersCache.list.length);
+        return _otmUsersCache.list;
     }
-    const json = await res.json();
-    // Robustly pick the array from possible containers
-    function pickArrayPayload(obj) {
-        if (Array.isArray(obj)) return obj;
-        if (!obj || typeof obj !== 'object') return [];
-        const candidates = ['data', 'items', 'result', 'rows', 'content', 'users', 'records', 'list'];
-        for (const k of candidates) {
-            const v = obj[k];
-            if (Array.isArray(v)) return v;
-            if (v && typeof v === 'object') {
-                for (const kk of candidates) {
-                    const v2 = v[kk];
-                    if (Array.isArray(v2)) return v2;
+    
+    if (_otmUsersCache.loading) {
+        console.log('DEBUG - OTM users already loading, waiting...');
+        // Wait for the ongoing request
+        let attempts = 0;
+        while (_otmUsersCache.loading && attempts < 30) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            attempts++;
+        }
+        if (Array.isArray(_otmUsersCache.list) && _otmUsersCache.list.length > 0) {
+            return _otmUsersCache.list;
+        }
+    }
+
+    _otmUsersCache.loading = true;
+    try {
+        console.log('DEBUG - Fetching OTM users using OTMTokenService...');
+        const response = await OTMTokenService.fetchUsers();
+        console.log('DEBUG - Raw OTM users response:', response);
+        
+        // Extract users array from response
+        let usersArray = [];
+        if (Array.isArray(response)) {
+            usersArray = response;
+        } else if (response && Array.isArray(response.data)) {
+            usersArray = response.data;
+        } else if (response && typeof response === 'object') {
+            // Look for array in various possible properties
+            const candidates = ['data', 'items', 'result', 'rows', 'content', 'users', 'records', 'list'];
+            for (const prop of candidates) {
+                if (Array.isArray(response[prop])) {
+                    usersArray = response[prop];
+                    break;
+                }
+                // Check nested properties
+                if (response[prop] && typeof response[prop] === 'object') {
+                    for (const nestedProp of candidates) {
+                        if (Array.isArray(response[prop][nestedProp])) {
+                            usersArray = response[prop][nestedProp];
+                            break;
+                        }
+                    }
+                    if (usersArray.length > 0) break;
                 }
             }
         }
-        return [];
-    }
-    const arr = pickArrayPayload(json);
-    _otmUsersCache.list = arr;
-    _otmUsersCache.at = Date.now();
-    return arr;
-}
+        
+        console.log('DEBUG - Extracted users array:', usersArray.length, 'users');
+        
+        // Transform and filter users
+        const users = (usersArray || [])
+            .map(u => ({
+                id: u.id ?? u.taid ?? u.userid ?? u.userId ?? null,
+                fullname: u.fullname || u.fullName || u.name || ''
+            }))
+            .filter(u => u.fullname && u.fullname.trim().length > 0);
 
-function subscribeOTMMessages(onUsers, onProgress, onError) {
-    // GM listeners (preferred)
-    try {
-        if (typeof GM !== 'undefined' && GM.addValueChangeListener) {
-            const unsub = [];
-            unsub.push(GM.addValueChangeListener('otm_success', (n, o, v) => {
-                try {
-                    const parsed = typeof v === 'string' ? JSON.parse(v) : v;
-                    const data = parsed && parsed.data;
-                    if (data && Array.isArray(data.otmUsers)) {
-                        onUsers(data.otmUsers);
-                    }
-                } catch(_) {}
-            }));
-            unsub.push(GM.addValueChangeListener('otm_progress', (n, o, v) => {
-                try { const parsed = typeof v === 'string' ? JSON.parse(v) : v; onProgress && onProgress(parsed && parsed.data); } catch(_) {}
-            }));
-            unsub.push(GM.addValueChangeListener('otm_error', (n, o, v) => {
-                try { const parsed = typeof v === 'string' ? JSON.parse(v) : v; onError && onError(parsed && parsed.data); } catch(_) {}
-            }));
-            return () => { try { unsub.forEach(x => typeof x === 'function' && x()); } catch(_) {} };
+        console.log('DEBUG - Processed users:', users.length, 'valid users');
+        
+        _otmUsersCache.list = users;
+        _otmUsersCache.at = Date.now();
+        return users;
+        
+    } catch (error) {
+        console.error('DEBUG - Error fetching OTM users:', error);
+        
+        if (error.message === 'TOKEN_EXPIRED') {
+            throw new Error('Token OTM đã hết hạn. Vui lòng đăng nhập lại OTM.');
+        } else if (error.message === 'NO_TOKEN') {
+            throw new Error('Không có token OTM. Vui lòng đăng nhập OTM trước.');
         }
-    } catch(_) {}
-    // Fallback: poll localStorage keys once per second for a short time
-    const tid = setInterval(() => {
-        try {
-            const successData = localStorage.getItem('otm_success');
-            if (successData) {
-                localStorage.removeItem('otm_success');
-                const parsed = JSON.parse(successData);
-                const data = parsed && parsed.data;
-                if (data && Array.isArray(data.otmUsers)) onUsers(data.otmUsers);
-            }
-            const progressData = localStorage.getItem('otm_progress');
-            if (progressData) {
-                localStorage.removeItem('otm_progress');
-                const parsed = JSON.parse(progressData); onProgress && onProgress(parsed && parsed.data);
-            }
-            const errorData = localStorage.getItem('otm_error');
-            if (errorData) {
-                localStorage.removeItem('otm_error');
-                const parsed = JSON.parse(errorData); onError && onError(parsed && parsed.data);
-            }
-        } catch(_) {}
-    }, 1000);
-    return () => clearInterval(tid);
-}
-
-function openOTMUsersTab() {
-    const url = 'https://otm.tahospital.vn/?otm-fetch-users=1';
-    if (typeof GM !== 'undefined' && GM.openInTab) {
-        try { GM.openInTab(url, { active: false, insert: true }); return; } catch(_) {}
+        
+        throw new Error('Không thể tải danh sách bác sĩ từ OTM: ' + error.message);
+    } finally {
+        _otmUsersCache.loading = false;
     }
-    window.open(url, '_blank');
 }
 
-function filterSurgeonUsers(users) {
-    if (!Array.isArray(users)) return [];
-    // Accepted doctor title prefixes
-    const prefixes = [
-        'BS.', 'Bác sĩ', 'BSCKI', 'BS.CKI', 'BS.CKII', 'ThS.BS', 'ThS.BS.CKI', 'ThS.BS.CKII', 'PGS.TS.BS', 'PGS.TS.BS.CKI', 'PGS.TS.BS.CKII', 'TS.BS'
-    ].map(p => p.toLowerCase());
-    const norm = s => (s || '').toString().trim();
-    function looksLikeDoctorName(name) {
-        const n = norm(name);
-        if (!n) return false;
-        const ln = n.toLowerCase();
-        return prefixes.some(p => ln.startsWith(p));
-    }
-    // Return mapped consistent shape: { id, fullname, khoaId? }
-    return users
-        .filter(u => looksLikeDoctorName(u?.fullname || u?.name || ''))
-        .map(u => ({ id: u.id ?? u.taid ?? u.userid ?? null, fullname: u.fullname || u.name || '', raw: u }));
-}
-
-function uniqueByFullname(arr) {
-    const seen = new Set();
-    const out = [];
-    for (const x of arr || []) {
-        const n = (x.fullname || '').trim();
-        if (!n || seen.has(n)) continue;
-        seen.add(n); out.push({ fullname: n });
-    }
-    return out;
-}
-
-async function render(container, state) {
+function renderSurgeonManagement() {
     stylesOnce();
-    container.innerHTML = `
+    return `
         <div class="dr-os-wrap">
-            <div style="color:#6b7280">Chọn khoa và tick các bác sĩ phẫu thuật cần dùng. Danh sách lấy từ OTM, chỉ tải một lần mỗi phiên.</div>
             <div class="dr-os-row">
-                <label>Khoa:</label>
-                <select id="dr-os-khoa" class="dr-os-select"></select>
-                <input id="dr-os-search" class="dr-os-search" placeholder="Tìm theo tên..." />
-                    <div class="dr-os-actions">
-                        <button id="dr-os-reload-users" class="dr-os-btn">Tải lại DS từ OTM</button>
-                    </div>
+                <h3>Quản lý danh sách bác sĩ phẫu thuật</h3>
+                <button class="dr-os-btn primary" id="dr-os-refresh">🔄 Làm mới danh sách</button>
             </div>
-            <div id="dr-os-info" style="color:#6b7280"></div>
+            <div class="dr-os-row">
+                <input 
+                    type="text" 
+                    id="dr-os-search" 
+                    class="dr-os-search" 
+                    placeholder="Tìm kiếm bác sĩ..."
+                    style="flex: 1; max-width: 300px;"
+                />
+                <button class="dr-os-btn" id="dr-os-select-all">Chọn tất cả</button>
+                <button class="dr-os-btn" id="dr-os-clear-all">Bỏ chọn tất cả</button>
+            </div>
             <div class="dr-os-columns">
                 <div class="dr-os-selected">
-                    <h4>Đã chọn (<span id="dr-os-selected-count">0</span>)</h4>
-                    <div id="dr-os-selected-chips"></div>
+                    <h4>Bác sĩ đã chọn (<span id="dr-os-selected-count">0</span>)</h4>
+                    <div id="dr-os-selected-list">
+                        <div class="dr-os-status">Đang tải...</div>
+                    </div>
                 </div>
-                <div id="dr-os-list" class="dr-os-list"></div>
+                <div class="dr-os-list" id="dr-os-list">
+                    <div class="dr-os-status">
+                        <div class="dr-os-loading"></div>
+                        Đang tải danh sách bác sĩ từ OTM...
+                    </div>
+                </div>
             </div>
         </div>
     `;
+}
 
-    const khoaSel = container.querySelector('#dr-os-khoa');
-    const searchInput = container.querySelector('#dr-os-search');
-    const listEl = container.querySelector('#dr-os-list');
-    const chipsWrap = container.querySelector('#dr-os-selected-chips');
-    const selCountEl = container.querySelector('#dr-os-selected-count');
-    const infoEl = container.querySelector('#dr-os-info');
+async function loadSurgeonsList() {
+    const listEl = document.getElementById('dr-os-list');
+    const selectedListEl = document.getElementById('dr-os-selected-list');
+    const searchEl = document.getElementById('dr-os-search');
 
-    // Load khoa list via ApiService
-    let khoaList = [];
-    try { khoaList = await ApiService.fetchKhoaPhong(); } catch { khoaList = []; }
-    khoaSel.innerHTML = '';
-    for (const k of khoaList) {
-        const opt = document.createElement('option');
-        opt.value = String(k.id);
-        opt.textContent = k.name || `Khoa ${k.id}`;
-        khoaSel.appendChild(opt);
-    }
-    const selectedKhoa = getSelectedKhoa(khoaList[0] ? String(khoaList[0].id) : '551');
-    if (khoaSel.querySelector(`option[value="${selectedKhoa}"]`)) khoaSel.value = selectedKhoa;
-
-    let otmUsers = [];
-    let surgeonUsers = [];
-    let selected = new Set();
-
-    async function loadUsers() {
-        infoEl.textContent = 'Đang tải danh sách người dùng OTM...';
-        try {
-            otmUsers = await ensureOTMUsers();
-            surgeonUsers = filterSurgeonUsers(otmUsers);
-            infoEl.textContent = `Lọc được ${surgeonUsers.length} bác sĩ từ OTM.`;
-        } catch (e) {
-            if (e && (e.message === 'NO_TOKEN' || e.message === 'TOKEN_EXPIRED')) {
-                infoEl.textContent = 'Chưa có/ hết hạn token OTM. Đang mở tab OTM để lấy dữ liệu...';
-                const unsubscribe = subscribeOTMMessages((users) => {
-                    _otmUsersCache.list = users; _otmUsersCache.at = Date.now();
-                    otmUsers = users; surgeonUsers = filterSurgeonUsers(otmUsers);
-                    infoEl.textContent = `Đã tải ${users.length} người dùng từ OTM. Lọc được ${surgeonUsers.length} bác sĩ.`;
-                    renderList();
-                    try { unsubscribe && unsubscribe(); } catch(_) {}
-                }, (prog) => {
-                    // optional progress updates
-                }, (err) => {
-                    infoEl.textContent = (err && err.message) ? err.message : 'Lỗi khi lấy dữ liệu OTM';
-                });
-                openOTMUsersTab();
-            } else {
-                infoEl.textContent = e && e.message ? e.message : 'Không thể tải danh sách OTM';
-                surgeonUsers = [];
-            }
-        }
-    }
-
-    function renderSelectedChips() {
-        const arr = Array.from(selected.values()).sort((a,b)=>a.localeCompare(b));
-        chipsWrap.innerHTML = '';
-        for (const name of arr) {
-            const chip = document.createElement('span');
-            chip.className = 'dr-os-chip';
-            chip.innerHTML = `<span>${name}</span><button title="Bỏ chọn">✕</button>`;
-            const btn = chip.querySelector('button');
-            btn.addEventListener('click', async () => {
-                selected.delete(name);
-                renderSelectedChips();
-                renderList();
-                // Auto-save on removal
-                const khoaId = khoaSel.value;
-                const names = Array.from(selected.values());
-                try { await SurgeonSettingsService.saveSurgeonList(khoaId, names); } catch(_) {}
-            });
-            chipsWrap.appendChild(chip);
-        }
-        selCountEl.textContent = String(arr.length);
-    }
-
-    function renderList() {
-        const q = (searchInput.value || '').trim().toLowerCase();
-        const items = surgeonUsers.filter(u => !q || (u.fullname || '').toLowerCase().includes(q));
-        listEl.innerHTML = '';
-        for (const u of items) {
-            const id = `dr-os-${btoa(unescape(encodeURIComponent(u.fullname))).replace(/=/g,'')}`;
-            const div = document.createElement('label');
-            div.className = 'dr-os-item';
-            div.innerHTML = `
-                <input type="checkbox" data-name="${u.fullname.replace(/"/g,'&quot;')}" ${selected.has(u.fullname) ? 'checked' : ''} />
-                <span>${u.fullname}</span>
+    try {
+        // Show loading state
+        if (listEl) {
+            listEl.innerHTML = `
+                <div class="dr-os-status">
+                    <div class="dr-os-loading"></div>
+                    Đang tải danh sách bác sĩ từ OTM...
+                </div>
             `;
-            const cb = div.querySelector('input[type="checkbox"]');
-                cb.addEventListener('change', async () => {
-                    if (cb.checked) selected.add(u.fullname); else selected.delete(u.fullname);
-                    renderSelectedChips();
-                    // Auto-save on change
-                    const khoaId = khoaSel.value;
-                    const names = Array.from(selected.values());
-                    try { await SurgeonSettingsService.saveSurgeonList(khoaId, names); } catch(_) {}
-                });
-            listEl.appendChild(div);
         }
-        if (items.length === 0) listEl.innerHTML = '<div class="dr-os-item" style="opacity:.7">Không có kết quả.</div>';
-    }
 
-    async function loadSelectionForCurrentKhoa() {
-        const khoaId = khoaSel.value;
-        infoEl.textContent = 'Đang tải danh sách đã lưu...';
-        try {
-            const { list } = await SurgeonSettingsService.loadSurgeonList(khoaId);
-            selected = new Set((list || []).map(x => (typeof x === 'string' ? x : x.fullname)).filter(Boolean));
-            infoEl.textContent = `Đã tải danh sách lưu (${selected.size}).`;
-            renderList();
-            renderSelectedChips();
-        } catch (e) {
-            infoEl.textContent = 'Không thể tải danh sách đã lưu';
+        console.log('DEBUG - Starting OTM users fetch...');
+        const users = await ensureOTMUsers();
+        console.log('DEBUG - Loaded', users.length, 'OTM users');
+
+        // Get currently selected surgeons
+        const selectedSurgeons = await SurgeonSettingsService.getSelectedSurgeons();
+        console.log('DEBUG - Currently selected surgeons:', selectedSurgeons);
+        
+        // Render selected surgeons
+        renderSelectedSurgeons(selectedSurgeons, selectedListEl);
+        
+        // Render all surgeons list
+        renderSurgeonsList(users, selectedSurgeons, listEl);
+        
+        // Set up search functionality
+        if (searchEl) {
+            searchEl.addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase().trim();
+                filterSurgeonsList(users, selectedSurgeons, query, listEl);
+            });
+        }
+
+        console.log('DEBUG - Surgeon management loaded successfully');
+
+    } catch (error) {
+        console.error('DEBUG - Error loading surgeons list:', error);
+        
+        if (listEl) {
+            listEl.innerHTML = `
+                <div class="dr-os-error">
+                    <p><strong>Lỗi:</strong> ${error.message}</p>
+                    <button class="dr-os-btn" onclick="loadSurgeonsList()">Thử lại</button>
+                </div>
+            `;
+        }
+        
+        if (selectedListEl) {
+            selectedListEl.innerHTML = `
+                <div class="dr-os-status">Không thể tải danh sách bác sĩ</div>
+            `;
         }
     }
-
-    await loadUsers();
-    await loadSelectionForCurrentKhoa();
-    renderList();
-
-    searchInput.addEventListener('input', () => renderList());
-    khoaSel.addEventListener('change', async () => { await loadSelectionForCurrentKhoa(); });
-
-    container.querySelector('#dr-os-reload-users').addEventListener('click', async () => {
-        // Always fetch via OTM tab to mirror otm-entry flow
-        infoEl.textContent = 'Đang mở tab OTM để tải lại danh sách...';
-        const unsubscribe = subscribeOTMMessages((users) => {
-            _otmUsersCache.list = users; _otmUsersCache.at = Date.now();
-            otmUsers = users; surgeonUsers = filterSurgeonUsers(otmUsers);
-            infoEl.textContent = `Đã tải ${users.length} người dùng từ OTM. Lọc được ${surgeonUsers.length} bác sĩ.`;
-            renderList();
-            renderSelectedChips();
-            try { unsubscribe && unsubscribe(); } catch(_) {}
-        }, null, (err) => {
-            infoEl.textContent = (err && err.message) ? err.message : 'Lỗi khi lấy dữ liệu OTM';
-        });
-        openOTMUsersTab();
-    });
-
-    container.querySelector('#dr-os-save').addEventListener('click', async () => {
-        const khoaId = khoaSel.value;
-        const names = Array.from(selected.values());
-        // Removed explicit Save button; selection changes are auto-saved.
-    });
 }
 
-async function mountOTMSurgeonsTab({ container }) {
+function renderSelectedSurgeons(selectedSurgeons, container) {
     if (!container) return;
-    await render(container, {});
+    
+    const countEl = document.getElementById('dr-os-selected-count');
+    if (countEl) {
+        countEl.textContent = selectedSurgeons.length.toString();
+    }
+
+    if (selectedSurgeons.length === 0) {
+        container.innerHTML = '<div class="dr-os-status">Chưa chọn bác sĩ nào</div>';
+        return;
+    }
+
+    const chipsHTML = selectedSurgeons.map(name => `
+        <div class="dr-os-chip">
+            ${name}
+            <button onclick="removeSurgeon('${name.replace(/'/g, "\\'")}')">&times;</button>
+        </div>
+    `).join('');
+
+    container.innerHTML = chipsHTML;
 }
 
-module.exports = { mountOTMSurgeonsTab };
+function renderSurgeonsList(users, selectedSurgeons, container) {
+    if (!container) return;
+    
+    filterSurgeonsList(users, selectedSurgeons, '', container);
+}
 
-},{"../services/apiService":26,"../services/surgeonSettingsService":32,"../utils/khoaUtils":39}],26:[function(require,module,exports){
+function filterSurgeonsList(users, selectedSurgeons, query, container) {
+    if (!container) return;
+    
+    const selectedSet = new Set(selectedSurgeons.map(name => name.toLowerCase()));
+    
+    let filteredUsers = users.filter(user => {
+        const nameMatch = !query || user.fullname.toLowerCase().includes(query);
+        const notSelected = !selectedSet.has(user.fullname.toLowerCase());
+        return nameMatch && notSelected;
+    });
+
+    if (filteredUsers.length === 0) {
+        const message = query ? 
+            `Không tìm thấy bác sĩ nào với từ khóa "${query}"` : 
+            'Tất cả bác sĩ đã được chọn';
+        container.innerHTML = `<div class="dr-os-status">${message}</div>`;
+        return;
+    }
+
+    const itemsHTML = filteredUsers.map(user => `
+        <div class="dr-os-item">
+            <div style="flex: 1;">
+                <strong>${user.fullname}</strong>
+                ${user.id ? `<div style="font-size: 12px; color: #6b7280;">ID: ${user.id}</div>` : ''}
+            </div>
+            <button class="dr-os-btn primary" onclick="addSurgeon('${user.fullname.replace(/'/g, "\\'")}')">
+                Thêm
+            </button>
+        </div>
+    `).join('');
+
+    container.innerHTML = itemsHTML;
+}
+
+// Global functions for button handlers
+window.addSurgeon = async function(name) {
+    try {
+        console.log('DEBUG - Adding surgeon:', name);
+        const selectedSurgeons = await SurgeonSettingsService.getSelectedSurgeons();
+        
+        if (selectedSurgeons.includes(name)) {
+            console.log('DEBUG - Surgeon already selected:', name);
+            return;
+        }
+
+        const newSelected = [...selectedSurgeons, name];
+        await SurgeonSettingsService.saveSelectedSurgeons(newSelected);
+        console.log('DEBUG - Surgeon added successfully:', name);
+        
+        // Reload the lists
+        loadSurgeonsList();
+
+    } catch (error) {
+        console.error('DEBUG - Error adding surgeon:', error);
+        alert('Không thể thêm bác sĩ: ' + error.message);
+    }
+};
+
+window.removeSurgeon = async function(name) {
+    try {
+        console.log('DEBUG - Removing surgeon:', name);
+        const selectedSurgeons = await SurgeonSettingsService.getSelectedSurgeons();
+        const newSelected = selectedSurgeons.filter(s => s !== name);
+        
+        await SurgeonSettingsService.saveSelectedSurgeons(newSelected);
+        console.log('DEBUG - Surgeon removed successfully:', name);
+        
+        // Reload the lists
+        loadSurgeonsList();
+
+    } catch (error) {
+        console.error('DEBUG - Error removing surgeon:', error);
+        alert('Không thể xóa bác sĩ: ' + error.message);
+    }
+};
+
+function attachEventListeners() {
+    const refreshBtn = document.getElementById('dr-os-refresh');
+    const selectAllBtn = document.getElementById('dr-os-select-all');
+    const clearAllBtn = document.getElementById('dr-os-clear-all');
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            console.log('DEBUG - Refresh button clicked, clearing cache');
+            // Clear cache and reload
+            _otmUsersCache.list = null;
+            _otmUsersCache.at = 0;
+            await loadSurgeonsList();
+        });
+    }
+
+    if (selectAllBtn) {
+        selectAllBtn.addEventListener('click', async () => {
+            try {
+                const users = await ensureOTMUsers();
+                const allNames = users.map(u => u.fullname);
+                await SurgeonSettingsService.saveSelectedSurgeons(allNames);
+                loadSurgeonsList();
+            } catch (error) {
+                alert('Không thể chọn tất cả: ' + error.message);
+            }
+        });
+    }
+
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', async () => {
+            try {
+                await SurgeonSettingsService.saveSelectedSurgeons([]);
+                loadSurgeonsList();
+            } catch (error) {
+                alert('Không thể bỏ chọn tất cả: ' + error.message);
+            }
+        });
+    }
+}
+
+function initSurgeonManagement() {
+    console.log('DEBUG - Initializing OTM surgeon management with OTMTokenService');
+    
+    const container = document.createElement('div');
+    container.innerHTML = renderSurgeonManagement();
+    
+    // Replace or append to current content
+    const existingContent = document.querySelector('.dr-os-wrap');
+    if (existingContent) {
+        existingContent.replaceWith(container.firstElementChild);
+    } else {
+        document.body.appendChild(container.firstElementChild);
+    }
+    
+    // Attach event listeners
+    attachEventListeners();
+    
+    // Load data
+    loadSurgeonsList();
+}
+
+module.exports = {
+    initSurgeonManagement,
+    renderSurgeonManagement,
+    loadSurgeonsList,
+    ensureOTMUsers
+};
+
+},{"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":40}],26:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -8705,7 +8786,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":39}],27:[function(require,module,exports){
+},{"../utils/khoaUtils":40}],27:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -8973,7 +9054,524 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":36,"./apiService":26,"./saveQueue":30}],28:[function(require,module,exports){
+},{"../utils/dateUtils":37,"./apiService":26,"./saveQueue":31}],28:[function(require,module,exports){
+// otm.token.js - OTM Token management service
+// This service manages OTM authentication tokens and direct API access
+
+const ApiService = require('./apiService');
+
+// Special MABN identifier for OTM token storage
+const OTM_TOKEN_MABN = '%9191_otm_token';
+
+// In-memory token cache to avoid frequent API calls
+let _tokenCache = {
+    token: null,
+    expiry: 0,
+    lastValidated: 0
+};
+
+// Token validation interval (5 minutes)
+const TOKEN_VALIDATION_INTERVAL = 5 * 60 * 1000;
+
+const OTMTokenService = {
+    /**
+     * Check if a token appears to be valid (basic format validation)
+     */
+    _isLikelyValidToken(token) {
+        try {
+            if (typeof token !== 'string') return false;
+            const t = token.trim();
+            if (!t) return false;
+            const low = t.toLowerCase();
+            if (low === 'undefined' || low === 'null') return false;
+            if (t.length < 16) return false; // heuristic: tokens are typically long
+            // avoid whitespace in token
+            if (/\s/.test(t)) return false;
+            return true;
+        } catch { 
+            return false; 
+        }
+    },
+
+    /**
+     * Get stored OTM token from our API service
+     */
+    async getStoredToken() {
+        try {
+            // Use fixed dates as per requirement: tungay và denngay là 10/10/1010 10:10
+            const tungay = '1010-10-10 10:10';
+            const denngay = '1010-10-10 10:10';
+            
+            const formData = new FormData();
+            formData.append('mabn', OTM_TOKEN_MABN);
+            formData.append('tungay', tungay);
+            formData.append('denngay', denngay);
+            
+            const response = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+                method: 'POST',
+                credentials: 'include',
+                body: formData
+            });
+            
+            const result = await response.json();
+            console.log('DEBUG - OTM Token retrieve API response:', result);
+            
+            if (result.data && Array.isArray(result.data) && result.data.length > 0) {
+                // Find the token record (similar to findChecklistObject)
+                const tokenRecord = result.data.find(item => 
+                    item.hoten && item.hoten.includes('OTM_TOKEN')
+                );
+                
+                if (tokenRecord && tokenRecord.chuky) {
+                    try {
+                        const tokenData = JSON.parse(tokenRecord.chuky);
+                        if (tokenData.token && this._isLikelyValidToken(tokenData.token)) {
+                            console.log('DEBUG - Retrieved valid OTM token from storage');
+                            return {
+                                token: tokenData.token,
+                                expiry: tokenData.expiry || 0,
+                                checklistObj: tokenRecord
+                            };
+                        }
+                    } catch (e) {
+                        console.error('DEBUG - Error parsing stored token data:', e);
+                    }
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('DEBUG - Error retrieving stored OTM token:', error);
+            return null;
+        }
+    },
+
+    /**
+     * Save OTM token to our API service
+     */
+    async saveToken(token, expiry = null) {
+        try {
+            if (!this._isLikelyValidToken(token)) {
+                console.error('DEBUG - Refusing to save invalid OTM token');
+                return false;
+            }
+
+            // Calculate expiry if not provided (default: 24 hours from now)
+            if (!expiry) {
+                expiry = Date.now() + (24 * 60 * 60 * 1000);
+            }
+
+            const tokenData = {
+                token: token,
+                expiry: expiry,
+                savedAt: Date.now()
+            };
+
+            // First, try to get existing record
+            const existing = await this.getStoredToken();
+            
+            let checklistObj;
+            if (existing && existing.checklistObj) {
+                // Update existing record
+                checklistObj = existing.checklistObj;
+            } else {
+                // Create new record structure with fixed dates: 10/10/1010 10:10
+                const fixedDate = '1010-10-10';
+                const fixedDateTime = '1010-10-10 10:10';
+                checklistObj = {
+                    mabn: OTM_TOKEN_MABN,
+                    hoten: 'OTM_TOKEN_STORAGE',
+                    ngaysinh: fixedDate,
+                    gioitinh: '1',
+                    diachi: 'SYSTEM_GENERATED',
+                    ngayvv: fixedDate,
+                    tungay: fixedDateTime,
+                    denngay: fixedDateTime,
+                    chuky: JSON.stringify(tokenData)
+                };
+            }
+
+            // Update the token data
+            checklistObj.chuky = JSON.stringify(tokenData);
+
+            // Save using the same pattern as ChecklistService
+            const result = await ApiService.updateChecklistData(checklistObj, tokenData);
+            
+            if (result && (result.Status == 1 || result.isValid)) {
+                console.log('DEBUG - OTM token saved successfully');
+                // Update in-memory cache
+                _tokenCache = {
+                    token: token,
+                    expiry: expiry,
+                    lastValidated: Date.now()
+                };
+                return true;
+            } else {
+                console.error('DEBUG - Failed to save OTM token:', result);
+                return false;
+            }
+        } catch (error) {
+            console.error('DEBUG - Error saving OTM token:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Test if a token is valid by making a test API call
+     */
+    async validateToken(token) {
+        try {
+            if (!this._isLikelyValidToken(token)) {
+                return false;
+            }
+
+            // Use GM_xmlhttpRequest for cross-origin request if available
+            return new Promise((resolve) => {
+                const testUrl = `https://otm.tahospital.vn/api/booking/roomwithdepartment?_=${Date.now()}`;
+                
+                if (typeof GM_xmlhttpRequest !== 'undefined') {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: testUrl,
+                        headers: {
+                            'accept': 'application/json, text/plain, */*',
+                            'authorization': `Bearer ${token}`,
+                            'logintype': '2',
+                            'siteid': '1',
+                            'cache-control': 'no-cache'
+                        },
+                        timeout: 10000,
+                        onload: function(response) {
+                            console.log('DEBUG - Token validation response:', response.status);
+                            resolve(response.status >= 200 && response.status < 300);
+                        },
+                        onerror: function() {
+                            console.log('DEBUG - Token validation failed - network error');
+                            resolve(false);
+                        },
+                        ontimeout: function() {
+                            console.log('DEBUG - Token validation timed out');
+                            resolve(false);
+                        }
+                    });
+                } else {
+                    // Fallback - this might fail due to CORS, but try anyway
+                    fetch(testUrl, {
+                        method: 'GET',
+                        headers: {
+                            'accept': 'application/json, text/plain, */*',
+                            'authorization': `Bearer ${token}`,
+                            'logintype': '2',
+                            'siteid': '1'
+                        },
+                        mode: 'cors',
+                        credentials: 'include'
+                    })
+                    .then(response => {
+                        console.log('DEBUG - Token validation response (fetch):', response.status);
+                        resolve(response.status >= 200 && response.status < 300);
+                    })
+                    .catch(() => {
+                        console.log('DEBUG - Token validation failed (fetch)');
+                        resolve(false);
+                    });
+                }
+            });
+        } catch (error) {
+            console.error('DEBUG - Error validating token:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Get a valid OTM token - from cache, storage, or by opening OTM tab
+     */
+    async getValidToken() {
+        const now = Date.now();
+        
+        // Check in-memory cache first
+        if (_tokenCache.token && 
+            _tokenCache.expiry > now && 
+            (now - _tokenCache.lastValidated) < TOKEN_VALIDATION_INTERVAL) {
+            console.log('DEBUG - Using cached OTM token');
+            return _tokenCache.token;
+        }
+
+        // Try to get from storage
+        const stored = await this.getStoredToken();
+        if (stored && stored.token && stored.expiry > now) {
+            // Validate the stored token
+            const isValid = await this.validateToken(stored.token);
+            if (isValid) {
+                console.log('DEBUG - Using stored OTM token');
+                _tokenCache = {
+                    token: stored.token,
+                    expiry: stored.expiry,
+                    lastValidated: now
+                };
+                return stored.token;
+            } else {
+                console.log('DEBUG - Stored token is invalid, need to refresh');
+            }
+        }
+
+        // Need to get a fresh token by opening OTM tab
+        console.log('DEBUG - Need to open OTM tab to get fresh token');
+        return await this._getTokenFromOTMTab();
+    },
+
+    /**
+     * Open OTM tab to obtain a fresh token (based on existing openOTMSurgeriesTab pattern)
+     */
+    async _getTokenFromOTMTab() {
+        return new Promise((resolve, reject) => {
+            let resolved = false;
+            const timeout = setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    reject(new Error('Token fetch timeout'));
+                }
+            }, 30000); // 30 second timeout
+
+            // Subscribe to OTM messages (based on existing subscribeOTMMessages pattern)
+            const unsubscribe = this._subscribeToTokenMessages(
+                (tokenData) => {
+                    if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeout);
+                        unsubscribe();
+                        
+                        if (tokenData && tokenData.token) {
+                            console.log('DEBUG - Received token from OTM tab');
+                            // Save the new token
+                            this.saveToken(tokenData.token, tokenData.expiry);
+                            resolve(tokenData.token);
+                        } else {
+                            reject(new Error('No token received from OTM tab'));
+                        }
+                    }
+                },
+                (error) => {
+                    if (!resolved) {
+                        resolved = true;
+                        clearTimeout(timeout);
+                        unsubscribe();
+                        reject(new Error(error || 'OTM token fetch failed'));
+                    }
+                }
+            );
+
+            // Open OTM tab with token fetch request
+            const payload = encodeURIComponent(JSON.stringify({ 
+                action: 'getToken',
+                preferToken: true 
+            }));
+            const url = `https://otm.tahospital.vn/?otm-token=${payload}`;
+            
+            if (typeof GM !== 'undefined' && GM.openInTab) {
+                try {
+                    GM.openInTab(url, { active: false, insert: true, setParent: true });
+                } catch (e) {
+                    window.open(url, '_blank');
+                }
+            } else {
+                window.open(url, '_blank');
+            }
+        });
+    },
+
+    /**
+     * Subscribe to token messages from OTM tab (similar to subscribeOTMMessages)
+     */
+    _subscribeToTokenMessages(onSuccess, onError) {
+        try {
+            if (typeof GM !== 'undefined' && GM.addValueChangeListener) {
+                const unsubIds = [];
+                
+                unsubIds.push(GM.addValueChangeListener('otm_token_success', (n, o, v) => {
+                    try {
+                        const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+                        onSuccess && onSuccess(parsed && parsed.data);
+                    } catch(_) {}
+                }));
+                
+                unsubIds.push(GM.addValueChangeListener('otm_token_error', (n, o, v) => {
+                    try {
+                        const parsed = typeof v === 'string' ? JSON.parse(v) : v;
+                        onError && onError(parsed && parsed.data);
+                    } catch(_) {}
+                }));
+                
+                return () => {
+                    try {
+                        unsubIds.forEach(id => {
+                            try {
+                                GM.removeValueChangeListener && GM.removeValueChangeListener(id);
+                            } catch(_) {}
+                        });
+                    } catch(_) {}
+                };
+            }
+        } catch(_) {}
+
+        // Fallback localStorage polling
+        const tid = setInterval(() => {
+            try {
+                const s = localStorage.getItem('otm_token_success');
+                if (s) {
+                    localStorage.removeItem('otm_token_success');
+                    const p = JSON.parse(s);
+                    onSuccess && onSuccess(p && p.data);
+                }
+                
+                const er = localStorage.getItem('otm_token_error');
+                if (er) {
+                    localStorage.removeItem('otm_token_error');
+                    const p = JSON.parse(er);
+                    onError && onError(p && p.data);
+                }
+            } catch(_) {}
+        }, 800);
+        
+        return () => clearInterval(tid);
+    },
+
+    /**
+     * Make an OTM API request using GM_xmlhttpRequest with automatic token handling
+     */
+    async makeOTMRequest(url, options = {}) {
+        try {
+            const token = await this.getValidToken();
+            if (!token) {
+                throw new Error('No valid OTM token available');
+            }
+
+            return new Promise((resolve, reject) => {
+                const requestOptions = {
+                    method: options.method || 'GET',
+                    url: url,
+                    headers: {
+                        'accept': 'application/json, text/plain, */*',
+                        'authorization': `Bearer ${token}`,
+                        'logintype': '2',
+                        'siteid': '1',
+                        'cache-control': 'no-cache',
+                        ...options.headers
+                    },
+                    timeout: options.timeout || 30000
+                };
+
+                // Add body for POST requests
+                if (options.body) {
+                    if (typeof options.body === 'string') {
+                        requestOptions.data = options.body;
+                    } else {
+                        requestOptions.data = JSON.stringify(options.body);
+                        requestOptions.headers['content-type'] = 'application/json';
+                    }
+                }
+
+                if (typeof GM_xmlhttpRequest !== 'undefined') {
+                    GM_xmlhttpRequest({
+                        ...requestOptions,
+                        onload: function(response) {
+                            console.log('DEBUG - OTM API response:', response.status, url);
+                            
+                            if (response.status >= 200 && response.status < 300) {
+                                try {
+                                    const data = JSON.parse(response.responseText);
+                                    resolve(data);
+                                } catch (e) {
+                                    resolve(response.responseText);
+                                }
+                            } else if (response.status === 401 || response.status === 403) {
+                                // Token expired, clear cache and retry once
+                                console.log('DEBUG - Token expired, clearing cache');
+                                _tokenCache = { token: null, expiry: 0, lastValidated: 0 };
+                                reject(new Error('TOKEN_EXPIRED'));
+                            } else {
+                                reject(new Error(`HTTP ${response.status}: ${response.statusText}`));
+                            }
+                        },
+                        onerror: function(error) {
+                            reject(error);
+                        },
+                        ontimeout: function() {
+                            reject(new Error('REQUEST_TIMEOUT'));
+                        }
+                    });
+                } else {
+                    // Fallback to fetch (might fail due to CORS)
+                    fetch(url, {
+                        method: requestOptions.method,
+                        headers: requestOptions.headers,
+                        body: requestOptions.data,
+                        mode: 'cors',
+                        credentials: 'include'
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            return response.json().catch(() => response.text());
+                        } else if (response.status === 401 || response.status === 403) {
+                            _tokenCache = { token: null, expiry: 0, lastValidated: 0 };
+                            throw new Error('TOKEN_EXPIRED');
+                        } else {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                    })
+                    .then(resolve)
+                    .catch(reject);
+                }
+            });
+        } catch (error) {
+            console.error('DEBUG - OTM API request error:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Convenience method: Fetch surgery data for date range
+     */
+    async fetchSurgeries(fromDate, toDate) {
+        const fromISO = fromDate ? new Date(fromDate).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
+        const toISO = toDate ? new Date(toDate).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
+        
+        if (fromISO && toISO) {
+            // Range request
+            const url = `https://otm.tahospital.vn/api/booking?from=${fromISO}&to=${toISO}&_=${Date.now()}`;
+            return await this.makeOTMRequest(url);
+        } else if (fromISO) {
+            // Single date
+            const url = `https://otm.tahospital.vn/api/booking?date=${fromISO}&_=${Date.now()}`;
+            return await this.makeOTMRequest(url);
+        } else {
+            // Today
+            const today = new Date().toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+            const url = `https://otm.tahospital.vn/api/booking?date=${today}&_=${Date.now()}`;
+            return await this.makeOTMRequest(url);
+        }
+    },
+
+    /**
+     * Convenience method: Fetch OTM users list
+     */
+    async fetchUsers() {
+        const url = `https://otm.tahospital.vn/api/user?ishsoft=null&page=1&limit=10000&_=${Date.now()}`;
+        return await this.makeOTMRequest(url);
+    },
+
+    /**
+     * Convenience method: Fetch rooms with department info
+     */
+    async fetchRoomsWithDepartment() {
+        const url = `https://otm.tahospital.vn/api/booking/roomwithdepartment?_=${Date.now()}`;
+        return await this.makeOTMRequest(url);
+    }
+};
+
+module.exports = OTMTokenService;
+
+},{"./apiService":26}],29:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
@@ -9202,7 +9800,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":40,"./checklistService":27}],29:[function(require,module,exports){
+},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":41,"./checklistService":27}],30:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -9345,7 +9943,7 @@ const ReportService = {
             html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
             if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
             if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
-            if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt}</div>`;
+            if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;
             html += `</div>`;
         });
         
@@ -9364,7 +9962,7 @@ const ReportService = {
         html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
         if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
         if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
-        if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt}</div>`;
+        if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;
         html += `</div>`;
         return html;
     },
@@ -9405,7 +10003,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":36,"../utils/patientDataMapper":40,"../utils/surgeryUtils":41,"./checklistService":27}],30:[function(require,module,exports){
+},{"../utils/dateUtils":37,"../utils/patientDataMapper":41,"../utils/surgeryUtils":42,"./checklistService":27}],31:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -9469,7 +10067,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -9611,7 +10209,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":39,"./apiService":26}],32:[function(require,module,exports){
+},{"../utils/khoaUtils":40,"./apiService":26}],33:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -9706,14 +10304,14 @@ const SurgeonSettingsService = {
 
 module.exports = SurgeonSettingsService;
 
-},{"./apiService":26}],33:[function(require,module,exports){
+},{"./apiService":26}],34:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
 // This allows requiring '../settings-open-world' from files inside src/pages
 module.exports = require('./pages/page.settings-open-world');
 
-},{"./pages/page.settings-open-world":23}],34:[function(require,module,exports){
+},{"./pages/page.settings-open-world":23}],35:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -9808,7 +10406,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],35:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -9968,7 +10566,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":27,"./uiUtils":43}],36:[function(require,module,exports){
+},{"../services/checklistService":27,"./uiUtils":44}],37:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -10048,7 +10646,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],37:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -10165,7 +10763,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":38,"./surgeryUtils":41,"./tagUtils":42}],38:[function(require,module,exports){
+},{"./htmlUtils":39,"./surgeryUtils":42,"./tagUtils":43}],39:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -10180,7 +10778,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -10196,7 +10794,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -10434,7 +11032,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],41:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -10707,7 +11305,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],42:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -11000,7 +11598,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],43:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],44:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

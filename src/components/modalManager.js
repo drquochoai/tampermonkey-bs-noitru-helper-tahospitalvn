@@ -42,7 +42,10 @@ const ModalManager = {
      * Hide modal and backdrop
      */
     hideModal(sidebar, backdrop) {
-        if (sidebar) sidebar.style.display = 'none';
+        if (sidebar) {
+            sidebar.style.display = 'none';
+            sidebar.innerHTML = ''; // Clear content between patients
+        }
         backdrop.style.display = 'none';
     try { if (SidebarSession && typeof SidebarSession.endSession === 'function') SidebarSession.endSession(); } catch(_) {}
     },

@@ -1,4 +1,4 @@
-// page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
+// page.lichmo.homnay.refactored.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
@@ -436,20 +436,8 @@ function initLichMoPage() {
   loadSurgeryData();
 }
 
-// Legacy compatibility function
-async function showLichMoHomNayIfNeeded() {
-  const url = new URL(window.location.href);
-  const hasLm = /[?&]lm(=|&|$)/.test(url.search);
-  const hasLichmo = /[?&]lichmo(=|&|$)/.test(url.search) || (url.searchParams.get('otm')||'').toLowerCase() === 'lichmo';
-  if (!hasLm && !hasLichmo) return;
-  
-  console.log('DEBUG - Legacy URL detected, redirecting to initLichMoPage');
-  initLichMoPage();
-}
-
 module.exports = {
   initLichMoPage,
   renderLichMoPage,
-  loadSurgeryData,
-  showLichMoHomNayIfNeeded
+  loadSurgeryData
 };

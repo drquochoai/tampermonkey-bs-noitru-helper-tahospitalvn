@@ -77,7 +77,8 @@ function showDashboardBenhNhanIfNeeded() {
     const checklistItems = BS_CAI_DAT.checklistItems;
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
 
-    function createChecklistSection(patient) {
+    // Helper function to create checklist section
+    async function createChecklistSectionAsync(patient) {
         const checklistDiv = document.createElement('div');
         
         // Determine if patient has discharge tag
@@ -137,15 +138,20 @@ function showDashboardBenhNhanIfNeeded() {
             });
         }, 10);
         
-        // Load both checklists
+        // Load both checklists asynchronously
         const bomoList = checklistDiv.querySelector('#checklist-bomo');
         const xuatvienList = checklistDiv.querySelector('#checklist-xuatvien');
         
+        // Await the async loadChecklist for bomo
         if (bomoList) {
-            loadChecklist(patient, bomoList, 'bomo');
+            await loadChecklist(patient, bomoList, 'bomo');
         }
+        
+        // For xuatvien, it's not async but we can wait a bit for the setTimeout
         if (xuatvienList) {
             loadChecklistXuatVien(patient, xuatvienList);
+            // Wait for the setTimeout in loadChecklistXuatVien
+            await new Promise(resolve => setTimeout(resolve, 150));
         }
         
         return checklistDiv;
@@ -307,9 +313,23 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Setup checkbox change handlers for xuất viện
         setTimeout(() => {
-            checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
-                    const label = this.parentNode.textContent.trim();
+                    const item = BS_CAI_DAT.checklistXuatVien[idx];
+                    let label = '';
+                    if (typeof item === 'string') {
+                        label = item;
+                    } else if (item.label) {
+                        label = item.label;
+                    } else {
+                        // Fallback for child items - extract from data attribute or parent text
+                        const dataLabel = this.getAttribute('data-original-label');
+                        if (dataLabel) {
+                            label = dataLabel;
+                        } else {
+                            label = this.parentNode.textContent.trim();
+                        }
+                    }
                     const key = `xuatvien_${label}`;
                     
                     if (!window.checklistState) {
@@ -494,9 +514,10 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Setup checkbox change handlers
         setTimeout(() => {
-            checklistUl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+            checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
-                    window.checklistState[this.parentNode.textContent.trim()] = this.checked;
+                    const itemText = checklistItems[idx]; // Use original item text, not display text
+                    window.checklistState[itemText] = this.checked;
                     const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                     if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist thất bại!');
@@ -514,12 +535,25 @@ function showDashboardBenhNhanIfNeeded() {
         } catch(_) {}
     };
 
-    function showSidebar(patient) {
+    async function showSidebar(patient) {
         const backdrop = ModalManager.getOrCreateBackdrop();
         const sidebar = ModalManager.getOrCreateSidebar();
         
         // Clear and setup sidebar with responsive layout
-        sidebar.innerHTML = '';
+        sidebar.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 18px; color: #666;">
+                <div style="text-align: center;">
+                    <div style="margin-bottom: 16px;">Đang tải thông tin bệnh nhân...</div>
+                    <div style="width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #1976d2; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;"></div>
+                </div>
+            </div>
+            <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+            </style>
+        `;
     // Start a new session for this sidebar open
     const sessionId = SidebarSession.startSession(patient && patient.mabn);
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
@@ -662,7 +696,7 @@ function showDashboardBenhNhanIfNeeded() {
             min-width: 0;
         `;
         
-        const checklistDiv = createChecklistSection(patient);
+        const checklistDiv = await createChecklistSectionAsync(patient);
         rightColumn.appendChild(checklistDiv);
         // Add HSBA Data tab into the same tabs bar
         try {
@@ -679,8 +713,10 @@ function showDashboardBenhNhanIfNeeded() {
     offlineBanner.className = 'dr-offline-banner';
     offlineBanner.textContent = 'Đang offline — thay đổi sẽ được lưu tạm và đồng bộ khi có mạng.';
     sidebar.appendChild(offlineBanner);
-    // Add container to sidebar
-        sidebar.appendChild(container);
+    // Replace loading content with actual content
+    sidebar.innerHTML = '';
+    sidebar.appendChild(offlineBanner);
+    sidebar.appendChild(container);
         
         // Close button
         const closeBtn = ModalManager.setupCloseHandlers(sidebar, backdrop);

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.8.8
+// @version      1.8.9
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -2399,8 +2399,11 @@ const ModalManager = {
     setupCloseHandlers(sidebar, backdrop) {
         const hideModal = () => this.hideModal(sidebar, backdrop);
         
-        // Click backdrop to close
-        backdrop.onclick = hideModal;
+        // Click backdrop to close and clear content
+        backdrop.onclick = () => {
+            sidebar.innerHTML = ''; // Clear all HTML content of current dr-sidebar
+            this.hideModal(sidebar, backdrop);
+        };
         
         // Close button
         const closeBtn = document.createElement('button');

@@ -56,8 +56,11 @@ const ModalManager = {
     setupCloseHandlers(sidebar, backdrop) {
         const hideModal = () => this.hideModal(sidebar, backdrop);
         
-        // Click backdrop to close
-        backdrop.onclick = hideModal;
+        // Click backdrop to close and clear content
+        backdrop.onclick = () => {
+            sidebar.innerHTML = ''; // Clear all HTML content of current dr-sidebar
+            this.hideModal(sidebar, backdrop);
+        };
         
         // Close button
         const closeBtn = document.createElement('button');

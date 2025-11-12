@@ -43,6 +43,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     try { require('./components/hsbaDataFetcher'); } catch(_) {}
     // Ensure OTM entry runs on otm.tahospital.vn when this bundle is injected there
     try { require('./pages/otm-entry'); } catch(_) {}
+    const { TaiToanBoTaiLieuHSBAV2, triggerDownloadIfDataExists } = require('./utils/hsbaV2Download');
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./pages/page.dashboard');
@@ -387,8 +388,55 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
             const observer = new MutationObserver(hideEmptySections);
             observer.observe(document.body, { childList: true, subtree: true });
 
+            // Add download button
+            const buttonTargetDiv = document.querySelector('div.css-1xd5sck');
+            if (buttonTargetDiv && !buttonTargetDiv.querySelector('.dr-download-all-btn')) {
+                const button = document.createElement('button');
+                button.className = 'dr-download-all-btn';
+                button.textContent = 'Tải toàn bộ tài liệu';
+                button.style.cssText = 'background:#007bff;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;margin:10px;font-size:14px;';
+                button.onclick = () => {
+                    if (typeof window.triggerDownloadIfDataExists === 'function') {
+                        window.triggerDownloadIfDataExists();
+                    }
+                };
+                buttonTargetDiv.appendChild(button);
+            }
+
+            // Regularly check for button injection on lazy loaded content
+            const checkForButtonInjection = () => {
+                const buttonTargetDiv = document.querySelector('div.css-1xd5sck');
+                if (buttonTargetDiv && !buttonTargetDiv.querySelector('.dr-download-all-btn')) {
+                    const button = document.createElement('button');
+                    button.className = 'dr-download-all-btn';
+                    button.textContent = 'Tải toàn bộ tài liệu';
+                    button.style.cssText = 'background:#007bff;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;margin:10px;font-size:14px;';
+                    button.onclick = () => {
+                        if (typeof window.triggerDownloadIfDataExists === 'function') {
+                            window.triggerDownloadIfDataExists();
+                        }
+                    };
+                    buttonTargetDiv.appendChild(button);
+                }
+            };
+            // Check immediately
+            checkForButtonInjection();
+            // Then check every 2 seconds for up to 30 seconds
+            let buttonCheckCount = 0;
+            const buttonCheckInterval = setInterval(() => {
+                buttonCheckCount++;
+                checkForButtonInjection();
+                if (buttonCheckCount > 15) { // 30 seconds
+                    clearInterval(buttonCheckInterval);
+                }
+            }, 2000);
+
         }
 
     }
     HSBAV2HideEmptySectionsIfNeeded();
+    
+    // Initialize HSBA V2 full download
+    TaiToanBoTaiLieuHSBAV2();
+    window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();

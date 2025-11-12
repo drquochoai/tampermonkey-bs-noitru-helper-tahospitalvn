@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.8.9
+// @version      1.9.1
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -391,7 +391,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":40}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":41}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -437,6 +437,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     try { require('./components/hsbaDataFetcher'); } catch(_) {}
     // Ensure OTM entry runs on otm.tahospital.vn when this bundle is injected there
     try { require('./pages/otm-entry'); } catch(_) {}
+    const { TaiToanBoTaiLieuHSBAV2, triggerDownloadIfDataExists } = require('./utils/hsbaV2Download');
     const DanhSachBenhNhan = require('./DanhSachBenhNhan');
     const { GoogleAppsScriptUploader, GOOGLE_APPS_SCRIPT_URL } = require('./googleAppsScript');
     const { showDashboardBenhNhanIfNeeded } = require('./pages/page.dashboard');
@@ -781,12 +782,59 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
             const observer = new MutationObserver(hideEmptySections);
             observer.observe(document.body, { childList: true, subtree: true });
 
+            // Add download button
+            const buttonTargetDiv = document.querySelector('div.css-1xd5sck');
+            if (buttonTargetDiv && !buttonTargetDiv.querySelector('.dr-download-all-btn')) {
+                const button = document.createElement('button');
+                button.className = 'dr-download-all-btn';
+                button.textContent = 'Tải toàn bộ tài liệu';
+                button.style.cssText = 'background:#007bff;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;margin:10px;font-size:14px;';
+                button.onclick = () => {
+                    if (typeof window.triggerDownloadIfDataExists === 'function') {
+                        window.triggerDownloadIfDataExists();
+                    }
+                };
+                buttonTargetDiv.appendChild(button);
+            }
+
+            // Regularly check for button injection on lazy loaded content
+            const checkForButtonInjection = () => {
+                const buttonTargetDiv = document.querySelector('div.css-1xd5sck');
+                if (buttonTargetDiv && !buttonTargetDiv.querySelector('.dr-download-all-btn')) {
+                    const button = document.createElement('button');
+                    button.className = 'dr-download-all-btn';
+                    button.textContent = 'Tải toàn bộ tài liệu';
+                    button.style.cssText = 'background:#007bff;color:#fff;border:none;border-radius:4px;padding:8px 16px;cursor:pointer;margin:10px;font-size:14px;';
+                    button.onclick = () => {
+                        if (typeof window.triggerDownloadIfDataExists === 'function') {
+                            window.triggerDownloadIfDataExists();
+                        }
+                    };
+                    buttonTargetDiv.appendChild(button);
+                }
+            };
+            // Check immediately
+            checkForButtonInjection();
+            // Then check every 2 seconds for up to 30 seconds
+            let buttonCheckCount = 0;
+            const buttonCheckInterval = setInterval(() => {
+                buttonCheckCount++;
+                checkForButtonInjection();
+                if (buttonCheckCount > 15) { // 30 seconds
+                    clearInterval(buttonCheckInterval);
+                }
+            }, 2000);
+
         }
 
     }
     HSBAV2HideEmptySectionsIfNeeded();
+    
+    // Initialize HSBA V2 full download
+    TaiToanBoTaiLieuHSBAV2();
+    window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":35}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":35,"./utils/hsbaV2Download":39}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -2311,7 +2359,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":30,"../utils":35,"../utils/domUpdaters":38,"../utils/htmlUtils":39,"../utils/patientDataMapper":41,"../utils/tagUtils":43,"./actionButtons":4}],11:[function(require,module,exports){
+},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":30,"../utils":35,"../utils/domUpdaters":38,"../utils/htmlUtils":40,"../utils/patientDataMapper":42,"../utils/tagUtils":44,"./actionButtons":4}],11:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -3041,7 +3089,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/surgeryUtils":42}],15:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/surgeryUtils":43}],15:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -6433,7 +6481,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":29,"../utils":35,"../utils/checklistUtils":36,"../utils/domUpdaters":38,"../utils/htmlUtils":39,"../utils/khoaUtils":40,"../utils/patientDataMapper":41,"../utils/surgeryUtils":42,"../utils/tagUtils":43,"../utils/uiUtils":44,"./page.dashboard.support":21}],21:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":29,"../utils":35,"../utils/checklistUtils":36,"../utils/domUpdaters":38,"../utils/htmlUtils":40,"../utils/khoaUtils":41,"../utils/patientDataMapper":42,"../utils/surgeryUtils":43,"../utils/tagUtils":44,"../utils/uiUtils":45,"./page.dashboard.support":21}],21:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -7723,7 +7771,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":9,"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":40,"../utils/uiUtils":44}],23:[function(require,module,exports){
+},{"../components/khoaSelect":9,"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":41,"../utils/uiUtils":45}],23:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -8632,7 +8680,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":40}],26:[function(require,module,exports){
+},{"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":41}],26:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -8789,7 +8837,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":40}],27:[function(require,module,exports){
+},{"../utils/khoaUtils":41}],27:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -9803,7 +9851,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":41,"./checklistService":27}],30:[function(require,module,exports){
+},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":42,"./checklistService":27}],30:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -10006,7 +10054,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":37,"../utils/patientDataMapper":41,"../utils/surgeryUtils":42,"./checklistService":27}],31:[function(require,module,exports){
+},{"../utils/dateUtils":37,"../utils/patientDataMapper":42,"../utils/surgeryUtils":43,"./checklistService":27}],31:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -10212,7 +10260,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":40,"./apiService":26}],33:[function(require,module,exports){
+},{"../utils/khoaUtils":41,"./apiService":26}],33:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -10569,7 +10617,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":27,"./uiUtils":44}],37:[function(require,module,exports){
+},{"../services/checklistService":27,"./uiUtils":45}],37:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -10766,7 +10814,251 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":39,"./surgeryUtils":42,"./tagUtils":43}],39:[function(require,module,exports){
+},{"./htmlUtils":40,"./surgeryUtils":43,"./tagUtils":44}],39:[function(require,module,exports){
+function TaiToanBoTaiLieuHSBAV2() {
+    if (window.location.hostname !== 'hsba.tahospital.vn') return;
+
+    // Load pdf-lib for merging using the same loading pattern as PDF.js
+    const getPDFLib = () => (window.PDFLib || (typeof unsafeWindow !== 'undefined' ? unsafeWindow.PDFLib : undefined));
+    if (!getPDFLib()) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+        script.referrerPolicy = 'no-referrer';
+        script.onload = () => {
+            try {
+                // bridge between page and userscript contexts
+                if (typeof unsafeWindow !== 'undefined' && unsafeWindow.PDFLib && !window.PDFLib) {
+                    try { window.PDFLib = unsafeWindow.PDFLib; } catch(_) {}
+                }
+                console.log('PDF-lib loaded for HSBA download');
+            } catch(_) {}
+        };
+        script.onerror = () => console.warn('Failed to load PDF-lib, falling back to individual downloads');
+        document.head.appendChild(script);
+    }
+
+    // Listen for the existing HSBA data fetch result
+    window.addEventListener('message', (event) => {
+        try {
+            const data = event.data;
+            if (data && data.type === 'DR_HSBA_RESULT' && data.payload && data.payload.data && data.payload.data.hoSoBenhAns) {
+                // Store data globally for manual trigger
+                window.hsbaData = data.payload;
+                console.log('HSBA data ready for manual download');
+            }
+        } catch (e) {
+            console.error('Error processing HSBA message:', e);
+        }
+    });
+
+    // Also check if data is already available (in case it was fetched before this script ran)
+    if (window.__dr_hsba_result__ && window.__dr_hsba_result__.data && window.__dr_hsba_result__.data.hoSoBenhAns) {
+        window.hsbaData = window.__dr_hsba_result__;
+        console.log('HSBA data already available for manual download');
+    }
+}
+
+function downloadAllDocuments(data) {
+    if (!data || !data.data || !data.data.hoSoBenhAns || !data.data.hoSoBenhAns.items) {
+        console.error('Invalid data structure for hoSoBenhAns');
+        return;
+    }
+
+    const items = data.data.hoSoBenhAns.items;
+    const filteredDocs = [];
+    const downloadPromises = [];
+
+    // Filter documents based on tenmau keywords
+    const keywords = ['phiếu khám', 'kết quả', 'chuyên khoa', 'dị ứng', 'tiền mê', 'duyệt mổ', 'cam đoan', 'điều trị'];
+
+    items.forEach(item => {
+        if (item.hoSoChiTiet) {
+            item.hoSoChiTiet.forEach(section => {
+                if (section.chiTiets) {
+                    section.chiTiets.forEach(doc => {
+                        if (doc.tenfile && doc.tenmau && doc.ngay) {
+                            // Check if tenmau contains any of the keywords (case insensitive)
+                            const tenmauLower = doc.tenmau.toLowerCase();
+                            const hasKeyword = keywords.some(keyword => tenmauLower.includes(keyword));
+                            
+                            if (hasKeyword) {
+                                filteredDocs.push({
+                                    ...doc,
+                                    patientInfo: {
+                                        hoten: item.hoten,
+                                        mabn: item.mabn
+                                    }
+                                });
+                                
+                                // Prepare for downloading with proper filename
+                                const fileName = `${doc.tenmau} - ${formatDate(doc.ngay)}.pdf`;
+                                downloadPromises.push(downloadDocumentForMerge(doc.tenfile, fileName));
+                            }
+                        }
+                    });
+                }
+            });
+        }
+    });
+
+    // Wait for all downloads to complete, then process results
+    Promise.allSettled(downloadPromises).then((results) => {
+        const successfulDownloads = results
+            .map((result, index) => ({
+                result,
+                doc: filteredDocs[index]
+            }))
+            .filter(({ result }) => result.status === 'fulfilled' && result.value);
+
+        // Always download individual files with correct names
+        successfulDownloads.forEach(({ result, doc }) => {
+            const fileName = `${doc.tenmau} - ${formatDate(doc.ngay)}.pdf`;
+            downloadDocumentWithCorrectName(result.value, fileName);
+        });
+
+        // Try to merge PDFs if pdf-lib is available and we have multiple files
+        const getPDFLib = () => (window.PDFLib || (typeof unsafeWindow !== 'undefined' ? unsafeWindow.PDFLib : undefined));
+        if (successfulDownloads.length > 1 && getPDFLib()) {
+            console.log(`Attempting to merge ${successfulDownloads.length} PDFs...`);
+            const pdfBuffers = successfulDownloads.map(({ result }) => result.value);
+            mergeAndDownloadPDFs(pdfBuffers, filteredDocs[0]?.patientInfo);
+        } else if (successfulDownloads.length > 1 && !getPDFLib()) {
+            console.log('PDF-lib not available, skipping merge. Only individual files downloaded.');
+        } else {
+            console.log(`Only ${successfulDownloads.length} file(s) found, no merging needed.`);
+        }
+
+        // Call the hide function after downloads
+        if (typeof HSBAV2HideEmptySectionsIfNeeded === 'function') {
+            HSBAV2HideEmptySectionsIfNeeded();
+        }
+    });
+}
+
+function downloadDocumentForMerge(tenfile, fileName) {
+    const url = 'https://hsba.tahospital.vn/api/hosobenhan/download/base64?url=' + encodeURIComponent(tenfile);
+    return fetch(url, { credentials: 'include' })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to download ' + fileName);
+            }
+            return response.json();
+        })
+        .then(jsonResponse => {
+            const base64String = jsonResponse.base64;
+            
+            // Decode base64 to binary
+            const binaryString = atob(base64String);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            // Return the PDF buffer for merging
+            return bytes.buffer;
+        })
+        .catch(err => {
+            console.error('Error downloading document ' + fileName + ':', err);
+            return null; // Return null so Promise.allSettled can handle it
+        });
+}
+
+function downloadDocumentWithCorrectName(buffer, fileName) {
+    try {
+        const blob = new Blob([buffer], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Create download link and trigger download
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Clean up
+        URL.revokeObjectURL(blobUrl);
+        
+        console.log('Downloaded:', fileName);
+    } catch (err) {
+        console.error('Error downloading document ' + fileName + ':', err);
+    }
+}
+
+function formatDate(dateString) {
+    try {
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}/${month}/${year}`;
+    } catch (e) {
+        return dateString; // Return original if parsing fails
+    }
+}
+
+async function mergeAndDownloadPDFs(pdfBuffers, patientInfo) {
+    const getPDFLib = () => (window.PDFLib || (typeof unsafeWindow !== 'undefined' ? unsafeWindow.PDFLib : undefined));
+    if (!getPDFLib() || !pdfBuffers.length) {
+        console.log('PDF-lib not available or no buffers to merge');
+        return;
+    }
+
+    try {
+        console.log(`Starting PDF merge with ${pdfBuffers.length} files...`);
+        const { PDFDocument } = getPDFLib();
+        const mergedPdf = await PDFDocument.create();
+
+        for (let i = 0; i < pdfBuffers.length; i++) {
+            try {
+                const pdf = await PDFDocument.load(pdfBuffers[i]);
+                const pageCount = pdf.getPageCount();
+                console.log(`Processing PDF ${i + 1}: ${pageCount} pages`);
+                const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                copiedPages.forEach(page => mergedPdf.addPage(page));
+            } catch (e) {
+                console.error(`Error processing PDF ${i + 1}:`, e);
+            }
+        }
+
+        const mergedPdfBytes = await mergedPdf.save();
+        const totalPages = mergedPdf.getPageCount();
+        console.log(`Merged PDF created with ${totalPages} total pages`);
+        
+        const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        // Create download link for merged PDF
+        const fileName = patientInfo ? `${patientInfo.hoten}-${patientInfo.mabn}.pdf` : 'merged-hsba-documents.pdf';
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        // Clean up
+        URL.revokeObjectURL(blobUrl);
+        
+        console.log(`✅ Merged PDF downloaded as: ${fileName}`);
+    } catch (e) {
+        console.error('❌ Error merging PDFs:', e);
+    }
+}
+
+// Export for require
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { TaiToanBoTaiLieuHSBAV2, triggerDownloadIfDataExists, downloadDocumentForMerge, downloadDocumentWithCorrectName, formatDate, mergeAndDownloadPDFs };
+}
+
+function triggerDownloadIfDataExists() {
+    if (window.hsbaData) {
+        downloadAllDocuments(window.hsbaData);
+    } else {
+        alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
+    }
+}
+},{}],40:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -10781,7 +11073,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -10797,7 +11089,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],41:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -11035,7 +11327,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],42:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -11308,7 +11600,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -11601,7 +11893,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],44:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],45:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

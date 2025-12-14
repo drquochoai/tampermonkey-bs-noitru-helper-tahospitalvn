@@ -39,6 +39,19 @@ const PatientDataMapper = {
      */
     isWhiteCard(room) {
         if (!room) return false;
+
+        // Prefer configured list in BS_CAI_DAT.whiteCardRooms when available
+        try {
+            const cfg = (typeof BS_CAI_DAT !== 'undefined' && BS_CAI_DAT.whiteCardRooms) || null;
+            if (Array.isArray(cfg) && cfg.length > 0) {
+                const target = this.formatRoom(room).toLowerCase();
+                return cfg.some(r => this.formatRoom(r).toLowerCase() === target);
+            }
+        } catch (e) {
+            // ignore and fallback to legacy pattern
+        }
+
+        // Fallback (legacy behavior)
         return /^(Phòng )?(214|215|216)$/i.test(room) || /214|215|216/.test(room);
     },
 

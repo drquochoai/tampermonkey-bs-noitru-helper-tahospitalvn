@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.1
+// @version      1.9.2
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -77,7 +77,7 @@ const BS_CAI_DAT = {
     // ================== CÀI ĐẶT CHECKLIST XUẤT VIỆN ==================
     checklistXuatVien: [
         'Mở HSBA v2',
-        'Nhập khoa (chỉnh chẩn đoán, ICD)',
+        'Tạo tờ điều trị cuối (chỉnh chẩn đoán, ICD)',
         'Mở trang dặn dò',
         'Giấy ra viện',
         'Tóm tắt bệnh án',
@@ -86,12 +86,12 @@ const BS_CAI_DAT = {
             label: 'Tờ điều trị',
             children: [
                 'Thực hiện y lệnh thuốc đã dự trù',
-                'Trả thuốc cử chiều & tối',
-                'Toa thuốc ra viện',
-                'Chuyển dược, In toa',
+                'Cấp các cử thuốc còn lại của người bệnh khi xuất viện',
+                'Ký toa thuốc ra viện, In toa',
+                'Chuyển dược',
+                'Ký số các CLS tồn',
                 'Tổng kết bệnh án trong tờ điều trị',
                 'Tổng kết bệnh án điện tử',
-                'Ký số các CLS tồn'
             ]
         }
     ],
@@ -109,13 +109,28 @@ const BS_CAI_DAT = {
 
     // ================== CÀI ĐẶT BÁC SĨ ==================
     danhSachBacSi: [
-        'BS Dũng',
-        'BS Quyền',
-        'BS Hằng',
-        'BS Hoài',
-        'BS Hiếu',
-        'BS Hải',
-        'BS Hưng'
+        'PGS.TS.BS Vũ Hữu Vĩnh',
+        'TS.BS Nguyễn Anh Dũng',
+        'BS.CKII Trần Công Quyền',
+        'ThS.BS Lê Thị Ngọc Hằng',
+        'BS.CKI Trần Quốc Hoài',
+        'ThS.BS Lê Chí Hiếu',
+        'ThS.BS Phan Vũ Hồng Hải',
+        'ThS.BSNT.CKI Phạm Hưng',
+        'ThS.BS Nguyễn Đức Nghĩa'
+    ],
+
+    // ================== CÀI ĐẶT THẺ TRẮNG (WHITE-CARD ROOMS) ==================
+    // Danh sách phòng sẽ hiển thị thẻ màu trắng (sử dụng bởi isWhiteCard(room))
+    whiteCardRooms: [
+        'Phòng 302',
+        'Phòng 303',
+        'Phòng 304',
+        'Phòng 306D',
+        'Phòng 307',
+        'Phòng 305D',
+        'Phòng 300',
+        'Phòng 301'
     ],
 
     // ================== CÀI ĐẶT PHẪU THUẬT ==================
@@ -11131,6 +11146,19 @@ const PatientDataMapper = {
      */
     isWhiteCard(room) {
         if (!room) return false;
+
+        // Prefer configured list in BS_CAI_DAT.whiteCardRooms when available
+        try {
+            const cfg = (typeof BS_CAI_DAT !== 'undefined' && BS_CAI_DAT.whiteCardRooms) || null;
+            if (Array.isArray(cfg) && cfg.length > 0) {
+                const target = this.formatRoom(room).toLowerCase();
+                return cfg.some(r => this.formatRoom(r).toLowerCase() === target);
+            }
+        } catch (e) {
+            // ignore and fallback to legacy pattern
+        }
+
+        // Fallback (legacy behavior)
         return /^(Phòng )?(214|215|216)$/i.test(room) || /214|215|216/.test(room);
     },
 

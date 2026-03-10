@@ -4,6 +4,8 @@ const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
 const ChecklistService = require('../services/checklistService');
 const Utils = require('../utils');
 const ReportService = require('../services/reportService');
+const { callGlobalFn } = require('../utils/globalFnUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
 
 function createPatientInfoSection(patient, quickYLenhActions) {
     const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
@@ -101,46 +103,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         }
     }, 50);
 
-    function invokeUpdatePatientCardHXT(p) {
-        try {
-            if (typeof updatePatientCardHXT === 'function') {
-                updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardHXT === 'function') {
-                unsafeWindow.updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardHXT === 'function') {
-                globalThis.updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof this !== 'undefined' && typeof this.updatePatientCardHXT === 'function') {
-                this.updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof window !== 'undefined' && typeof window.updatePatientCardHXT === 'function') {
-                window.updatePatientCardHXT(p);
-                return true;
-            }
-        } catch (e) {
-            console.warn('invokeUpdatePatientCardHXT error', e);
-        }
-        return false;
-    }
-
-    function softUpdateHXT(newVal) {
-        // Update in-memory state and card immediately for UX
+    function softUpdate(key, value) {
         if (!window.checklistState) window.checklistState = {};
-        window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
-        patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...(patientInData.checklistState || {}), huongXuTri: newVal };
-            }
-        }
-        invokeUpdatePatientCardHXT(patient);
+        window.checklistState = { ...(window.checklistState || {}), [key]: value };
+        patient.checklistState = { ...(patient.checklistState || {}), [key]: value };
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
     }
 
     async function persistIfDirty() {
@@ -185,19 +152,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                         flash(cdktTextarea);
                         if (cdktSaved) { cdktSaved.style.display = 'block'; setTimeout(() => cdktSaved.style.display = 'none', 600); }
                         // Update card diagnosis after saving CDKT to keep cards in sync
-                        try {
-                            if (typeof updatePatientCardCDKT === 'function') {
-                                updatePatientCardCDKT(patient);
-                            } else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardCDKT === 'function') {
-                                unsafeWindow.updatePatientCardCDKT(patient);
-                            } else if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardCDKT === 'function') {
-                                globalThis.updatePatientCardCDKT(patient);
-                            }
-                        } catch (_) {}
+                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
                     }
-                } catch (_) {}
+                } catch (_) { }
                 if (res && res.queued) {
-                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
+                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch (_) { }
                 }
             }
         }
@@ -216,7 +175,8 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         draft.hxt = val;
         // Mark dirty only if actual change relative to last saved
         dirty.hxt = (val !== lastSaved.hxt);
-        softUpdateHXT(val);
+        softUpdate('huongXuTri', val);
+        callGlobalFn('updatePatientCardHXT', patient);
         scheduleSave();
     });
     hxtTextarea.addEventListener('blur', () => {
@@ -228,24 +188,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         persistIfDirty();
     });
 
-    // ====== Chẩn đoán kèm theo: soft update + shared save ======
-    function softUpdateCDKT(newVal) {
-        if (!window.checklistState) window.checklistState = {};
-        window.checklistState = { ...(window.checklistState || {}), chanDoanKemTheo: newVal };
-        patient.checklistState = { ...(patient.checklistState || {}), chanDoanKemTheo: newVal };
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...(patientInData.checklistState || {}), chanDoanKemTheo: newVal };
-            }
-        }
-    }
-
     cdktTextarea.addEventListener('input', () => {
         const val = cdktTextarea.value.trim();
         draft.cdkt = val;
         dirty.cdkt = (val !== lastSaved.cdkt);
-        softUpdateCDKT(val);
+        softUpdate('chanDoanKemTheo', val);
         scheduleSave();
     });
     cdktTextarea.addEventListener('blur', () => {

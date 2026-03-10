@@ -20,15 +20,15 @@ const DateUtils = {
         if (/^\d{2}\/\d{2}\/\d{4}/.test(admitDate)) {
             const [part1, part2, yearAndTime] = admitDate.split('/');
             const [year, time] = yearAndTime.split(' ');
-            
+
             // Try to determine if it's dd/mm/yyyy or mm/dd/yyyy
             // If part1 > 12, it must be dd/mm/yyyy format
             // If part2 > 12, it must be mm/dd/yyyy format  
             const num1 = parseInt(part1);
             const num2 = parseInt(part2);
-            
+
             let month, day;
-            
+
             if (num1 > 12) {
                 // part1 is day, part2 is month (dd/mm/yyyy format)
                 day = part1;
@@ -45,7 +45,7 @@ const DateUtils = {
                 month = part2;
                 console.log('DEBUG - Ambiguous format, assuming dd/mm/yyyy');
             }
-            
+
             const result = `${month}/${day}/${year} ${time || '00:00'}`;
             console.log('DEBUG - DateUtils.convertToUSFormat output:', result);
             return result;
@@ -62,16 +62,24 @@ const DateUtils = {
         const tungay = this.convertToUSFormat(admitDate);
         const [admitMonth, admitDay, admitYearAndTime] = tungay.split('/');
         const [admitYear, admitTime] = admitYearAndTime.split(' ');
-        
+
         const tungayDate = new Date(`${admitYear}-${admitMonth}-${admitDay}T${admitTime || '00:00'}`);
         const denngayDate = new Date(tungayDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-        
+
         const dd = String(denngayDate.getDate()).padStart(2, '0');
         const mm = String(denngayDate.getMonth() + 1).padStart(2, '0');
         const yyyy = denngayDate.getFullYear();
         const denngay = `${mm}/${dd}/${yyyy} 23:59`;
 
         return { tungay, denngay };
+    },
+
+    /**
+     * Get today's date as dd/mm/yyyy string (used in y lệnh timestamps, tags, etc.)
+     */
+    getTodayStr() {
+        const d = new Date();
+        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
     }
 };
 

@@ -2,6 +2,8 @@
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const { updatePatientCardPhauThuat } = require('../utils/surgeryUtils');
+const { callGlobalFn } = require('../utils/globalFnUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
 
 function createDoctorCheckboxes(className) {
     return BS_CAI_DAT.danhSachBacSi.map(doctor =>
@@ -403,17 +405,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     function updatePatientCardPhauThuatLocal(patient) {
         updatePatientCardPhauThuat(patient);
-
-        // Also try global access as fallback
-        if (typeof unsafeWindow !== 'undefined' && unsafeWindow.updatePatientCardPhauThuat) {
-            unsafeWindow.updatePatientCardPhauThuat(patient);
-        } else if (typeof this !== 'undefined' && this.updatePatientCardPhauThuat) {
-            this.updatePatientCardPhauThuat(patient);
-        } else if (globalThis.updatePatientCardPhauThuat) {
-            globalThis.updatePatientCardPhauThuat(patient);
-        } else if (window.updatePatientCardPhauThuat) {
-            window.updatePatientCardPhauThuat(patient);
-        }
+        callGlobalFn('updatePatientCardPhauThuat', patient);
     }
 
     showFormBtn.addEventListener('click', () => createPhauThuatPopup(null));

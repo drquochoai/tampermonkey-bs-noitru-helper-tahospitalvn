@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.3
+// @version      1.9.4
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -273,9 +273,9 @@ function DanhSachBenhNhan() {
     this.fixedMabn = "51991h991h991h991";
 }
 
-DanhSachBenhNhan.prototype.layDanhSachTheoMaBNFixed = function() {
+DanhSachBenhNhan.prototype.layDanhSachTheoMaBNFixed = function () {
     var self = this;
-    return this._fetchDanhSach(this.fixedMabn).then(function(data) {
+    return this._fetchDanhSach(this.fixedMabn).then(function (data) {
         if (data && data.length > 0) {
             self.danhSach = data;
             self.lastFetched = new Date();
@@ -288,24 +288,13 @@ DanhSachBenhNhan.prototype.layDanhSachTheoMaBNFixed = function() {
     });
 };
 
-DanhSachBenhNhan.prototype.luuDanhSachBenhNhanVoiNgayVVMacDinh = function(ds) {
-    if (!Array.isArray(ds)) return;
-    this.danhSach = ds.map(function(bn) {
-        var copy = {};
-        for (var k in bn) copy[k] = bn[k];
-        copy.ngayvv = "01/01/1001 01:01";
-        return copy;
-    });
-    this.lastFetched = new Date();
-    alert('Đã lưu ' + this.danhSach.length + ' bệnh nhân với ngày vào viện mặc định.');
-};
 
-DanhSachBenhNhan.prototype.startAutoFetch = function() {
+DanhSachBenhNhan.prototype.startAutoFetch = function () {
     var self = this;
     if (this.autoFetchTimer) clearInterval(this.autoFetchTimer);
-    this.autoFetchTimer = setInterval(function() { self._autoFetch7h(); }, 60000);
+    this.autoFetchTimer = setInterval(function () { self._autoFetch7h(); }, 60000);
 };
-DanhSachBenhNhan.prototype._autoFetch7h = function() {
+DanhSachBenhNhan.prototype._autoFetch7h = function () {
     var now = new Date();
     if (now.getHours() === 7 && now.getMinutes() === 0) {
         if (this.lastFetched) {
@@ -319,7 +308,7 @@ DanhSachBenhNhan.prototype._autoFetch7h = function() {
     }
 };
 
-DanhSachBenhNhan.prototype.addFetchButtonToBottomBar = function() {
+DanhSachBenhNhan.prototype.addFetchButtonToBottomBar = function () {
     var self = this;
     function addBtn() {
         var bar = document.querySelector('.dr-bottom-bar');
@@ -329,7 +318,7 @@ DanhSachBenhNhan.prototype.addFetchButtonToBottomBar = function() {
         btn.innerText = 'Lấy DSBN (MABN cố định)';
         btn.className = 'btn btn-info';
         btn.style.marginLeft = '12px';
-        btn.onclick = function() { self.layDanhSachTheoMaBNFixed(); };
+        btn.onclick = function () { self.layDanhSachTheoMaBNFixed(); };
         bar.appendChild(btn);
     }
     addBtn();
@@ -337,9 +326,9 @@ DanhSachBenhNhan.prototype.addFetchButtonToBottomBar = function() {
     setTimeout(addBtn, 2000);
 };
 
-DanhSachBenhNhan.prototype._fetchDanhSach = function(mabn) {
+DanhSachBenhNhan.prototype._fetchDanhSach = function (mabn) {
     var self = this;
-    return new Promise(function(resolve) {
+    return new Promise(function (resolve) {
         var formData = new FormData();
         formData.append('mabn', mabn);
         var now = new Date();
@@ -348,27 +337,27 @@ DanhSachBenhNhan.prototype._fetchDanhSach = function(mabn) {
         var year = now.getFullYear();
         var dateStr = month + '/' + day + '/' + year + ' 07:00';
         formData.append('tungay', "01/01/1001 01:01");
-        formData.append('denngay',  "01/01/3001 01:01");
+        formData.append('denngay', "01/01/3001 01:01");
         fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
             method: 'POST',
             credentials: 'include',
             body: formData
-        }).then(function(r) { return r.json(); }).then(function(res) {
+        }).then(function (r) { return r.json(); }).then(function (res) {
             if (res && res.data) resolve(res.data);
             else {
                 if (window.DanhSachBenhNhanManager && typeof window.DanhSachBenhNhanManager.uploadChecklistWithDrData === 'function') {
-                    window.DanhSachBenhNhanManager.uploadChecklistWithDrData(mabn, function(uploadRes) {
+                    window.DanhSachBenhNhanManager.uploadChecklistWithDrData(mabn, function (uploadRes) {
                         resolve(null);
                     });
                 } else {
                     resolve(null);
                 }
             }
-        }).catch(function() { resolve(null); });
+        }).catch(function () { resolve(null); });
     });
 };
 
-DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) {
+DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback) {
     var formData = new FormData();
     formData.append('status', '1');
     formData.append('thebaohiemyte', 'Không');
@@ -380,7 +369,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
     try {
         const { getSelectedKhoa } = require('./utils/khoaUtils');
         formData.append('makp', getSelectedKhoa('551'));
-    } catch(_) {
+    } catch (_) {
         formData.append('makp', '551');
     }
     formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
@@ -397,16 +386,16 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function(mabn, callback) 
         method: 'POST',
         credentials: 'include',
         body: formData
-    }).then(function(r) { return r.json(); }).then(function(res) {
+    }).then(function (r) { return r.json(); }).then(function (res) {
         if (typeof callback === 'function') callback(res);
-    }).catch(function() {
+    }).catch(function () {
         if (typeof callback === 'function') callback(null);
     });
 };
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":41}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":42}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -849,7 +838,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":35,"./utils/hsbaV2Download":39}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":5,"./components/copyDienTienAI":6,"./components/hsbaDataFetcher":8,"./googleAppsScript":17,"./pages/otm-entry":18,"./pages/page.dashboard":20,"./pages/page.lichmo.homnay":22,"./pages/page.settings":24,"./services/checklistService":27,"./utils":35,"./utils/hsbaV2Download":40}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -2391,7 +2380,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":30,"../utils":35,"../utils/domUpdaters":38,"../utils/htmlUtils":40,"../utils/patientDataMapper":42,"../utils/tagUtils":44,"./actionButtons":4}],11:[function(require,module,exports){
+},{"../pages/page.dashboard.support":21,"../services/checklistService":27,"../services/reportService":30,"../utils":35,"../utils/domUpdaters":38,"../utils/htmlUtils":41,"../utils/patientDataMapper":43,"../utils/tagUtils":46,"./actionButtons":4}],11:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -2504,6 +2493,8 @@ const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
 const ChecklistService = require('../services/checklistService');
 const Utils = require('../utils');
 const ReportService = require('../services/reportService');
+const { callGlobalFn } = require('../utils/globalFnUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
 
 function createPatientInfoSection(patient, quickYLenhActions) {
     const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
@@ -2601,46 +2592,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         }
     }, 50);
 
-    function invokeUpdatePatientCardHXT(p) {
-        try {
-            if (typeof updatePatientCardHXT === 'function') {
-                updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardHXT === 'function') {
-                unsafeWindow.updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardHXT === 'function') {
-                globalThis.updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof this !== 'undefined' && typeof this.updatePatientCardHXT === 'function') {
-                this.updatePatientCardHXT(p);
-                return true;
-            }
-            if (typeof window !== 'undefined' && typeof window.updatePatientCardHXT === 'function') {
-                window.updatePatientCardHXT(p);
-                return true;
-            }
-        } catch (e) {
-            console.warn('invokeUpdatePatientCardHXT error', e);
-        }
-        return false;
-    }
-
-    function softUpdateHXT(newVal) {
-        // Update in-memory state and card immediately for UX
+    function softUpdate(key, value) {
         if (!window.checklistState) window.checklistState = {};
-        window.checklistState = { ...(window.checklistState || {}), huongXuTri: newVal };
-        patient.checklistState = { ...(patient.checklistState || {}), huongXuTri: newVal };
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...(patientInData.checklistState || {}), huongXuTri: newVal };
-            }
-        }
-        invokeUpdatePatientCardHXT(patient);
+        window.checklistState = { ...(window.checklistState || {}), [key]: value };
+        patient.checklistState = { ...(patient.checklistState || {}), [key]: value };
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
     }
 
     async function persistIfDirty() {
@@ -2685,19 +2641,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                         flash(cdktTextarea);
                         if (cdktSaved) { cdktSaved.style.display = 'block'; setTimeout(() => cdktSaved.style.display = 'none', 600); }
                         // Update card diagnosis after saving CDKT to keep cards in sync
-                        try {
-                            if (typeof updatePatientCardCDKT === 'function') {
-                                updatePatientCardCDKT(patient);
-                            } else if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.updatePatientCardCDKT === 'function') {
-                                unsafeWindow.updatePatientCardCDKT(patient);
-                            } else if (typeof globalThis !== 'undefined' && typeof globalThis.updatePatientCardCDKT === 'function') {
-                                globalThis.updatePatientCardCDKT(patient);
-                            }
-                        } catch (_) {}
+                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
                     }
-                } catch (_) {}
+                } catch (_) { }
                 if (res && res.queued) {
-                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
+                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch (_) { }
                 }
             }
         }
@@ -2716,7 +2664,8 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         draft.hxt = val;
         // Mark dirty only if actual change relative to last saved
         dirty.hxt = (val !== lastSaved.hxt);
-        softUpdateHXT(val);
+        softUpdate('huongXuTri', val);
+        callGlobalFn('updatePatientCardHXT', patient);
         scheduleSave();
     });
     hxtTextarea.addEventListener('blur', () => {
@@ -2728,24 +2677,11 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         persistIfDirty();
     });
 
-    // ====== Chẩn đoán kèm theo: soft update + shared save ======
-    function softUpdateCDKT(newVal) {
-        if (!window.checklistState) window.checklistState = {};
-        window.checklistState = { ...(window.checklistState || {}), chanDoanKemTheo: newVal };
-        patient.checklistState = { ...(patient.checklistState || {}), chanDoanKemTheo: newVal };
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...(patientInData.checklistState || {}), chanDoanKemTheo: newVal };
-            }
-        }
-    }
-
     cdktTextarea.addEventListener('input', () => {
         const val = cdktTextarea.value.trim();
         draft.cdkt = val;
         dirty.cdkt = (val !== lastSaved.cdkt);
-        softUpdateCDKT(val);
+        softUpdate('chanDoanKemTheo', val);
         scheduleSave();
     });
     cdktTextarea.addEventListener('blur', () => {
@@ -2761,11 +2697,13 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":27,"../services/reportService":30,"../utils":35,"./phauThuatHandlers":14,"./yLenhHandlers":16}],14:[function(require,module,exports){
+},{"../services/checklistService":27,"../services/reportService":30,"../utils":35,"../utils/globalFnUtils":39,"../utils/stateSync":44,"./phauThuatHandlers":14,"./yLenhHandlers":16}],14:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const { updatePatientCardPhauThuat } = require('../utils/surgeryUtils');
+const { callGlobalFn } = require('../utils/globalFnUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
 
 function createDoctorCheckboxes(className) {
     return BS_CAI_DAT.danhSachBacSi.map(doctor =>
@@ -3167,17 +3105,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     function updatePatientCardPhauThuatLocal(patient) {
         updatePatientCardPhauThuat(patient);
-
-        // Also try global access as fallback
-        if (typeof unsafeWindow !== 'undefined' && unsafeWindow.updatePatientCardPhauThuat) {
-            unsafeWindow.updatePatientCardPhauThuat(patient);
-        } else if (typeof this !== 'undefined' && this.updatePatientCardPhauThuat) {
-            this.updatePatientCardPhauThuat(patient);
-        } else if (globalThis.updatePatientCardPhauThuat) {
-            globalThis.updatePatientCardPhauThuat(patient);
-        } else if (window.updatePatientCardPhauThuat) {
-            window.updatePatientCardPhauThuat(patient);
-        }
+        callGlobalFn('updatePatientCardPhauThuat', patient);
     }
 
     showFormBtn.addEventListener('click', () => createPhauThuatPopup(null));
@@ -3190,7 +3118,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/surgeryUtils":43}],15:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/globalFnUtils":39,"../utils/stateSync":44,"../utils/surgeryUtils":45}],15:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -3229,6 +3157,9 @@ module.exports = SidebarSession;
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
+const { callGlobalFn } = require('../utils/globalFnUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
+const DateUtils = require('../utils/dateUtils');
 
 function setupYLenhHandlers(infoElement, patient) {
     const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
@@ -3322,33 +3253,17 @@ function setupYLenhHandlers(infoElement, patient) {
         // Save to server
         saveYLenhLog();
 
-        // Clear input and re-render
+        // Update patient state and card tags
         if (!content) input.value = ''; // Only clear if not from quick action
         renderYLenhLog(window.checklistState.yLenhLog);
-
-        // Update patient object in window.dr_data with new checklistState
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...window.checklistState };
-                console.log('Updated checklistState in window.dr_data for patient:', patient.mabn);
-            }
-        }
-
-        // Trigger patient card update to show new tag
-        if (window.updatePatientCardTags) {
-            console.log('Calling updatePatientCardTags for patient:', patient.mabn);
-            window.updatePatientCardTags(patient.mabn);
-        }
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        callGlobalFn('updatePatientCardTags', patient.mabn);
 
         // Also check celebration animation specifically after adding tag
         setTimeout(() => {
             if (typeof window.checkAllCelebrationAnimations === 'function') {
-                // Find the updated patient data
-                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                if (patientInData) {
-                    window.checkAllCelebrationAnimations([patientInData]);
-                }
+                const patientInData = window.dr_data && window.dr_data.find(p => p.mabn === patient.mabn);
+                if (patientInData) window.checkAllCelebrationAnimations([patientInData]);
             }
         }, 100);
     }
@@ -3359,30 +3274,14 @@ function setupYLenhHandlers(infoElement, patient) {
             window.checklistState.yLenhLog.splice(index, 1);
             saveYLenhLog();
             renderYLenhLog(window.checklistState.yLenhLog);
-
-            // Update patient object in window.dr_data with new checklistState
-            if (window.dr_data && patient.mabn) {
-                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                if (patientInData) {
-                    patientInData.checklistState = { ...window.checklistState };
-                    console.log('Updated checklistState in window.dr_data after removal for patient:', patient.mabn);
-                }
-            }
-
-            // Trigger patient card update to refresh tags
-            if (window.updatePatientCardTags) {
-                console.log('Calling updatePatientCardTags after removal for patient:', patient.mabn);
-                window.updatePatientCardTags(patient.mabn);
-            }
+            syncPatientStateToGlobal(patient.mabn, window.checklistState);
+            callGlobalFn('updatePatientCardTags', patient.mabn);
 
             // Also check celebration animation specifically after removing tag
             setTimeout(() => {
                 if (typeof window.checkAllCelebrationAnimations === 'function') {
-                    // Find the updated patient data
-                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                    if (patientInData) {
-                        window.checkAllCelebrationAnimations([patientInData]);
-                    }
+                    const patientInData = window.dr_data && window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) window.checkAllCelebrationAnimations([patientInData]);
                 }
             }, 100);
         }
@@ -3411,8 +3310,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Helper: find today's quick entry by action
     function findTodayQuickEntryByAction(actionText) {
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        const todayStr = DateUtils.getTodayStr();
         if (!window.checklistState || !Array.isArray(window.checklistState.yLenhLog)) return { entry: null, index: -1 };
         const index = window.checklistState.yLenhLog.findIndex(e => {
             const entryDate = e.timestamp ? e.timestamp.split(' ')[0] : '';
@@ -3559,9 +3457,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Function to toggle quick y lệnh (three states)
     function toggleQuickYLenh(actionText, buttonElement) {
-        // Today string
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        const todayStr = DateUtils.getTodayStr();
 
         if (!window.checklistState.yLenhLog) {
             window.checklistState.yLenhLog = [];
@@ -3624,18 +3520,9 @@ function setupYLenhHandlers(infoElement, patient) {
         saveYLenhLog();
         renderYLenhLog(window.checklistState.yLenhLog);
 
-        // Update patient object in window.dr_data
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...window.checklistState };
-            }
-        }
-
-        // Update card tags (quick actions might render as tags; styles can reflect state)
-        if (window.updatePatientCardTags) {
-            window.updatePatientCardTags(patient.mabn);
-        }
+        // Update card tags
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        callGlobalFn('updatePatientCardTags', patient.mabn);
 
         // Discharge time editor + celebration animation for 'Xuất viện'
         if (actionText === 'Xuất viện') {
@@ -3661,9 +3548,7 @@ function setupYLenhHandlers(infoElement, patient) {
     // Function to update button states based on existing log
     // Priority: patient.checklistState (populated from card) > window.checklistState
     function updateQuickActionButtonStates() {
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-
+        const todayStr = DateUtils.getTodayStr();
         // Source: prefer patient-scoped state so buttons show correctly on sidebar open
         // even before the async checklist API call resolves
         const yLenhLog = (patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog))
@@ -3732,7 +3617,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27}],17:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":27,"../utils/dateUtils":37,"../utils/globalFnUtils":39,"../utils/stateSync":44}],17:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -6628,7 +6513,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":29,"../utils":35,"../utils/checklistUtils":36,"../utils/domUpdaters":38,"../utils/htmlUtils":40,"../utils/khoaUtils":41,"../utils/patientDataMapper":42,"../utils/surgeryUtils":43,"../utils/tagUtils":44,"../utils/uiUtils":45,"./page.dashboard.support":21}],21:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/copyDienTienAI":6,"../components/dialogManager":7,"../components/hsbaDataFetcher":8,"../components/listView":10,"../components/loginHandler":11,"../components/modalManager":12,"../components/patientInfoSection":13,"../components/phauThuatHandlers":14,"../components/sidebarSession":15,"../services/apiService":26,"../services/checklistService":27,"../services/patientService":29,"../utils":35,"../utils/checklistUtils":36,"../utils/domUpdaters":38,"../utils/htmlUtils":41,"../utils/khoaUtils":42,"../utils/patientDataMapper":43,"../utils/surgeryUtils":45,"../utils/tagUtils":46,"../utils/uiUtils":47,"./page.dashboard.support":21}],21:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -7937,7 +7822,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":9,"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":41,"../utils/uiUtils":45}],23:[function(require,module,exports){
+},{"../components/khoaSelect":9,"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":42,"../utils/uiUtils":47}],23:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -8846,7 +8731,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":41}],26:[function(require,module,exports){
+},{"../services/otm.token":28,"../services/surgeonSettingsService":33,"../utils/khoaUtils":42}],26:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -9003,7 +8888,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":41}],27:[function(require,module,exports){
+},{"../utils/khoaUtils":42}],27:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -9804,9 +9689,9 @@ const PatientService = {
         try {
             const data = await fetchToDieuTriData();
             console.log('Dữ liệu ToDieuTri đã được lấy:', data);
-            
+
             let arr = Array.isArray(data) ? data : (data && data.data ? data.data : []);
-            
+
             if (!arr || arr.length === 0) {
                 return [];
             }
@@ -9846,8 +9731,8 @@ const PatientService = {
 
         for (let i = 0; i < patients.length; i += batchSize) {
             const batch = patients.slice(i, i + batchSize);
-            console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(patients.length/batchSize)}`);
-            
+            console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(patients.length / batchSize)}`);
+
             const batchPromises = batch.map(async (patient, batchIndex) => {
                 const actualIndex = i + batchIndex;
                 try {
@@ -9855,7 +9740,7 @@ const PatientService = {
                     // Use patient's ngayvv (actual admission date) instead of old tungay
                     console.log('DEBUG - Patient ngayvv:', patient.ngayvv);
                     console.log('DEBUG - Background enrichment patient object:', JSON.stringify(patient, null, 2));
-                    
+
                     const checklistObj = {
                         mabn: patient.mabn,
                         mavaovien: patient.mavaovien,
@@ -9868,10 +9753,10 @@ const PatientService = {
                     const checklistState = await ChecklistService.loadChecklistState(checklistObj);
                     if (checklistState) {
                         console.log('Checklist state loaded for patient:', patient.mabn, checklistState);
-                        
+
                         // Store checklist state for y lệnh tags
                         enrichedPatients[actualIndex].checklistState = checklistState;
-                        
+
                         // Map surgery data from checklist
                         const surgeryData = PatientDataMapper.mapPhauThuatData(checklistState);
                         if (surgeryData) {
@@ -9890,14 +9775,14 @@ const PatientService = {
 
             // Wait for current batch to complete before proceeding
             await Promise.all(batchPromises);
-            
+
             // Small delay between batches to be nice to the server
             if (i + batchSize < patients.length) {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
 
-        console.log('Enrichment completed. Patients with surgery info:', 
+        console.log('Enrichment completed. Patients with surgery info:',
             enrichedPatients.filter(p => p.phauThuatInfo).length);
 
         // Check for celebration animations after enrichment
@@ -9919,20 +9804,16 @@ const PatientService = {
             return window.dr_data;
         }
 
-        // Check if fetch function is available
-        if (typeof fetchToDieuTriData !== 'function') {
-            throw new Error('fetchToDieuTriData function not available');
-        }
 
         // Fetch basic patient data from API first (fast)
         const basicData = await this.fetchPatientData();
-        
+
         // Store basic data immediately for fast initial render
         window.dr_data = basicData;
-        
+
         // Start enrichment in background (don't wait for it)
         this.enrichPatientDataInBackground(basicData);
-        
+
         return basicData;
     },
 
@@ -9941,13 +9822,13 @@ const PatientService = {
      */
     async enrichPatientDataInBackground(patients) {
         console.log('Starting background enrichment for', patients.length, 'patients');
-        
+
         try {
             const enrichedData = await this.enrichPatientDataWithChecklist(patients);
-            
+
             // Update the global data
             window.dr_data = enrichedData;
-            
+
             // Trigger re-render of cards with updated data
             if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.refreshPatientCards === 'function') {
                 unsafeWindow.refreshPatientCards(enrichedData);
@@ -9958,9 +9839,9 @@ const PatientService = {
             } else if (typeof window.refreshPatientCards === 'function') {
                 window.refreshPatientCards(enrichedData);
             }
-            
+
             console.log('Background enrichment completed');
-            
+
             // Check for celebration animations after background enrichment
             setTimeout(() => {
                 if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.checkAllCelebrationAnimations === 'function') {
@@ -10017,49 +9898,16 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":42,"./checklistService":27}],30:[function(require,module,exports){
+},{"../components/loginHandler":11,"../pages/page.dashboard.support":21,"../utils/patientDataMapper":43,"./checklistService":27}],30:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const ChecklistService = require('./checklistService');
 const SurgeryUtils = require('../utils/surgeryUtils');
+const { escapeHtml } = require('../utils/htmlUtils');
 
 const ReportService = {
-    _escapeHtml(str) {
-        return String(str || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    // Deprecated: kept for reference; reports now load full checklist state
-    async getPatientTreatmentPlan(mabn, ngayvv) {
-        try {
-            const formData = new FormData();
-            formData.append('mabn', mabn + 9898);
-            const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
-            formData.append('tungay', tungay);
-            formData.append('denngay', denngay);
-            const response = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
-                method: 'POST', credentials: 'include', body: formData
-            });
-            const res = await response.json();
-            if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-                const obj = res.data[res.data.length - 1];
-                let state = {};
-                if (obj && obj.chuky) {
-                    try { state = JSON.parse(obj.chuky); } catch (e) { state = {}; }
-                }
-                return state.kehoach || '';
-            }
-            return '';
-        } catch (error) {
-            console.error('Error getting treatment plan:', error);
-            return '';
-        }
-    },
 
     /**
      * Load checklist state for multiple patients (sorted).
@@ -10177,7 +10025,7 @@ const ReportService = {
             html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
             html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${data.name} - ${data.mabn}</strong></h3>`;
             html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
-            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
+            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`;
             if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
             if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
             if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;
@@ -10196,7 +10044,7 @@ const ReportService = {
         html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
         html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.name} - ${data.mabn}</strong></h3>`;
         html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
-        html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
+        html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`;
         if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
         if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
         if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;
@@ -10240,7 +10088,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":37,"../utils/patientDataMapper":42,"../utils/surgeryUtils":43,"./checklistService":27}],31:[function(require,module,exports){
+},{"../utils/dateUtils":37,"../utils/htmlUtils":41,"../utils/patientDataMapper":43,"../utils/surgeryUtils":45,"./checklistService":27}],31:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -10446,7 +10294,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":41,"./apiService":26}],33:[function(require,module,exports){
+},{"../utils/khoaUtils":42,"./apiService":26}],33:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -10803,7 +10651,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":27,"./uiUtils":45}],37:[function(require,module,exports){
+},{"../services/checklistService":27,"./uiUtils":47}],37:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -10826,15 +10674,15 @@ const DateUtils = {
         if (/^\d{2}\/\d{2}\/\d{4}/.test(admitDate)) {
             const [part1, part2, yearAndTime] = admitDate.split('/');
             const [year, time] = yearAndTime.split(' ');
-            
+
             // Try to determine if it's dd/mm/yyyy or mm/dd/yyyy
             // If part1 > 12, it must be dd/mm/yyyy format
             // If part2 > 12, it must be mm/dd/yyyy format  
             const num1 = parseInt(part1);
             const num2 = parseInt(part2);
-            
+
             let month, day;
-            
+
             if (num1 > 12) {
                 // part1 is day, part2 is month (dd/mm/yyyy format)
                 day = part1;
@@ -10851,7 +10699,7 @@ const DateUtils = {
                 month = part2;
                 console.log('DEBUG - Ambiguous format, assuming dd/mm/yyyy');
             }
-            
+
             const result = `${month}/${day}/${year} ${time || '00:00'}`;
             console.log('DEBUG - DateUtils.convertToUSFormat output:', result);
             return result;
@@ -10868,16 +10716,24 @@ const DateUtils = {
         const tungay = this.convertToUSFormat(admitDate);
         const [admitMonth, admitDay, admitYearAndTime] = tungay.split('/');
         const [admitYear, admitTime] = admitYearAndTime.split(' ');
-        
+
         const tungayDate = new Date(`${admitYear}-${admitMonth}-${admitDay}T${admitTime || '00:00'}`);
         const denngayDate = new Date(tungayDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-        
+
         const dd = String(denngayDate.getDate()).padStart(2, '0');
         const mm = String(denngayDate.getMonth() + 1).padStart(2, '0');
         const yyyy = denngayDate.getFullYear();
         const denngay = `${mm}/${dd}/${yyyy} 23:59`;
 
         return { tungay, denngay };
+    },
+
+    /**
+     * Get today's date as dd/mm/yyyy string (used in y lệnh timestamps, tags, etc.)
+     */
+    getTodayStr() {
+        const d = new Date();
+        return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
     }
 };
 
@@ -11000,7 +10856,39 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":40,"./surgeryUtils":43,"./tagUtils":44}],39:[function(require,module,exports){
+},{"./htmlUtils":41,"./surgeryUtils":45,"./tagUtils":46}],39:[function(require,module,exports){
+// globalFnUtils.js - Helper to call functions that may live on multiple global scopes
+// (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
+
+/**
+ * Call a named function across all known global scopes.
+ * Returns true if the function was found and called successfully.
+ * @param {string} fnName - Name of the global function to call
+ * @param {...any} args - Arguments to pass to the function
+ * @returns {boolean}
+ */
+function callGlobalFn(fnName, ...args) {
+    const scopes = [];
+    try { if (typeof unsafeWindow !== 'undefined' && unsafeWindow) scopes.push(unsafeWindow); } catch (_) { }
+    try { if (typeof globalThis !== 'undefined' && globalThis) scopes.push(globalThis); } catch (_) { }
+    try { if (typeof window !== 'undefined' && window) scopes.push(window); } catch (_) { }
+
+    for (const scope of scopes) {
+        if (scope && typeof scope[fnName] === 'function') {
+            try {
+                scope[fnName](...args);
+                return true;
+            } catch (e) {
+                console.warn(`callGlobalFn: error calling ${fnName}`, e);
+            }
+        }
+    }
+    return false;
+}
+
+module.exports = { callGlobalFn };
+
+},{}],40:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -11244,7 +11132,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],40:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -11259,7 +11147,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],41:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -11275,7 +11163,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],42:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -11526,7 +11414,26 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
+// stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
+
+/**
+ * Sync a new checklistState back into the matching patient object in window.dr_data.
+ * Call this after any mutation to window.checklistState so cards stay up to date.
+ * @param {string} mabn - Patient identifier
+ * @param {object} newState - The updated checklist state object
+ */
+function syncPatientStateToGlobal(mabn, newState) {
+    try {
+        if (!window.dr_data || !mabn) return;
+        const p = window.dr_data.find(p => p.mabn === mabn);
+        if (p) p.checklistState = { ...newState };
+    } catch (_) { }
+}
+
+module.exports = { syncPatientStateToGlobal };
+
+},{}],45:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -11799,7 +11706,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],44:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -12070,7 +11977,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],45:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],47:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

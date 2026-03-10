@@ -13,9 +13,9 @@ const PatientService = {
         try {
             const data = await fetchToDieuTriData();
             console.log('Dữ liệu ToDieuTri đã được lấy:', data);
-            
+
             let arr = Array.isArray(data) ? data : (data && data.data ? data.data : []);
-            
+
             if (!arr || arr.length === 0) {
                 return [];
             }
@@ -55,8 +55,8 @@ const PatientService = {
 
         for (let i = 0; i < patients.length; i += batchSize) {
             const batch = patients.slice(i, i + batchSize);
-            console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(patients.length/batchSize)}`);
-            
+            console.log(`Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(patients.length / batchSize)}`);
+
             const batchPromises = batch.map(async (patient, batchIndex) => {
                 const actualIndex = i + batchIndex;
                 try {
@@ -64,7 +64,7 @@ const PatientService = {
                     // Use patient's ngayvv (actual admission date) instead of old tungay
                     console.log('DEBUG - Patient ngayvv:', patient.ngayvv);
                     console.log('DEBUG - Background enrichment patient object:', JSON.stringify(patient, null, 2));
-                    
+
                     const checklistObj = {
                         mabn: patient.mabn,
                         mavaovien: patient.mavaovien,
@@ -77,10 +77,10 @@ const PatientService = {
                     const checklistState = await ChecklistService.loadChecklistState(checklistObj);
                     if (checklistState) {
                         console.log('Checklist state loaded for patient:', patient.mabn, checklistState);
-                        
+
                         // Store checklist state for y lệnh tags
                         enrichedPatients[actualIndex].checklistState = checklistState;
-                        
+
                         // Map surgery data from checklist
                         const surgeryData = PatientDataMapper.mapPhauThuatData(checklistState);
                         if (surgeryData) {
@@ -99,14 +99,14 @@ const PatientService = {
 
             // Wait for current batch to complete before proceeding
             await Promise.all(batchPromises);
-            
+
             // Small delay between batches to be nice to the server
             if (i + batchSize < patients.length) {
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
         }
 
-        console.log('Enrichment completed. Patients with surgery info:', 
+        console.log('Enrichment completed. Patients with surgery info:',
             enrichedPatients.filter(p => p.phauThuatInfo).length);
 
         // Check for celebration animations after enrichment
@@ -128,20 +128,16 @@ const PatientService = {
             return window.dr_data;
         }
 
-        // Check if fetch function is available
-        if (typeof fetchToDieuTriData !== 'function') {
-            throw new Error('fetchToDieuTriData function not available');
-        }
 
         // Fetch basic patient data from API first (fast)
         const basicData = await this.fetchPatientData();
-        
+
         // Store basic data immediately for fast initial render
         window.dr_data = basicData;
-        
+
         // Start enrichment in background (don't wait for it)
         this.enrichPatientDataInBackground(basicData);
-        
+
         return basicData;
     },
 
@@ -150,13 +146,13 @@ const PatientService = {
      */
     async enrichPatientDataInBackground(patients) {
         console.log('Starting background enrichment for', patients.length, 'patients');
-        
+
         try {
             const enrichedData = await this.enrichPatientDataWithChecklist(patients);
-            
+
             // Update the global data
             window.dr_data = enrichedData;
-            
+
             // Trigger re-render of cards with updated data
             if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.refreshPatientCards === 'function') {
                 unsafeWindow.refreshPatientCards(enrichedData);
@@ -167,9 +163,9 @@ const PatientService = {
             } else if (typeof window.refreshPatientCards === 'function') {
                 window.refreshPatientCards(enrichedData);
             }
-            
+
             console.log('Background enrichment completed');
-            
+
             // Check for celebration animations after background enrichment
             setTimeout(() => {
                 if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.checkAllCelebrationAnimations === 'function') {

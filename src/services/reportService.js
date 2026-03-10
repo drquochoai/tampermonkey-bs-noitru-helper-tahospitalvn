@@ -4,42 +4,9 @@ const DateUtils = require('../utils/dateUtils');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const ChecklistService = require('./checklistService');
 const SurgeryUtils = require('../utils/surgeryUtils');
+const { escapeHtml } = require('../utils/htmlUtils');
 
 const ReportService = {
-    _escapeHtml(str) {
-        return String(str || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    // Deprecated: kept for reference; reports now load full checklist state
-    async getPatientTreatmentPlan(mabn, ngayvv) {
-        try {
-            const formData = new FormData();
-            formData.append('mabn', mabn + 9898);
-            const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
-            formData.append('tungay', tungay);
-            formData.append('denngay', denngay);
-            const response = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
-                method: 'POST', credentials: 'include', body: formData
-            });
-            const res = await response.json();
-            if (res.data && Array.isArray(res.data) && res.data.length > 0) {
-                const obj = res.data[res.data.length - 1];
-                let state = {};
-                if (obj && obj.chuky) {
-                    try { state = JSON.parse(obj.chuky); } catch (e) { state = {}; }
-                }
-                return state.kehoach || '';
-            }
-            return '';
-        } catch (error) {
-            console.error('Error getting treatment plan:', error);
-            return '';
-        }
-    },
 
     /**
      * Load checklist state for multiple patients (sorted).
@@ -157,7 +124,7 @@ const ReportService = {
             html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
             html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${data.name} - ${data.mabn}</strong></h3>`;
             html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
-            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
+            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`;
             if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
             if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
             if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;
@@ -176,7 +143,7 @@ const ReportService = {
         html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
         html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.name} - ${data.mabn}</strong></h3>`;
         html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
-        html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${this._escapeHtml(data.diagnosis)}</div>`;
+        html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`;
         if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
         if (data.ngayPtDisplay) html += `<div style='margin:2px 0;'><b>Ngày PT</b>: ${data.ngayPtDisplay}</div>`;
         if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;

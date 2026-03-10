@@ -1,6 +1,9 @@
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
+const { callGlobalFn } = require('../utils/globalFnUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
+const DateUtils = require('../utils/dateUtils');
 
 function setupYLenhHandlers(infoElement, patient) {
     const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
@@ -94,33 +97,17 @@ function setupYLenhHandlers(infoElement, patient) {
         // Save to server
         saveYLenhLog();
 
-        // Clear input and re-render
+        // Update patient state and card tags
         if (!content) input.value = ''; // Only clear if not from quick action
         renderYLenhLog(window.checklistState.yLenhLog);
-
-        // Update patient object in window.dr_data with new checklistState
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...window.checklistState };
-                console.log('Updated checklistState in window.dr_data for patient:', patient.mabn);
-            }
-        }
-
-        // Trigger patient card update to show new tag
-        if (window.updatePatientCardTags) {
-            console.log('Calling updatePatientCardTags for patient:', patient.mabn);
-            window.updatePatientCardTags(patient.mabn);
-        }
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        callGlobalFn('updatePatientCardTags', patient.mabn);
 
         // Also check celebration animation specifically after adding tag
         setTimeout(() => {
             if (typeof window.checkAllCelebrationAnimations === 'function') {
-                // Find the updated patient data
-                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                if (patientInData) {
-                    window.checkAllCelebrationAnimations([patientInData]);
-                }
+                const patientInData = window.dr_data && window.dr_data.find(p => p.mabn === patient.mabn);
+                if (patientInData) window.checkAllCelebrationAnimations([patientInData]);
             }
         }, 100);
     }
@@ -131,30 +118,14 @@ function setupYLenhHandlers(infoElement, patient) {
             window.checklistState.yLenhLog.splice(index, 1);
             saveYLenhLog();
             renderYLenhLog(window.checklistState.yLenhLog);
-
-            // Update patient object in window.dr_data with new checklistState
-            if (window.dr_data && patient.mabn) {
-                const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                if (patientInData) {
-                    patientInData.checklistState = { ...window.checklistState };
-                    console.log('Updated checklistState in window.dr_data after removal for patient:', patient.mabn);
-                }
-            }
-
-            // Trigger patient card update to refresh tags
-            if (window.updatePatientCardTags) {
-                console.log('Calling updatePatientCardTags after removal for patient:', patient.mabn);
-                window.updatePatientCardTags(patient.mabn);
-            }
+            syncPatientStateToGlobal(patient.mabn, window.checklistState);
+            callGlobalFn('updatePatientCardTags', patient.mabn);
 
             // Also check celebration animation specifically after removing tag
             setTimeout(() => {
                 if (typeof window.checkAllCelebrationAnimations === 'function') {
-                    // Find the updated patient data
-                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                    if (patientInData) {
-                        window.checkAllCelebrationAnimations([patientInData]);
-                    }
+                    const patientInData = window.dr_data && window.dr_data.find(p => p.mabn === patient.mabn);
+                    if (patientInData) window.checkAllCelebrationAnimations([patientInData]);
                 }
             }, 100);
         }
@@ -183,8 +154,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Helper: find today's quick entry by action
     function findTodayQuickEntryByAction(actionText) {
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        const todayStr = DateUtils.getTodayStr();
         if (!window.checklistState || !Array.isArray(window.checklistState.yLenhLog)) return { entry: null, index: -1 };
         const index = window.checklistState.yLenhLog.findIndex(e => {
             const entryDate = e.timestamp ? e.timestamp.split(' ')[0] : '';
@@ -331,9 +301,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Function to toggle quick y lệnh (three states)
     function toggleQuickYLenh(actionText, buttonElement) {
-        // Today string
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+        const todayStr = DateUtils.getTodayStr();
 
         if (!window.checklistState.yLenhLog) {
             window.checklistState.yLenhLog = [];
@@ -396,18 +364,9 @@ function setupYLenhHandlers(infoElement, patient) {
         saveYLenhLog();
         renderYLenhLog(window.checklistState.yLenhLog);
 
-        // Update patient object in window.dr_data
-        if (window.dr_data && patient.mabn) {
-            const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-            if (patientInData) {
-                patientInData.checklistState = { ...window.checklistState };
-            }
-        }
-
-        // Update card tags (quick actions might render as tags; styles can reflect state)
-        if (window.updatePatientCardTags) {
-            window.updatePatientCardTags(patient.mabn);
-        }
+        // Update card tags
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        callGlobalFn('updatePatientCardTags', patient.mabn);
 
         // Discharge time editor + celebration animation for 'Xuất viện'
         if (actionText === 'Xuất viện') {
@@ -433,9 +392,7 @@ function setupYLenhHandlers(infoElement, patient) {
     // Function to update button states based on existing log
     // Priority: patient.checklistState (populated from card) > window.checklistState
     function updateQuickActionButtonStates() {
-        const today = new Date();
-        const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-
+        const todayStr = DateUtils.getTodayStr();
         // Source: prefer patient-scoped state so buttons show correctly on sidebar open
         // even before the async checklist API call resolves
         const yLenhLog = (patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog))

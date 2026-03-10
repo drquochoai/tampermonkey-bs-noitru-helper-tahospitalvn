@@ -51,13 +51,30 @@ function closeOpenedTab(pid, reason = 'done') {
 }
 
 // Build rules from BS_CAI_DAT.HSBA_CHECKLIST_MAP (array of rule objects)
+// Preprocess rules to support case-insensitive "like" matching on `tenmau` (substring match)
 const __HSBA_RULES__ = Array.isArray(BS_CAI_DAT.HSBA_CHECKLIST_MAP) ? BS_CAI_DAT.HSBA_CHECKLIST_MAP : [];
-const HSBA_SHOW_SET = new Set(__HSBA_RULES__.filter(r => r && r.tenmau && r.show).map(r => r.tenmau));
-const HSBA_SYNC_SET = new Set(__HSBA_RULES__.filter(r => r && r.tenmau && r.sync).map(r => r.tenmau));
-const HSBA_TENMAU_TO_CHECKLIST = __HSBA_RULES__.reduce((acc, r) => {
-	if (r && r.sync && r.tenmau && r.checklist) acc[r.tenmau] = r.checklist;
-	return acc;
-}, {});
+const HSBA_RULES_PROCESSED = __HSBA_RULES__.map(r => {
+	const tenmauNorm = r && r.tenmau ? String(r.tenmau).toLowerCase().trim() : null;
+	return { ...r, tenmauNorm };
+});
+
+function matchRuleByTenmau(tenmau, rule) {
+	if (!tenmau || !rule || !rule.tenmauNorm) return false;
+	try { return String(tenmau).toLowerCase().includes(rule.tenmauNorm); } catch (_) { return false; }
+}
+
+function shouldShowTenmau(docTenmau) {
+	return HSBA_RULES_PROCESSED.some(r => r && r.show && matchRuleByTenmau(docTenmau, r));
+}
+
+function shouldSyncTenmau(docTenmau) {
+	return HSBA_RULES_PROCESSED.some(r => r && r.sync && matchRuleByTenmau(docTenmau, r));
+}
+
+function tenmauToChecklist(docTenmau) {
+	const found = HSBA_RULES_PROCESSED.find(r => r && r.sync && r.checklist && matchRuleByTenmau(docTenmau, r));
+	return found ? found.checklist : null;
+}
 
 function createEl(tag, attrs = {}, children = []) {
 	const el = document.createElement(tag);
@@ -179,7 +196,7 @@ function renderResult(container, result, ctx = {}) {
 			currentEpisode.hoSoChiTiet.forEach(g => {
 				(Array.isArray(g.chiTiets) ? g.chiTiets : []).forEach(d => {
 					if (!d || !d.tenmau) return;
-					if (!HSBA_SYNC_SET.has(d.tenmau)) return;
+					if (!shouldSyncTenmau(d.tenmau)) return;
 					// Only consider documents within the current episode date range
 					const dDate = parseDateSafe(d.ngay);
 					if (!dDate) return;
@@ -190,11 +207,11 @@ function renderResult(container, result, ctx = {}) {
 					if (ts > prev) latestDocDates[d.tenmau] = ts;
 				});
 			});
-			const map = HSBA_TENMAU_TO_CHECKLIST;
 			const nowIso = new Date().toISOString();
+			const mapLookup = tenmauToChecklist;
 			const hsbaSynced = Object.create(null);
 			for (const tenmau of docSet) {
-				const target = map[tenmau];
+				const target = mapLookup(tenmau);
 				if (!target) continue;
 				const dateTs = latestDocDates[tenmau] || 0;
 				hsbaSynced[target] = {
@@ -249,7 +266,7 @@ function renderResult(container, result, ctx = {}) {
 				}))
 				.filter(d => {
 					if (!d) return false;
-					if (!d.tenmau || !HSBA_SHOW_SET.has(d.tenmau)) {
+					if (!d.tenmau || !shouldShowTenmau(d.tenmau)) {
 						try { console.debug('[DR][HSBA] skip doc (tenmau not allowed):', d); } catch(_) {}
 						return false;
 					}
@@ -610,7 +627,7 @@ async function hsbaBackgroundFetcherIfNeeded() {
 															if (Array.isArray(it.hoSoChiTiet)) {
 																it.hoSoChiTiet.forEach(g => {
 																	if (Array.isArray(g.chiTiets)) {
-																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : HSBA_SHOW_SET.has(x.tenmau));
+																		g.chiTiets = g.chiTiets.filter(x => !x || !x.tenmau ? false : shouldShowTenmau(x.tenmau));
 																	}
 																});
 															}

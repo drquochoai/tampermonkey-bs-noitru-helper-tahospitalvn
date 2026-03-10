@@ -4,7 +4,7 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const { updatePatientCardPhauThuat } = require('../utils/surgeryUtils');
 
 function createDoctorCheckboxes(className) {
-    return BS_CAI_DAT.danhSachBacSi.map(doctor => 
+    return BS_CAI_DAT.danhSachBacSi.map(doctor =>
         `<label><input type="checkbox" class="${className}" value="${doctor}"> ${doctor}</label>`
     ).join('');
 }
@@ -20,7 +20,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
             console.log('Popup already exists, skipping creation');
             return;
         }
-        
+
         const backdrop = document.createElement('div');
         backdrop.id = 'dr-pt-popup-backdrop';
         backdrop.style.cssText = `
@@ -73,7 +73,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
         backdrop.appendChild(popup);
         document.body.appendChild(backdrop);
 
-        const originalClosePopup = function() {
+        const originalClosePopup = function () {
             document.body.removeChild(backdrop);
             document.documentElement.lang = originalLang || 'vi';
         };
@@ -86,7 +86,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
         const saveBtn = popup.querySelector('#dr-save-pt');
         const cancelBtn = popup.querySelector('#dr-cancel-pt');
 
-        hourInput.addEventListener('input', function() {
+        hourInput.addEventListener('input', function () {
             let value = parseInt(this.value);
             if (value > 23) this.value = 23;
             if (value < 0) this.value = 0;
@@ -96,47 +96,116 @@ function setupPhauThuatHandlers(infoElement, patient) {
             }
         });
 
-        hourInput.addEventListener('focus', function() {
+        hourInput.addEventListener('focus', function () {
             this.select();
         });
 
-        minuteInput.addEventListener('input', function() {
+        minuteInput.addEventListener('input', function () {
             let value = parseInt(this.value);
             if (value > 59) this.value = 59;
             if (value < 0) this.value = 0;
         });
 
-        minuteInput.addEventListener('focus', function() {
+        minuteInput.addEventListener('focus', function () {
             this.select();
         });
 
-        minuteInput.addEventListener('blur', function() {
+        minuteInput.addEventListener('blur', function () {
             if (this.value && this.value.length === 1) {
                 this.value = '0' + this.value;
             }
+            tryAutoSave();
         });
 
-        hourInput.addEventListener('blur', function() {
+        hourInput.addEventListener('blur', function () {
             if (this.value && this.value.length === 1) {
                 this.value = '0' + this.value;
             }
+            tryAutoSave();
         });
+
+        // ── Auto-save on blur ──────────────────────────────────────────────────────
+        // Validates and saves the current popup form values silently when user
+        // leaves any of the key fields (date, hour, minute, method).
+        // Only runs in EDIT mode (editIndex !== null) when there is already a record.
+        function tryAutoSave() {
+            const date = dateInput.value.trim();
+            const hour = hourInput.value.trim();
+            const minute = minuteInput.value.trim();
+            const method = methodInput.value.trim();
+
+            // Need at least date + time + method to auto-save
+            if (!date || !hour || !minute || !method) return;
+
+            const dateRegex = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+            if (!dateRegex.test(date)) return;
+
+            const h = parseInt(hour, 10);
+            const m = parseInt(minute, 10);
+            if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return;
+
+            const time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+
+            const selectedDoctors = Array.from(doctorCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+            if (selectedDoctors.length === 0) return;
+
+            if (!window.checklistState.phauThuatLog) {
+                window.checklistState.phauThuatLog = [];
+            }
+
+            const newEntry = {
+                date,
+                time,
+                method,
+                doctors: selectedDoctors.join(', '),
+                id: (editIndex !== null && window.checklistState.phauThuatLog[editIndex] && window.checklistState.phauThuatLog[editIndex].id)
+                    ? window.checklistState.phauThuatLog[editIndex].id
+                    : Date.now()
+            };
+
+            if (editIndex !== null && window.checklistState.phauThuatLog[editIndex]) {
+                window.checklistState.phauThuatLog[editIndex] = newEntry;
+            } else if (editIndex === null) {
+                // For new entry mode, update the first slot tentatively (will be finalised on Save)
+                return;
+            } else {
+                return;
+            }
+
+            // Persist and update card silently
+            savePhauThuatLog();
+            renderPhauThuatLog(window.checklistState.phauThuatLog);
+            updatePatientCardPhauThuatLocal(patient);
+
+            // Brief visual flash on the popup itself
+            try {
+                const prev = popup.style.boxShadow;
+                popup.style.boxShadow = '0 0 0 3px rgba(76,175,80,0.5)';
+                setTimeout(() => { popup.style.boxShadow = prev || ''; }, 500);
+            } catch (_) { }
+        }
+
+        // Wire auto-save to blur on key fields
+        dateInput.addEventListener('blur', tryAutoSave);
+        methodInput.addEventListener('blur', tryAutoSave);
 
         const config = BS_CAI_DAT.phauThuatDefaults;
-        
+
         // Load existing data for edit mode
         if (editIndex !== null && window.checklistState.phauThuatLog && window.checklistState.phauThuatLog[editIndex]) {
             const editData = window.checklistState.phauThuatLog[editIndex];
             dateInput.value = editData.date || '';
             methodInput.value = editData.method || '';
-            
+
             // Parse time
             if (editData.time) {
                 const [hour, minute] = editData.time.split(':');
                 hourInput.value = hour;
                 minuteInput.value = minute;
             }
-            
+
             // Set doctors
             if (editData.doctors) {
                 const doctorList = editData.doctors.split(', ');
@@ -149,14 +218,14 @@ function setupPhauThuatHandlers(infoElement, patient) {
             if (config.defaultDate === 'tomorrow') {
                 const tomorrow = new Date();
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                const tomorrowStr = String(tomorrow.getDate()).padStart(2, '0') + '/' + 
-                    String(tomorrow.getMonth() + 1).padStart(2, '0') + '/' + 
+                const tomorrowStr = String(tomorrow.getDate()).padStart(2, '0') + '/' +
+                    String(tomorrow.getMonth() + 1).padStart(2, '0') + '/' +
                     tomorrow.getFullYear();
                 dateInput.value = tomorrowStr;
             } else if (config.defaultDate === 'today') {
                 const today = new Date();
-                const todayStr = String(today.getDate()).padStart(2, '0') + '/' + 
-                    String(today.getMonth() + 1).padStart(2, '0') + '/' + 
+                const todayStr = String(today.getDate()).padStart(2, '0') + '/' +
+                    String(today.getMonth() + 1).padStart(2, '0') + '/' +
                     today.getFullYear();
                 dateInput.value = todayStr;
             }
@@ -177,12 +246,12 @@ function setupPhauThuatHandlers(infoElement, patient) {
             const hour = hourInput.value.trim();
             const minute = minuteInput.value.trim();
             const method = methodInput.value.trim();
-            
+
             let time = '';
             if (hour && minute) {
                 const h = parseInt(hour, 10);
                 const m = parseInt(minute, 10);
-                
+
                 if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
                     time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
                 } else {
@@ -193,7 +262,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 alert('Vui lòng nhập đầy đủ giờ và phút');
                 return;
             }
-            
+
             if (!date || !time || !method) {
                 alert(BS_CAI_DAT.validation.messages.missingPhauThuatInfo);
                 return;
@@ -262,7 +331,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
         saveBtn.addEventListener('click', savePhauThuat);
         cancelBtn.addEventListener('click', closePopup);
-        backdrop.addEventListener('click', function(e) {
+        backdrop.addEventListener('click', function (e) {
             if (e.target === backdrop) {
                 closePopup();
             }
@@ -292,7 +361,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
         setTimeout(() => {
             logContainer.querySelectorAll('.remove-pt-btn').forEach(btn => {
-                btn.addEventListener('click', function(e) {
+                btn.addEventListener('click', function (e) {
                     e.stopPropagation();
                     const index = parseInt(this.getAttribute('data-index'));
                     removePhauThuat(index);
@@ -300,7 +369,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
             });
 
             logContainer.querySelectorAll('.pt-entry-clickable').forEach(entry => {
-                entry.addEventListener('click', function(e) {
+                entry.addEventListener('click', function (e) {
                     if (e.target.classList.contains('remove-pt-btn')) return;
                     const index = parseInt(this.getAttribute('data-index'));
                     editPhauThuat(index);
@@ -334,7 +403,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     function updatePatientCardPhauThuatLocal(patient) {
         updatePatientCardPhauThuat(patient);
-        
+
         // Also try global access as fallback
         if (typeof unsafeWindow !== 'undefined' && unsafeWindow.updatePatientCardPhauThuat) {
             unsafeWindow.updatePatientCardPhauThuat(patient);

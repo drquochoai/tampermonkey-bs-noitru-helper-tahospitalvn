@@ -42,7 +42,7 @@ function showDashboardBenhNhanIfNeeded() {
     // Use global openTabs variable for OTM tabs
     if (!window.openTabs) window.openTabs = [];
     let openTabs = window.openTabs;
-    
+
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
 
@@ -52,26 +52,26 @@ function showDashboardBenhNhanIfNeeded() {
         unsafeWindow.showToast = showToast;
         unsafeWindow.copyToClipboard = copyToClipboard;
         unsafeWindow.copyYLenhText = copyYLenhText;
-    unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
-    unsafeWindow.updatePatientCardHXT = DomUpdaters.updateHXT;
-    unsafeWindow.updatePatientCardCDKT = DomUpdaters.updateCDKT;
+        unsafeWindow.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+        unsafeWindow.updatePatientCardHXT = DomUpdaters.updateHXT;
+        unsafeWindow.updatePatientCardCDKT = DomUpdaters.updateCDKT;
     } else if (typeof this !== 'undefined') {
         this.showToast = showToast;
         this.copyToClipboard = copyToClipboard;
         this.copyYLenhText = copyYLenhText;
-    this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
-    this.updatePatientCardHXT = DomUpdaters.updateHXT;
-    this.updatePatientCardCDKT = DomUpdaters.updateCDKT;
+        this.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+        this.updatePatientCardHXT = DomUpdaters.updateHXT;
+        this.updatePatientCardCDKT = DomUpdaters.updateCDKT;
     } else {
         // Fallback - tạo global functions không qua window
         globalThis.showToast = showToast;
         globalThis.copyToClipboard = copyToClipboard;
         globalThis.copyYLenhText = copyYLenhText;
-    globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
-    globalThis.updatePatientCardHXT = DomUpdaters.updateHXT;
-    globalThis.updatePatientCardCDKT = DomUpdaters.updateCDKT;
+        globalThis.updatePatientCardPhauThuat = updatePatientCardPhauThuat;
+        globalThis.updatePatientCardHXT = DomUpdaters.updateHXT;
+        globalThis.updatePatientCardCDKT = DomUpdaters.updateCDKT;
     }
-    
+
     // Styles are injected via addGlobalStyles() only
 
     const checklistItems = BS_CAI_DAT.checklistItems;
@@ -80,11 +80,11 @@ function showDashboardBenhNhanIfNeeded() {
     // Helper function to create checklist section
     async function createChecklistSectionAsync(patient) {
         const checklistDiv = document.createElement('div');
-        
+
         // Determine if patient has discharge tag
         const hasDischarge = hasDischargeTag(patient);
         const defaultTab = hasDischarge ? 'xuatvien' : 'bomo';
-        
+
         checklistDiv.innerHTML = `
             <h3 style="margin-top:0">Checklist</h3>
             <div class="checklist-tabs" style="display:flex;margin-bottom:16px;border-bottom:2px solid #e0e0e0;">
@@ -100,16 +100,16 @@ function showDashboardBenhNhanIfNeeded() {
                 </div>
             </div>
         `;
-        
+
         // Setup tab switching
         setTimeout(() => {
             const tabBtns = checklistDiv.querySelectorAll('.tab-btn');
             const tabPanes = checklistDiv.querySelectorAll('.tab-pane');
-            
+
             tabBtns.forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     const targetTab = this.getAttribute('data-tab');
-                    
+
                     // Update buttons
                     tabBtns.forEach(b => {
                         b.classList.remove('active');
@@ -117,18 +117,18 @@ function showDashboardBenhNhanIfNeeded() {
                         b.style.color = '#666';
                         b.style.fontWeight = 'normal';
                     });
-                    
+
                     this.classList.add('active');
                     this.style.background = targetTab === 'bomo' ? '#1976d2' : '#4caf50';
                     this.style.color = 'white';
                     this.style.fontWeight = 'bold';
-                    
+
                     // Update panes
                     tabPanes.forEach(pane => {
                         pane.classList.remove('active');
                         pane.style.display = 'none';
                     });
-                    
+
                     const targetPane = checklistDiv.querySelector(`.tab-pane[data-tab="${targetTab}"]`);
                     if (targetPane) {
                         targetPane.classList.add('active');
@@ -137,23 +137,23 @@ function showDashboardBenhNhanIfNeeded() {
                 });
             });
         }, 10);
-        
+
         // Load both checklists asynchronously
         const bomoList = checklistDiv.querySelector('#checklist-bomo');
         const xuatvienList = checklistDiv.querySelector('#checklist-xuatvien');
-        
+
         // Await the async loadChecklist for bomo
         if (bomoList) {
             await loadChecklist(patient, bomoList, 'bomo');
         }
-        
+
         // For xuatvien, it's not async but we can wait a bit for the setTimeout
         if (xuatvienList) {
             loadChecklistXuatVien(patient, xuatvienList);
             // Wait for the setTimeout in loadChecklistXuatVien
             await new Promise(resolve => setTimeout(resolve, 150));
         }
-        
+
         return checklistDiv;
     }
 
@@ -161,12 +161,12 @@ function showDashboardBenhNhanIfNeeded() {
     async function loadChecklist(patient, checklistUl, checklistType = 'bomo', retryCount = 0) {
         try {
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
-            
+
             const res = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
             checklistUl.innerHTML = '';
-            
+
             let checklistObj = ChecklistService.findChecklistObject(res);
-            
+
             if (!checklistObj) {
                 checklistUl.innerHTML = '<li>Không có dữ liệu</li>';
                 const created = await ChecklistService.createNewChecklist(patient);
@@ -197,7 +197,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const otmLogs = Array.isArray(patient && patient._otmPhauThuatLog) ? patient._otmPhauThuatLog : [];
                 if (otmLogs.length > 0) {
                     if (!Array.isArray(window.checklistState.phauThuatLog)) window.checklistState.phauThuatLog = [];
-                    const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+                    const keyOf = (e) => `${e.date}|${e.time}|${(e.method || '').trim().toLowerCase()}`;
                     const existingKeys = new Set(window.checklistState.phauThuatLog.map(keyOf));
                     let added = 0;
                     for (const e of otmLogs) {
@@ -209,15 +209,15 @@ function showDashboardBenhNhanIfNeeded() {
                         }
                     }
                     if (added > 0) {
-                        const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
-                        const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
-                        window.checklistState.phauThuatLog.sort((a,b) => toTs(b)-toTs(a));
+                        const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
+                        const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+                        window.checklistState.phauThuatLog.sort((a, b) => toTs(b) - toTs(a));
                         // Persist silently in background
-                        try { ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) {}
+                        try { ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) { }
                     }
                 }
             } catch (e) { console.warn('OTM merge into checklistState failed', e); }
-            
+
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
             if (yLenhLogContainer && window.checklistState && window.checklistState.yLenhLog) {
@@ -234,7 +234,7 @@ function showDashboardBenhNhanIfNeeded() {
             if (checklistType === 'bomo') {
                 renderChecklistItems(checklistUl);
             }
-            
+
         } catch (error) {
             console.error('Error loading checklist:', error);
             checklistUl.innerHTML = '<li>Lỗi tải checklist</li>';
@@ -245,11 +245,11 @@ function showDashboardBenhNhanIfNeeded() {
     function loadChecklistXuatVien(patient, checklistUl) {
         try {
             checklistUl.innerHTML = '<li>Đang tải checklist xuất viện...</li>';
-            
+
             setTimeout(() => {
                 renderChecklistXuatVien(checklistUl, patient);
             }, 100);
-            
+
         } catch (error) {
             console.error('Error loading xuất viện checklist:', error);
             checklistUl.innerHTML = '<li>Lỗi tải checklist xuất viện</li>';
@@ -259,16 +259,16 @@ function showDashboardBenhNhanIfNeeded() {
     // Helper function to render checklist xuất viện
     function renderChecklistXuatVien(checklistUl, patient) {
         checklistUl.innerHTML = '';
-        
+
         BS_CAI_DAT.checklistXuatVien.forEach((item, idx) => {
             const li = document.createElement('li');
             li.style = 'margin-bottom:8px;';
-            
+
             if (typeof item === 'string') {
                 // Simple checklist item
                 const id = 'dr-checklist-xv-' + idx;
                 const isChecked = window.checklistState && window.checklistState[`xuatvien_${item}`] || false;
-                
+
                 li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
             } else if (item.children) {
                 // Parent item with children - Special handling for "Tờ điều trị"
@@ -279,10 +279,10 @@ function showDashboardBenhNhanIfNeeded() {
                             <h4 style="margin:0 0 8px 0;color:#1976d2;font-weight:bold;border-bottom:2px solid #e3f2fd;padding-bottom:4px;">📋 ${item.label}</h4>
                             <ul style="margin-left:0;margin-top:8px;list-style:none;padding:0;">
                                 ${item.children.map((child, childIdx) => {
-                                    const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
-                                    const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
-                                    return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
-                                }).join('')}
+                        const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
+                        const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
+                        return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
+                    }).join('')}
                             </ul>
                         </div>
                     `;
@@ -290,7 +290,7 @@ function showDashboardBenhNhanIfNeeded() {
                     // Normal parent item with checkbox
                     const parentId = 'dr-checklist-xv-parent-' + idx;
                     const isParentChecked = window.checklistState && window.checklistState[`xuatvien_${item.label}`] || false;
-                    
+
                     li.innerHTML = `
                         <div style="margin-bottom:8px;">
                             <label style="display:flex;align-items:center;gap:8px;font-weight:bold;">
@@ -298,16 +298,16 @@ function showDashboardBenhNhanIfNeeded() {
                             </label>
                             <ul style="margin-left:24px;margin-top:8px;list-style:none;padding:0;">
                                 ${item.children.map((child, childIdx) => {
-                                    const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
-                                    const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
-                                    return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
-                                }).join('')}
+                        const childId = `dr-checklist-xv-child-${idx}-${childIdx}`;
+                        const isChildChecked = window.checklistState && window.checklistState[`xuatvien_${child}`] || false;
+                        return `<li style="margin-bottom:4px;">${createChecklistItemHTML(child, childId, isChildChecked, patient)}</li>`;
+                    }).join('')}
                             </ul>
                         </div>
                     `;
                 }
             }
-            
+
             checklistUl.appendChild(li);
         });
 
@@ -331,13 +331,13 @@ function showDashboardBenhNhanIfNeeded() {
                         }
                     }
                     const key = `xuatvien_${label}`;
-                    
+
                     if (!window.checklistState) {
                         window.checklistState = {};
                     }
-                    
+
                     window.checklistState[key] = this.checked;
-                    
+
                     const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
                     if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist xuất viện thất bại!');
@@ -345,7 +345,7 @@ function showDashboardBenhNhanIfNeeded() {
                 });
             });
         }, 10);
-        
+
         // Make function available for reuse
         window.renderChecklistXuatVien = renderChecklistXuatVien;
     }
@@ -374,7 +374,7 @@ function showDashboardBenhNhanIfNeeded() {
             // Add event listeners for remove buttons
             setTimeout(() => {
                 logContainer.querySelectorAll('.remove-y-lenh-btn').forEach(btn => {
-                    btn.addEventListener('click', function() {
+                    btn.addEventListener('click', function () {
                         const index = parseInt(this.getAttribute('data-index'));
                         if (window.currentRemoveYLenh) {
                             window.currentRemoveYLenh(index);
@@ -430,7 +430,7 @@ function showDashboardBenhNhanIfNeeded() {
             // Add event listeners for remove buttons
             setTimeout(() => {
                 logContainer.querySelectorAll('.remove-pt-btn').forEach(btn => {
-                    btn.addEventListener('click', function(e) {
+                    btn.addEventListener('click', function (e) {
                         e.stopPropagation(); // Prevent triggering edit popup
                         const index = parseInt(this.getAttribute('data-index'));
                         if (window.currentRemovePhauThuat) {
@@ -452,10 +452,10 @@ function showDashboardBenhNhanIfNeeded() {
 
                 // Add event listeners for edit functionality
                 logContainer.querySelectorAll('.pt-entry-clickable').forEach(entry => {
-                    entry.addEventListener('click', function(e) {
+                    entry.addEventListener('click', function (e) {
                         // Don't trigger if clicking the remove button
                         if (e.target.classList.contains('remove-pt-btn')) return;
-                        
+
                         const index = parseInt(this.getAttribute('data-index'));
                         if (window.currentEditPhauThuat) {
                             window.currentEditPhauThuat(index);
@@ -501,11 +501,11 @@ function showDashboardBenhNhanIfNeeded() {
         note.style.cssText = 'margin-top:6px; font-size:12px; color:#64748b;';
         if (lastSyncAt) {
             const dt = new Date(lastSyncAt);
-            const dd = String(dt.getDate()).padStart(2,'0');
-            const mm = String(dt.getMonth()+1).padStart(2,'0');
+            const dd = String(dt.getDate()).padStart(2, '0');
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
             const yyyy = dt.getFullYear();
-            const hh = String(dt.getHours()).padStart(2,'0');
-            const mi = String(dt.getMinutes()).padStart(2,'0');
+            const hh = String(dt.getHours()).padStart(2, '0');
+            const mi = String(dt.getMinutes()).padStart(2, '0');
             note.textContent = `Đồng bộ HSBA: ${dd}/${mm}/${yyyy} ${hh}:${mi}`;
         } else {
             note.textContent = 'Đồng bộ HSBA: chưa có';
@@ -532,14 +532,23 @@ function showDashboardBenhNhanIfNeeded() {
         try {
             const ul = document.querySelector('#checklist-bomo');
             if (ul) renderChecklistItems(ul);
-        } catch(_) {}
+        } catch (_) { }
     };
 
     async function showSidebar(patient) {
         const backdrop = ModalManager.getOrCreateBackdrop();
         const sidebar = ModalManager.getOrCreateSidebar();
-        
-        // Clear and setup sidebar with responsive layout
+
+        // ─── Bug 1 fix: Clear stale global state from previous patient IMMEDIATELY ───
+        // Reset shared globals so no previous patient's data leaks into new sidebar.
+        window.checklistState = null;
+        window.checklistObj = null;
+        window.currentRemoveYLenh = null;
+        window.currentRenderPhauThuatLog = null;
+        window.currentRemovePhauThuat = null;
+        window.currentEditPhauThuat = null;
+
+        // Clear and setup sidebar with loading spinner right away (no stale DOM)
         sidebar.innerHTML = `
             <div style="display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 18px; color: #666;">
                 <div style="text-align: center;">
@@ -554,10 +563,13 @@ function showDashboardBenhNhanIfNeeded() {
                 }
             </style>
         `;
-    // Start a new session for this sidebar open
-    const sessionId = SidebarSession.startSession(patient && patient.mabn);
+        // Show/reveal sidebar immediately so user sees the spinner (not old content)
+        ModalManager.showModal(sidebar, backdrop);
+
+        // Start a new session for this sidebar open
+        const sessionId = SidebarSession.startSession(patient && patient.mabn);
         sidebar.style = `position:fixed;top:0;right:0;width:80vw;max-width:80vw;height:100vh;background:#fff;z-index:100000;box-shadow:-2px 0 16px rgba(0,0,0,0.15);padding:32px 24px 24px 24px;overflow-y:auto;transition:right 0.2s;`;
-        
+
         // Create responsive container
         const container = document.createElement('div');
         container.style.cssText = `
@@ -566,11 +578,11 @@ function showDashboardBenhNhanIfNeeded() {
             gap: 20px;
             height: 100%;
         `;
-        
-    // Responsive styles are handled in addGlobalStyles()
-        
+
+        // Responsive styles are handled in addGlobalStyles()
+
         container.className = 'dr-sidebar-container';
-        
+
         // Left column: Patient info with surgery and y lệnh
         const leftColumn = document.createElement('div');
         leftColumn.className = 'dr-sidebar-left';
@@ -578,116 +590,116 @@ function showDashboardBenhNhanIfNeeded() {
             flex: 1;
             min-width: 0;
         `;
-        
-    // Sidebar action buttons (reuse card actions behavior)
+
+        // Sidebar action buttons (reuse card actions behavior)
         const sidebarActions = document.createElement('div');
         sidebarActions.className = 'dr-sidebar-actions';
         sidebarActions.style.cssText = `
             display: flex; justify-content: flex-end; gap: 10px; 
             margin-bottom: 12px; flex-wrap: wrap;
         `;
-    // Import shared action creators
-    const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('../components/actionButtons');
-    const { initCopyDienTienAI } = require('../components/copyDienTienAI');
-    sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
-    sidebarActions.appendChild(createHsbaV1Button(patient));
-    sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
+        // Import shared action creators
+        const { createToDieuTriButton, createHsbaButton, createHsbaV1Button } = require('../components/actionButtons');
+        const { initCopyDienTienAI } = require('../components/copyDienTienAI');
+        sidebarActions.appendChild(createToDieuTriButton({ item: patient, variant: 'full' }));
+        sidebarActions.appendChild(createHsbaV1Button(patient));
+        sidebarActions.appendChild(createHsbaButton({ item: patient, variant: 'full' }));
 
-    // Copy diễn tiến button (AI) inside sidebar actions
-    try {
-        const btnCopy = document.createElement('button');
-        btnCopy.type = 'button';
-        btnCopy.className = 'btn btn-sm btn-success';
-        btnCopy.textContent = 'Copy diễn tiến';
-        // Copy-again icon button
-        const btnCopyAgain = document.createElement('button');
-        btnCopyAgain.type = 'button';
-        btnCopyAgain.title = 'Copy lại';
-        btnCopyAgain.className = 'btn btn-sm btn-outline-secondary';
-        btnCopyAgain.style.marginLeft = '6px';
-        btnCopyAgain.textContent = '📋';
-        btnCopyAgain.style.display = 'none';
-        btnCopy.addEventListener('click', async () => {
-            // Build a minimal runner that reuses CopyDienTienAI logic with explicit mabn
-            const mabn = (patient && (patient.pid || patient.mabn)) ? String(patient.pid || patient.mabn) : '';
-            const wrap = document.createElement('div');
-            const statusBar = document.createElement('div');
-            statusBar.id = 'dr-copy-dien-tien-status';
-            statusBar.style.cssText = 'margin-left:8px; font-size:12px; color:#0f172a;';
-            // Place status near the button
-            btnCopyAgain.insertAdjacentElement('afterend', statusBar);
+        // Copy diễn tiến button (AI) inside sidebar actions
+        try {
+            const btnCopy = document.createElement('button');
+            btnCopy.type = 'button';
+            btnCopy.className = 'btn btn-sm btn-success';
+            btnCopy.textContent = 'Copy diễn tiến';
+            // Copy-again icon button
+            const btnCopyAgain = document.createElement('button');
+            btnCopyAgain.type = 'button';
+            btnCopyAgain.title = 'Copy lại';
+            btnCopyAgain.className = 'btn btn-sm btn-outline-secondary';
+            btnCopyAgain.style.marginLeft = '6px';
+            btnCopyAgain.textContent = '📋';
+            btnCopyAgain.style.display = 'none';
+            btnCopy.addEventListener('click', async () => {
+                // Build a minimal runner that reuses CopyDienTienAI logic with explicit mabn
+                const mabn = (patient && (patient.pid || patient.mabn)) ? String(patient.pid || patient.mabn) : '';
+                const wrap = document.createElement('div');
+                const statusBar = document.createElement('div');
+                statusBar.id = 'dr-copy-dien-tien-status';
+                statusBar.style.cssText = 'margin-left:8px; font-size:12px; color:#0f172a;';
+                // Place status near the button
+                btnCopyAgain.insertAdjacentElement('afterend', statusBar);
 
-            if (!mabn) {
-                const mod = require('../components/copyDienTienAI');
-                mod.setStatus(statusBar, 'Không tìm thấy MABN (pid)', '#b91c1c', true);
-                return;
-            }
-
-            // Import functions from module
-            const mod = require('../components/copyDienTienAI');
-            const { fetchPatientInfo } = mod.__esModule ? mod : { fetchPatientInfo: undefined };
-            // Fallback: call via window by reusing internal helpers through duplicated minimal flow
-            try {
-                mod.setStatus(statusBar, 'Đang lấy thông tin người bệnh...', '#0f172a', false);
-                // use internal method via module reference already loaded in bundle
-                const info = await mod.fetchPatientInfo(mabn);
-                const mavaovien = info.maVaoVien || info.mavaovien || '';
-                const ngayvv = mod.parseMMDDYYYYtoDDMMYYYY(info.ngayVV || info.ngayvv || '');
-                const maql = info.maql || '';
-                if (!mavaovien || !ngayvv || !maql) {
-                    mod.setStatus(statusBar, 'Thiếu tham số (mã vào viện/ngày vào/maql)', '#b91c1c', true);
+                if (!mabn) {
+                    const mod = require('../components/copyDienTienAI');
+                    mod.setStatus(statusBar, 'Không tìm thấy MABN (pid)', '#b91c1c', true);
                     return;
                 }
-                const denngay = mod.todayDDMMYYYY();
-                const pdfUrl = `/todieutri/DienBien/PrintPDF?id=&mabn=${encodeURIComponent(mabn)}&mavaovien=${encodeURIComponent(mavaovien)}&tungay=${encodeURIComponent(ngayvv)}&denngay=${encodeURIComponent(denngay)}&maql=${encodeURIComponent(maql)}`;
 
-                mod.setStatus(statusBar, 'Đang tải và xử lý PDF...', '#0f172a', false);
-                const buf = await mod.fetchPdfArrayBuffer(pdfUrl);
-                const rawText = await mod.extractAllTextFromPdfBuffer(buf);
-                const text = mod.sanitizeCopiedText(rawText);
+                // Import functions from module
+                const mod = require('../components/copyDienTienAI');
+                const { fetchPatientInfo } = mod.__esModule ? mod : { fetchPatientInfo: undefined };
+                // Fallback: call via window by reusing internal helpers through duplicated minimal flow
+                try {
+                    mod.setStatus(statusBar, 'Đang lấy thông tin người bệnh...', '#0f172a', false);
+                    // use internal method via module reference already loaded in bundle
+                    const info = await mod.fetchPatientInfo(mabn);
+                    const mavaovien = info.maVaoVien || info.mavaovien || '';
+                    const ngayvv = mod.parseMMDDYYYYtoDDMMYYYY(info.ngayVV || info.ngayvv || '');
+                    const maql = info.maql || '';
+                    if (!mavaovien || !ngayvv || !maql) {
+                        mod.setStatus(statusBar, 'Thiếu tham số (mã vào viện/ngày vào/maql)', '#b91c1c', true);
+                        return;
+                    }
+                    const denngay = mod.todayDDMMYYYY();
+                    const pdfUrl = `/todieutri/DienBien/PrintPDF?id=&mabn=${encodeURIComponent(mabn)}&mavaovien=${encodeURIComponent(mavaovien)}&tungay=${encodeURIComponent(ngayvv)}&denngay=${encodeURIComponent(denngay)}&maql=${encodeURIComponent(maql)}`;
 
-                mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
-                const ok = await mod.copyToClipboard(text);
-                if (ok) {
-                    mod.setStatus(statusBar, 'Đã copy toàn bộ diễn tiến vào clipboard.', '#166534', true);
-                    btnCopyAgain.dataset.clipboardText = text;
-                    btnCopyAgain.style.display = 'inline-block';
-                } else {
-                    mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+                    mod.setStatus(statusBar, 'Đang tải và xử lý PDF...', '#0f172a', false);
+                    const buf = await mod.fetchPdfArrayBuffer(pdfUrl);
+                    const rawText = await mod.extractAllTextFromPdfBuffer(buf);
+                    const text = mod.sanitizeCopiedText(rawText);
+
+                    mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+                    const ok = await mod.copyToClipboard(text);
+                    if (ok) {
+                        mod.setStatus(statusBar, 'Đã copy toàn bộ diễn tiến vào clipboard.', '#166534', true);
+                        btnCopyAgain.dataset.clipboardText = text;
+                        btnCopyAgain.style.display = 'inline-block';
+                    } else {
+                        mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    mod.setStatus(statusBar, 'Lỗi: ' + (err && err.message ? err.message : 'Không rõ'), '#b91c1c', true);
                 }
-            } catch (err) {
-                console.error(err);
-                mod.setStatus(statusBar, 'Lỗi: ' + (err && err.message ? err.message : 'Không rõ'), '#b91c1c', true);
-            }
-        });
-        // Copy-again behavior
-        btnCopyAgain.addEventListener('click', async () => {
-            const mod = require('../components/copyDienTienAI');
-            const cached = btnCopyAgain.dataset.clipboardText || '';
-            const statusBar = document.getElementById('dr-copy-dien-tien-status') || document.createElement('div');
-            if (!cached) {
-                mod.setStatus(statusBar, 'Chưa có dữ liệu để copy lại.', '#b91c1c', true);
-                return;
-            }
-            mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
-            const ok = await mod.copyToClipboard(cached);
-            if (ok) mod.setStatus(statusBar, 'Đã copy lại vào clipboard.', '#166534', true);
-            else mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
-        });
-        sidebarActions.appendChild(btnCopy);
-        sidebarActions.appendChild(btnCopyAgain);
-    } catch(_) {}
-    // HSBAv1 button now comes from components/actionButtons.js
+            });
+            // Copy-again behavior
+            btnCopyAgain.addEventListener('click', async () => {
+                const mod = require('../components/copyDienTienAI');
+                const cached = btnCopyAgain.dataset.clipboardText || '';
+                const statusBar = document.getElementById('dr-copy-dien-tien-status') || document.createElement('div');
+                if (!cached) {
+                    mod.setStatus(statusBar, 'Chưa có dữ liệu để copy lại.', '#b91c1c', true);
+                    return;
+                }
+                mod.setStatus(statusBar, 'Đang copy vào clipboard...', '#0f172a', false);
+                const ok = await mod.copyToClipboard(cached);
+                if (ok) mod.setStatus(statusBar, 'Đã copy lại vào clipboard.', '#166534', true);
+                else mod.setStatus(statusBar, 'Không thể copy vào clipboard.', '#b91c1c', true);
+            });
+            sidebarActions.appendChild(btnCopy);
+            sidebarActions.appendChild(btnCopyAgain);
+        } catch (_) { }
+        // HSBAv1 button now comes from components/actionButtons.js
         leftColumn.appendChild(sidebarActions);
 
-    // Provide sidebar context for children (ctx id + abort signal)
-    window.dr_sidebar_ctx = { id: sessionId, signal: SidebarSession.getSignal() };
-    const info = createPatientInfoSection(patient, quickYLenhActions);
+        // Provide sidebar context for children (ctx id + abort signal)
+        window.dr_sidebar_ctx = { id: sessionId, signal: SidebarSession.getSignal() };
+        const info = createPatientInfoSection(patient, quickYLenhActions);
         leftColumn.appendChild(info);
-        
+
         // Setup phẫu thuật handlers for the info section
         setupPhauThuatHandlers(info, patient);
-        
+
         // Right column: Checklist section
         const rightColumn = document.createElement('div');
         rightColumn.className = 'dr-sidebar-right';
@@ -695,7 +707,7 @@ function showDashboardBenhNhanIfNeeded() {
             flex: 1;
             min-width: 0;
         `;
-        
+
         const checklistDiv = await createChecklistSectionAsync(patient);
         rightColumn.appendChild(checklistDiv);
         // Add HSBA Data tab into the same tabs bar
@@ -703,26 +715,26 @@ function showDashboardBenhNhanIfNeeded() {
             const { addHSBATab } = require('../components/hsbaDataFetcher');
             addHSBATab(checklistDiv, patient);
         } catch (e) { console.warn('HSBA tab init failed', e); }
-        
+
         // Add columns to container
         container.appendChild(leftColumn);
         container.appendChild(rightColumn);
-        
-    // Add container to sidebar plus an offline banner
-    const offlineBanner = document.createElement('div');
-    offlineBanner.className = 'dr-offline-banner';
-    offlineBanner.textContent = 'Đang offline — thay đổi sẽ được lưu tạm và đồng bộ khi có mạng.';
-    sidebar.appendChild(offlineBanner);
-    // Replace loading content with actual content
-    sidebar.innerHTML = '';
-    sidebar.appendChild(offlineBanner);
-    sidebar.appendChild(container);
-        
+
+        // Add container to sidebar plus an offline banner
+        const offlineBanner = document.createElement('div');
+        offlineBanner.className = 'dr-offline-banner';
+        offlineBanner.textContent = 'Đang offline — thay đổi sẽ được lưu tạm và đồng bộ khi có mạng.';
+        sidebar.appendChild(offlineBanner);
+        // Replace loading content with actual content
+        sidebar.innerHTML = '';
+        sidebar.appendChild(offlineBanner);
+        sidebar.appendChild(container);
+
         // Close button
         const closeBtn = ModalManager.setupCloseHandlers(sidebar, backdrop);
         sidebar.appendChild(closeBtn);
-        
-        // Show modal
+
+        // Modal is already visible (shown when spinner displayed); just ensure it stays shown
         ModalManager.showModal(sidebar, backdrop);
 
         // Toggle offline banner visibility
@@ -731,19 +743,19 @@ function showDashboardBenhNhanIfNeeded() {
                 const b = document.querySelector('#dr-sidebar .dr-offline-banner');
                 if (!b) return;
                 b.style.display = (navigator && navigator.onLine === false) ? 'block' : 'none';
-            } catch(_) {}
+            } catch (_) { }
         };
         toggleOffline();
         try {
             window.addEventListener('online', toggleOffline, { once: true });
-        } catch(_) {}
+        } catch (_) { }
     }
 
 
 
     function renderCards(data) {
         const sortedData = PatientDataMapper.sortPatients([...data]);
-        
+
         document.body.innerHTML = '';
 
         // Create top filter/search bar
@@ -774,7 +786,7 @@ function showDashboardBenhNhanIfNeeded() {
             </div>
         `;
 
-    const container = document.createElement('div');
+        const container = document.createElement('div');
         // View state
         const VIEW_KEY = 'dr-card-view';
         const view = (localStorage.getItem(VIEW_KEY) || 'grid');
@@ -784,10 +796,10 @@ function showDashboardBenhNhanIfNeeded() {
         container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
         // Safety padding in case styles load late
         container.style.paddingBottom = '90px';
-        
-    const renderItemGrid = (item) => createPatientCard(item);
-    const { createListRow } = require('../components/listView');
-    const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
+
+        const renderItemGrid = (item) => createPatientCard(item);
+        const { createListRow } = require('../components/listView');
+        const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
         const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
             const card = renderer(item);
@@ -826,22 +838,22 @@ function showDashboardBenhNhanIfNeeded() {
                 }
                 card.dataset.hasxv = hasXV ? '1' : '0';
                 card.dataset.hascls = hasCLS ? '1' : '0';
-            } catch (_) {}
+            } catch (_) { }
             container.appendChild(card);
         });
-        
-    // Append top bar then container
+
+        // Append top bar then container
         document.body.appendChild(topBar);
         document.body.appendChild(container);
-        
-    // Add bottom bar
-    createBottomBar();
+
+        // Add bottom bar
+        createBottomBar();
 
         // Filter logic
-    const searchInput = topBar.querySelector('#dr-search-input');
-    const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
-    const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
-    const totalCompact = topBar.querySelector('#dr-total-compact');
+        const searchInput = topBar.querySelector('#dr-search-input');
+        const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
+        const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
+        const totalCompact = topBar.querySelector('#dr-total-compact');
 
         function applyFilter() {
             const q = (searchInput.value || '').trim().toLowerCase();
@@ -882,20 +894,20 @@ function showDashboardBenhNhanIfNeeded() {
             }
         }
 
-    searchInput.addEventListener('input', applyFilter);
-    chkXuatVien.addEventListener('change', applyFilter);
-    chkCanLamSang.addEventListener('change', applyFilter);
+        searchInput.addEventListener('input', applyFilter);
+        chkXuatVien.addEventListener('change', applyFilter);
+        chkCanLamSang.addEventListener('change', applyFilter);
 
-    // Initialize view label, compact total and run first filter
-    setViewLabel();
-    const totalCompactInit = document.getElementById('dr-total-compact');
-    if (totalCompactInit) {
-        totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
-        totalCompactInit.style.background = '#f1f5f9';
-        totalCompactInit.style.borderColor = '#e2e8f0';
-        totalCompactInit.style.color = '#0f172a';
-    }
-    applyFilter();
+        // Initialize view label, compact total and run first filter
+        setViewLabel();
+        const totalCompactInit = document.getElementById('dr-total-compact');
+        if (totalCompactInit) {
+            totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
+            totalCompactInit.style.background = '#f1f5f9';
+            totalCompactInit.style.borderColor = '#e2e8f0';
+            totalCompactInit.style.color = '#0f172a';
+        }
+        applyFilter();
 
         // Prefill from query param ?q=
         try {
@@ -905,11 +917,11 @@ function showDashboardBenhNhanIfNeeded() {
                 searchInput.value = qParam;
                 applyFilter();
             }
-        } catch (_) {}
+        } catch (_) { }
 
-    const refreshPatientCards = function(newData) {
+        const refreshPatientCards = function (newData) {
             const sortedNewData = PatientDataMapper.sortPatients([...newData]);
-            
+
             // Update existing cards instead of full re-render to avoid interrupting user
             sortedNewData.forEach((item, index) => {
                 const card = container.children[index];
@@ -927,18 +939,18 @@ function showDashboardBenhNhanIfNeeded() {
                         // remove any legacy block if present
                         const oldCdkt = card.querySelector('.dr-cdkt-block');
                         if (oldCdkt) oldCdkt.remove();
-                    } catch (_) {}
+                    } catch (_) { }
                     // Update surgery info with post-op days using shared updater
                     DomUpdaters.updateSurgeryInfo(card, item);
-                    
+
                     // Update HXT line in the card/list row
                     DomUpdaters.updateHXT(item);
-                    
+
                     // Update y lệnh tags if checklistState is available
                     if (item.checklistState) {
                         DomUpdaters.updateTagsAndMedsBadge(card, item);
                     }
-                    
+
                     // Update surgery status icon
                     DomUpdaters.updateSurgeryIcon(card, item);
 
@@ -971,7 +983,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const next = cur === 'list' ? 'grid' : 'list';
                 localStorage.setItem('dr-card-view', next);
                 setViewLabel();
-                try { window.location.reload(); } catch(_) { }
+                try { window.location.reload(); } catch (_) { }
             });
         }
     }
@@ -983,24 +995,25 @@ function showDashboardBenhNhanIfNeeded() {
         const isWhite = PatientDataMapper.isWhiteCard(room);
         const card = document.createElement('div');
         card.className = 'dr-card' + (isWhite ? '' : ' dr-blue');
-        
+
         // Format location using the new utility function
         const formattedLocation = PatientDataMapper.formatRoomLocation(
-            item.teN_PHONG, 
-            item.teN_GIUONG, 
-            item.teN_TANG, 
+            item.teN_PHONG,
+            item.teN_GIUONG,
+            item.teN_TANG,
             item.teN_TOANHA
         );
 
-    const ptInfo = formatSurgeryInfo(item);
-        
-    const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
-    const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
-    const { baseText: baseDiagnosis, cdktText, combinedHtml: combinedDiagnosis } = DomUpdaters.composeDiagnosis(item);
+        const ptInfo = formatSurgeryInfo(item);
+
+        const hxtText = (item.checklistState && item.checklistState.huongXuTri) ? String(item.checklistState.huongXuTri).trim() : '';
+        const hxtHtml = hxtText ? `<div class="dr-value dr-hxt-block"><span class="dr-label"><b>HXT:</b></span> ${escapeHtml(hxtText)}</div>` : '';
+        const { baseText: baseDiagnosis, cdktText, combinedHtml: combinedDiagnosis } = DomUpdaters.composeDiagnosis(item);
         card.innerHTML = `
-            <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'} - ${formattedLocation}</h2>
+            <div class="dr-room-label">${formattedLocation}</div>
+            <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'}</h2>
             <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
-            <div class="dr-value dr-diagnosis-line" data-base-cd="${baseDiagnosis.replace(/"/g,'&quot;')}" data-cdkt="${escapeHtml(cdktText).replace(/"/g,'&quot;')}"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
+            <div class="dr-value dr-diagnosis-line" data-base-cd="${baseDiagnosis.replace(/"/g, '&quot;')}" data-cdkt="${escapeHtml(cdktText).replace(/"/g, '&quot;')}"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
             ${ptInfo}
             ${hxtHtml}
             ${createYLenhTags(item)}
@@ -1012,26 +1025,26 @@ function showDashboardBenhNhanIfNeeded() {
                 diagEl.dataset.baseCd = baseDiagnosis;
                 diagEl.dataset.cdkt = cdktText || '';
             }
-        } catch (_) {}
+        } catch (_) { }
         if (item && item.mabn && !card.getAttribute('data-mabn')) {
             card.setAttribute('data-mabn', item.mabn);
         }
-        
+
         // Add action buttons
         const btnGroup = createActionButtons(item);
         card.appendChild(btnGroup);
-        
+
         // Add surgery status icon
         addSurgeryStatusIcon(card, item);
-    // Show meds-done badge if applicable
-    try { updateMedsDoneBadge(card, item); } catch (_) {}
-        
+        // Show meds-done badge if applicable
+        try { updateMedsDoneBadge(card, item); } catch (_) { }
+
         card.onclick = () => showSidebar(item);
         // Preload HXT from checklist state after rendering card (non-blocking)
         setTimeout(() => {
             preloadHXTForPatient(item);
         }, 0);
-        
+
         return card;
     }
 
@@ -1040,10 +1053,10 @@ function showDashboardBenhNhanIfNeeded() {
     // escapeHtml provided by utils/htmlUtils
 
     // Update HXT on a card when sidebar saves
-    function updatePatientCardHXT(patient) { try { DomUpdaters.updateHXT(patient); } catch (_) {} }
+    function updatePatientCardHXT(patient) { try { DomUpdaters.updateHXT(patient); } catch (_) { } }
 
     // Update Chẩn đoán kèm theo on a card when sidebar saves
-    function updatePatientCardCDKT(patient) { try { DomUpdaters.updateCDKT(patient); } catch (_) {} }
+    function updatePatientCardCDKT(patient) { try { DomUpdaters.updateCDKT(patient); } catch (_) { } }
 
     // Preload HXT for a patient by fetching checklist state if not present
     async function preloadHXTForPatient(item) {
@@ -1071,7 +1084,7 @@ function showDashboardBenhNhanIfNeeded() {
             // Update card view with merged state
             const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
             DomUpdaters.updateHXT(updated);
-            try { DomUpdaters.updateCDKT(updated); } catch (_) {}
+            try { DomUpdaters.updateCDKT(updated); } catch (_) { }
         } catch (e) {
             console.warn('Preload HXT failed for', item?.mabn, e);
         }
@@ -1085,25 +1098,25 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create action buttons
     function createActionButtons(item) {
-    const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('../components/actionButtons');
-    const btnToDieuTri = createToDieuTriButton({ item, variant: 'full' });
-    const btnHsba2 = createHsbaButton({ item, variant: 'full' });
-    const btnCopyOne = createCopyOneButton({ item, variant: 'icon' });
-        
+        const { createToDieuTriButton, createHsbaButton, createCopyOneButton } = require('../components/actionButtons');
+        const btnToDieuTri = createToDieuTriButton({ item, variant: 'full' });
+        const btnHsba2 = createHsbaButton({ item, variant: 'full' });
+        const btnCopyOne = createCopyOneButton({ item, variant: 'icon' });
+
         const btnGroup = document.createElement('div');
         btnGroup.className = 'dr-action-buttons';
-    btnGroup.style.display = 'flex';
-    btnGroup.style.gap = '8px';
-    btnGroup.style.justifyContent = 'flex-end';
-    btnGroup.style.alignItems = 'center';
-    btnGroup.style.position = 'absolute';
-    btnGroup.style.right = '16px';
-    btnGroup.style.bottom = '12px';
-        
-    btnGroup.appendChild(btnCopyOne);
-    btnGroup.appendChild(btnToDieuTri);
+        btnGroup.style.display = 'flex';
+        btnGroup.style.gap = '8px';
+        btnGroup.style.justifyContent = 'flex-end';
+        btnGroup.style.alignItems = 'center';
+        btnGroup.style.position = 'absolute';
+        btnGroup.style.right = '16px';
+        btnGroup.style.bottom = '12px';
+
+        btnGroup.appendChild(btnCopyOne);
+        btnGroup.appendChild(btnToDieuTri);
         btnGroup.appendChild(btnHsba2);
-        
+
         return btnGroup;
     }
 
@@ -1125,12 +1138,12 @@ function showDashboardBenhNhanIfNeeded() {
             <button id="dr-btn-direct-report" class="btn btn-warning" style="font-weight:bold;">Tạo báo cáo trực</button>
         `;
         document.body.appendChild(bottomBar);
-        
+
         // Add OTM buttons to bottom bar
         addOTMButtonsToBottomBar(bottomBar);
-        
-    // Bottom bar styles come from addGlobalStyles()
-        
+
+        // Bottom bar styles come from addGlobalStyles()
+
         // Setup direct report button
         setTimeout(() => {
             const btn = document.getElementById('dr-btn-direct-report');
@@ -1157,7 +1170,7 @@ function showDashboardBenhNhanIfNeeded() {
                 select.disabled = false;
                 select.addEventListener('change', (e) => {
                     const val = e.target.value;
-                    try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch(_) {}
+                    try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
                     // reload dashboard data by simply reloading the page or re-running init
                     window.location.reload();
                 });
@@ -1233,14 +1246,14 @@ function showDashboardBenhNhanIfNeeded() {
             console.log('[OTM Close Tab] Received close request:', data.data);
             console.log('[OTM Close Tab] Current openTabs:', window.openTabs);
             console.log('[OTM Close Tab] openTabs length:', window.openTabs.length);
-            
+
             // Close OTM tabs from stored references
             if (window.openTabs && window.openTabs.length > 0) {
                 window.openTabs = window.openTabs.filter(tabInfo => {
                     if (tabInfo && tabInfo.hostname === 'otm.tahospital.vn') {
                         try {
                             const tab = tabInfo.tab;
-                            
+
                             // Handle case where tab is a Promise (from GM.openInTab)
                             if (tab && typeof tab.then === 'function') {
                                 console.log('Tab is a Promise, waiting for resolution...');
@@ -1253,7 +1266,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 });
                                 return false; // Remove from array since we're handling it asynchronously
                             }
-                            
+
                             if (tab && !tab.closed) {
                                 return tryCloseTab(tab);
                             } else {
@@ -1405,7 +1418,7 @@ function dr_integrateOTMSurgeryData(otmList) {
         // Merge into patient.checklistState for UI display (append-only, no overwrite)
         if (!p.checklistState) p.checklistState = {};
         if (!Array.isArray(p.checklistState.phauThuatLog)) p.checklistState.phauThuatLog = [];
-        const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+        const keyOf = (e) => `${e.date}|${e.time}|${(e.method || '').trim().toLowerCase()}`;
         const existingKeys = new Set(p.checklistState.phauThuatLog.map(keyOf));
         let added = 0;
         for (const e of entries) {
@@ -1421,9 +1434,9 @@ function dr_integrateOTMSurgeryData(otmList) {
             res.addedLogs += added;
             res.updated.push({ patient: p, added });
             // Sort newest first
-            const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
-            const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
-            p.checklistState.phauThuatLog.sort((a,b) => toTs(b)-toTs(a));
+            const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
+            const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+            p.checklistState.phauThuatLog.sort((a, b) => toTs(b) - toTs(a));
             // Also reflect latest to phauThuatInfo for formatSurgeryInfo compatibility
             const latest = p.checklistState.phauThuatLog[0];
             if (latest) {
@@ -1437,7 +1450,7 @@ function dr_integrateOTMSurgeryData(otmList) {
                     DomUpdaters.updateSurgeryInfo(el, p);
                     DomUpdaters.updateSurgeryIcon(el, p);
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
     }
     return res;
@@ -1476,16 +1489,16 @@ async function dr_persistMergedOTMSurgeries(updatedEntries, { concurrency = 2 } 
                 const ensureArr = (arr) => Array.isArray(arr) ? arr : [];
                 const merged = ensureArr(serverState.phauThuatLog).slice();
                 const fromMem = ensureArr(p.checklistState && p.checklistState.phauThuatLog);
-                const keyOf = (e) => `${e.date}|${e.time}|${(e.method||'').trim().toLowerCase()}`;
+                const keyOf = (e) => `${e.date}|${e.time}|${(e.method || '').trim().toLowerCase()}`;
                 const existing = new Set(merged.map(keyOf));
                 for (const e of fromMem) {
                     const k = keyOf(e);
                     if (!existing.has(k)) { merged.push({ ...e }); existing.add(k); }
                 }
                 // Sort newest first
-                const parseDDMMYYYY = (s) => { const [d,m,y] = String(s||'').split('/').map(n=>parseInt(n,10)); return new Date(y||1970,(m||1)-1,d||1); };
-                const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh,mm] = String(e.time||'00:00').split(':').map(n=>parseInt(n,10)||0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
-                merged.sort((a,b) => toTs(b)-toTs(a));
+                const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
+                const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+                merged.sort((a, b) => toTs(b) - toTs(a));
 
                 const newState = { ...(serverState || {}), phauThuatLog: merged };
                 const r = await ChecklistService.updateChecklistState(checklistObj, newState, { enqueueOnOffline: true });
@@ -1528,12 +1541,12 @@ function handleOTMSuccess(name, oldValue, newValue, remote) {
             const mergeRes = dr_integrateOTMSurgeryData(data.data.surgeryData);
             const { updatedPatients, addedLogs } = mergeRes;
             if (updatedPatients > 0) {
-                try { showToast(`🧩 Đã cập nhật PT cho ${updatedPatients} BN (${addedLogs} mục).`, 'success', 4000); } catch (_) {}
+                try { showToast(`🧩 Đã cập nhật PT cho ${updatedPatients} BN (${addedLogs} mục).`, 'success', 4000); } catch (_) { }
                 // Persist to server in background (append-only)
                 (async () => {
                     const res = await dr_persistMergedOTMSurgeries(mergeRes.updated, { concurrency: 2 });
                     if ((res.saved + res.queued) > 0) {
-                        try { showToast(`💾 Lưu ${res.saved} | Hàng đợi ${res.queued} | Lỗi ${res.failed}`, 'info', 4000); } catch (_) {}
+                        try { showToast(`💾 Lưu ${res.saved} | Hàng đợi ${res.queued} | Lỗi ${res.failed}`, 'info', 4000); } catch (_) { }
                     }
                 })();
             }
@@ -1573,10 +1586,10 @@ function addOTMButtonsToBottomBar(bottomBar) {
     function handleOTMDateClick() {
         const DialogManager = require('../components/dialogManager');
         const dialog = DialogManager.createDialog('otm-date-dialog');
-        
+
         // Get today's date in YYYY-MM-DD format
         const today = new Date().toISOString().split('T')[0];
-        
+
         dialog.inner.innerHTML = `
             <h3>Chọn khoảng thời gian</h3>
             <div style="margin: 10px 0;">
@@ -1630,7 +1643,7 @@ function addOTMButtonsToBottomBar(bottomBar) {
                 insert: true,
                 setParent: true
             });
-            
+
             // Handle the Promise returned by GM.openInTab
             if (tabPromise && typeof tabPromise.then === 'function') {
                 tabPromise.then(tab => {

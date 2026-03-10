@@ -12,9 +12,15 @@ function setupYLenhHandlers(infoElement, patient) {
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
 
     // Load existing y lệnh when checklist is loaded
+    // Priority: patient.checklistState (always populated from card open) > window.checklistState
     function loadYLenhLog() {
-        if (window.checklistState && window.checklistState.yLenhLog) {
-            renderYLenhLog(window.checklistState.yLenhLog);
+        const log = (patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog))
+            ? patient.checklistState.yLenhLog
+            : (window.checklistState && Array.isArray(window.checklistState.yLenhLog))
+                ? window.checklistState.yLenhLog
+                : null;
+        if (log) {
+            renderYLenhLog(log);
         }
     }
 
@@ -34,13 +40,13 @@ function setupYLenhHandlers(infoElement, patient) {
             return;
         }
 
-    logContainer.innerHTML = manualEntries.map((entry, index) => {
+        logContainer.innerHTML = manualEntries.map((entry, index) => {
             // Find original index in full array for correct removal
-            const originalIndex = yLenhArray.findIndex(originalEntry => 
-                originalEntry.id === entry.id || 
+            const originalIndex = yLenhArray.findIndex(originalEntry =>
+                originalEntry.id === entry.id ||
                 (originalEntry.timestamp === entry.timestamp && originalEntry.content === entry.content)
             );
-            
+
             return `
         <div style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #1976d2;position:relative;word-break: break-word; overflow-wrap: anywhere;">
                     <button class="remove-y-lenh-btn" data-index="${originalIndex}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;">Xóa</button>
@@ -53,7 +59,7 @@ function setupYLenhHandlers(infoElement, patient) {
         // Add event listeners for remove buttons
         setTimeout(() => {
             logContainer.querySelectorAll('.remove-y-lenh-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
+                btn.addEventListener('click', function () {
                     const index = parseInt(this.getAttribute('data-index'));
                     removeYLenh(index);
                 });
@@ -106,7 +112,7 @@ function setupYLenhHandlers(infoElement, patient) {
             console.log('Calling updatePatientCardTags for patient:', patient.mabn);
             window.updatePatientCardTags(patient.mabn);
         }
-        
+
         // Also check celebration animation specifically after adding tag
         setTimeout(() => {
             if (typeof window.checkAllCelebrationAnimations === 'function') {
@@ -125,7 +131,7 @@ function setupYLenhHandlers(infoElement, patient) {
             window.checklistState.yLenhLog.splice(index, 1);
             saveYLenhLog();
             renderYLenhLog(window.checklistState.yLenhLog);
-            
+
             // Update patient object in window.dr_data with new checklistState
             if (window.dr_data && patient.mabn) {
                 const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
@@ -140,7 +146,7 @@ function setupYLenhHandlers(infoElement, patient) {
                 console.log('Calling updatePatientCardTags after removal for patient:', patient.mabn);
                 window.updatePatientCardTags(patient.mabn);
             }
-            
+
             // Also check celebration animation specifically after removing tag
             setTimeout(() => {
                 if (typeof window.checkAllCelebrationAnimations === 'function') {
@@ -162,14 +168,14 @@ function setupYLenhHandlers(infoElement, patient) {
                 console.error('Lưu log y lệnh thất bại!');
             }
             if (res && res.queued) {
-                try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch(_) {}
+                try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch (_) { }
             }
         }
     }
 
     // Event listeners
     addBtn.addEventListener('click', () => addYLenh());
-    input.addEventListener('keypress', function(e) {
+    input.addEventListener('keypress', function (e) {
         if (e.key === 'Enter') {
             addYLenh();
         }
@@ -220,7 +226,7 @@ function setupYLenhHandlers(infoElement, patient) {
         }
         const hourInput = editor.querySelector('.xv-hour');
         const minInput = editor.querySelector('.xv-min');
-                const presets = editor.querySelector('.xv-presets');
+        const presets = editor.querySelector('.xv-presets');
         const saved = editor.querySelector('.xv-saved');
         // default to 12:00 if missing
         if (!entry.dischargeTime) entry.dischargeTime = '12:00';
@@ -266,7 +272,7 @@ function setupYLenhHandlers(infoElement, patient) {
                     // Attempt twice to handle timing quirks
                     e.target.select && e.target.select();
                     setTimeout(() => {
-                        try { e.target.select && e.target.select(); } catch (_) {}
+                        try { e.target.select && e.target.select(); } catch (_) { }
                     }, 0);
                 } catch (_) { /* noop */ }
             };
@@ -287,7 +293,7 @@ function setupYLenhHandlers(infoElement, patient) {
                 try {
                     e.target.select && e.target.select();
                     setTimeout(() => {
-                        try { e.target.select && e.target.select(); } catch (_) {}
+                        try { e.target.select && e.target.select(); } catch (_) { }
                     }, 0);
                 } catch (_) { /* noop */ }
             };
@@ -317,7 +323,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Quick action buttons event listeners - Toggle logic (3-state: off -> active -> done -> off)
     infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function () {
             const actionText = this.getAttribute('data-action');
             toggleQuickYLenh(actionText, this);
         });
@@ -328,7 +334,7 @@ function setupYLenhHandlers(infoElement, patient) {
         // Today string
         const today = new Date();
         const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-        
+
         if (!window.checklistState.yLenhLog) {
             window.checklistState.yLenhLog = [];
         }
@@ -386,8 +392,8 @@ function setupYLenhHandlers(infoElement, patient) {
             }
         }
 
-    // Save changes
-    saveYLenhLog();
+        // Save changes
+        saveYLenhLog();
         renderYLenhLog(window.checklistState.yLenhLog);
 
         // Update patient object in window.dr_data
@@ -398,7 +404,7 @@ function setupYLenhHandlers(infoElement, patient) {
             }
         }
 
-    // Update card tags (quick actions might render as tags; styles can reflect state)
+        // Update card tags (quick actions might render as tags; styles can reflect state)
         if (window.updatePatientCardTags) {
             window.updatePatientCardTags(patient.mabn);
         }
@@ -425,17 +431,26 @@ function setupYLenhHandlers(infoElement, patient) {
     }
 
     // Function to update button states based on existing log
+    // Priority: patient.checklistState (populated from card) > window.checklistState
     function updateQuickActionButtonStates() {
         const today = new Date();
         const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-        
+
+        // Source: prefer patient-scoped state so buttons show correctly on sidebar open
+        // even before the async checklist API call resolves
+        const yLenhLog = (patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog))
+            ? patient.checklistState.yLenhLog
+            : (window.checklistState && Array.isArray(window.checklistState.yLenhLog))
+                ? window.checklistState.yLenhLog
+                : null;
+
         infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
             const actionText = btn.getAttribute('data-action');
-            
+
             // Check if this action exists today
             let state = 'off';
-            if (window.checklistState && Array.isArray(window.checklistState.yLenhLog)) {
-                const found = window.checklistState.yLenhLog.find(entry => {
+            if (yLenhLog) {
+                const found = yLenhLog.find(entry => {
                     const entryDate = entry.timestamp ? entry.timestamp.split(' ')[0] : '';
                     const isToday = entryDate === todayStr;
                     const sameAction = entry.action ? entry.action === actionText : entry.content === actionText;
@@ -448,12 +463,30 @@ function setupYLenhHandlers(infoElement, patient) {
         });
     }
 
-    // Load existing data after a short delay to ensure checklist is loaded
-    setTimeout(() => {
-        loadYLenhLog();
-        updateQuickActionButtonStates();
-        // Ensure discharge editor appears if needed on load
-        ensureDischargeTimeEditor();
+    // Load immediately using patient.checklistState (no waiting for async API)
+    // then re-sync once window.checklistState is populated (via a short poll)
+    loadYLenhLog();
+    updateQuickActionButtonStates();
+    ensureDischargeTimeEditor();
+
+    // Secondary poll: if patient.checklistState was empty but window.checklistState
+    // arrives later (async API), refresh displays once
+    let _syncPollCount = 0;
+    const _syncPoll = setInterval(() => {
+        _syncPollCount++;
+        const wlog = window.checklistState && Array.isArray(window.checklistState.yLenhLog)
+            ? window.checklistState.yLenhLog : null;
+        const plog = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog)
+            ? patient.checklistState.yLenhLog : null;
+        if (wlog && wlog !== plog) {
+            // window.checklistState just became available or was updated – sync into patient and refresh
+            if (patient) patient.checklistState = { ...(patient.checklistState || {}), yLenhLog: wlog };
+            loadYLenhLog();
+            updateQuickActionButtonStates();
+            ensureDischargeTimeEditor();
+            clearInterval(_syncPoll);
+        }
+        if (_syncPollCount >= 20) clearInterval(_syncPoll); // stop after ~2s
     }, 100);
 
     // Store reference to removeYLenh for use in loadYLenhLogFromState
@@ -465,7 +498,7 @@ function setupYLenhHandlers(infoElement, patient) {
         renderYLenhLog,
         addYLenh,
         removeYLenh,
-    updateQuickActionButtonStates
+        updateQuickActionButtonStates
     };
 }
 

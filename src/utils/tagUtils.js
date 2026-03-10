@@ -3,17 +3,14 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
 // Helper function to create y lệnh tags
 function createYLenhTags(patient) {
-    console.log('DEBUG createYLenhTags - patient:', patient.mabn, 'checklistState:', !!patient.checklistState);
-    
     if (!patient.checklistState || !patient.checklistState.yLenhLog || !Array.isArray(patient.checklistState.yLenhLog)) {
-        console.log('No yLenhLog found for patient:', patient.mabn);
         return '';
     }
 
     // Filter for today's entries (INCLUDE all entries for dashboard cards)
     const today = new Date();
     const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-    
+
     const todayEntries = patient.checklistState.yLenhLog.filter(entry => {
         return entry.timestamp && entry.timestamp.startsWith(todayStr);
     });
@@ -23,15 +20,13 @@ function createYLenhTags(patient) {
         return text !== 'đã đánh thuốc';
     });
 
-    console.log('Today entries (excluding meds-done) for patient', patient.mabn, ':', filteredEntries);
-
     if (filteredEntries.length === 0) {
         return '';
     }
 
-    // Take only first 3 entries (most recent)
-    const displayEntries = filteredEntries.slice(0, 3);
-    
+    // Show ALL entries for today (no limit)
+    const displayEntries = filteredEntries;
+
     const tagsHtml = displayEntries.map(entry => {
         // Determine tag color based on content
         let color = '#4caf50'; // default green
@@ -52,7 +47,7 @@ function createYLenhTags(patient) {
         if (entry.q === true) {
             const st = entry.status || 'active';
             if (st === 'active') { stateClass = ' state-active'; stateIcon = '⏳'; }
-            if (st === 'done')   { stateClass = ' state-done';   stateIcon = '✔'; }
+            if (st === 'done') { stateClass = ' state-done'; stateIcon = '✔'; }
         }
 
         const dischargeClass = isDischarge ? ' discharge' : '';
@@ -66,16 +61,14 @@ function createYLenhTags(patient) {
         </span>`;
     }).join('');
 
-    console.log('Generated tags HTML for patient', patient.mabn, ':', tagsHtml);
-    
     return `<div class="ylenh-tags">${tagsHtml}</div>`;
 }
 
 // Helper function to convert hex to RGB
 function hexToRgb(hex) {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? 
-        `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : 
+    return result ?
+        `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` :
         '76, 175, 80'; // fallback green
 }
 
@@ -139,17 +132,13 @@ function updateMedsDoneBadge(card, patient) {
 function checkAndAddCelebrationClass(card, patient) {
     if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
         card.classList.remove('xuatvienanimation');
-        console.log('No checklistState or yLenhLog for patient:', patient?.mabn);
         return;
     }
 
     // Check if today's entries include "Xuất viện" (including quick actions)
     const today = new Date();
     const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-    
-    console.log('DEBUG checkAndAddCelebrationClass - Today:', todayStr);
-    console.log('DEBUG checkAndAddCelebrationClass - yLenhLog entries:', patient.checklistState.yLenhLog);
-    
+
     // Check ALL entries (including quick actions) for "xuất viện"
     const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
         const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
@@ -158,30 +147,19 @@ function checkAndAddCelebrationClass(card, patient) {
         if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
             return entry.status === 'active' || entry.status === 'done';
         }
-        
-        console.log('DEBUG entry:', entry.content, 'timestamp:', entry.timestamp, 'hasDischarge:', hasDischarge, 'isToday:', isToday);
-        
-        // Check for today's discharge entries (including quick actions)
         return hasDischarge && isToday;
     });
 
-    console.log('DEBUG discharge entries found:', dischargeEntries);
-
     if (dischargeEntries.length > 0) {
         card.classList.add('xuatvienanimation');
-        console.log('🎉 Added xuatvienanimation class to card for patient:', patient.mabn);
     } else {
         card.classList.remove('xuatvienanimation');
-        console.log('❌ No discharge entries found for patient:', patient.mabn);
     }
 }
 
 // Global function to update patient card tags
 function updatePatientCardTags(patientMabn) {
-    console.log('updatePatientCardTags called for patient:', patientMabn);
-    
     if (!window.dr_data) {
-        console.log('No dr_data found');
         return;
     }
 
@@ -215,7 +193,7 @@ function updatePatientCardTags(patientMabn) {
     }
 
     console.log('Found patient card for:', patientMabn);
-    
+
     // Remove existing tags from anywhere in the element
     const existingTags = targetCard.querySelector('.ylenh-tags');
     if (existingTags) {
@@ -257,7 +235,7 @@ function updatePatientCardTags(patientMabn) {
             }
             targetCard.dataset.hasxv = hasXV ? '1' : '0';
             targetCard.dataset.hascls = hasCLS ? '1' : '0';
-        } catch (_) {}
+        } catch (_) { }
     }
 
     // Update discharge celebration class and meds-done badge regardless of tags presence
@@ -275,14 +253,14 @@ function hasDischargeTag(patient) {
     if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
         return false;
     }
-    
+
     return patient.checklistState.yLenhLog.some(entry => {
         return entry.content && entry.content.toLowerCase().includes('xuất viện');
     });
 }
 
-module.exports = { 
-    createYLenhTags, 
+module.exports = {
+    createYLenhTags,
     updatePatientCardTags,
     hexToRgb,
     hasDischargeTag,

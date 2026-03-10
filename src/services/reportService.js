@@ -42,11 +42,31 @@ const ReportService = {
     },
 
     /**
-     * Load checklist state for multiple patients (sorted)
+     * Load checklist state for multiple patients (sorted).
+     * Options:
+     *   preferInMemory (boolean, default false): if true, use the checklistState already
+     *   present in window.dr_data[patient] (updated real-time by sidebar edits) and skip
+     *   the server fetch for those patients. Only patients without in-memory state are fetched.
      */
-    async getBatchChecklistStates(patients) {
+    async getBatchChecklistStates(patients, { preferInMemory = false } = {}) {
         const sortedPatients = PatientDataMapper.sortPatients([...patients]);
+
+        // Build a lookup of in-memory checklistState from window.dr_data (if available)
+        const inMemoryMap = {};
+        if (preferInMemory && typeof window !== 'undefined' && window.dr_data && Array.isArray(window.dr_data)) {
+            for (const p of window.dr_data) {
+                if (p && p.mabn && p.checklistState) {
+                    inMemoryMap[p.mabn] = p.checklistState;
+                }
+            }
+        }
+
         const promises = sortedPatients.map(async (patient) => {
+            // Use in-memory state if available (real-time updated by sidebar)
+            if (preferInMemory && patient && patient.mabn && inMemoryMap[patient.mabn]) {
+                return inMemoryMap[patient.mabn];
+            }
+            // Otherwise fetch from server
             try {
                 const res = await ChecklistService.loadChecklistData(patient);
                 const obj = ChecklistService.findChecklistObject(res);
@@ -83,7 +103,7 @@ const ReportService = {
             // Show only the surgery date (no time)
             ngayPtDisplay = date;
         }
-        
+
         return {
             index: index + 1,
             name: patient.hoten || '',
@@ -106,10 +126,10 @@ const ReportService = {
     formatDateOfBirth(ngaysinh) {
         let dob = '';
         let age = '';
-        
+
         if (ngaysinh) {
             let d = ngaysinh.split('T')[0];
-            
+
             if (d.includes('-')) {
                 const [y, m, day] = d.split('-');
                 dob = `${day}/${m}/${y}`;
@@ -120,7 +140,7 @@ const ReportService = {
                 age = (new Date().getFullYear() - parseInt(y, 10)).toString() + 't';
             }
         }
-        
+
         return { dob, age };
     },
 
@@ -130,10 +150,10 @@ const ReportService = {
     generateHTMLReport(patients, states) {
         let html = ``;
         // html += `<div style="margin-bottom:10px">Số lượng bệnh nhân hiện có: <b>${patients.length}</b></div>`;
-        
+
         patients.forEach((patient, idx) => {
             const data = this.formatPatientData(patient, idx, states[idx] || {});
-            
+
             html += `<div style='margin-bottom:8px; line-height:1.15;'>`;
             html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${data.name} - ${data.mabn}</strong></h3>`;
             html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
@@ -143,7 +163,7 @@ const ReportService = {
             if (data.hxt) html += `<div style='margin:2px 0;'><b>HXT</b>: ${data.hxt.replace(/\n/g, '<br>')}</div>`;
             html += `</div>`;
         });
-        
+
         return html;
     },
 
@@ -169,17 +189,17 @@ const ReportService = {
      */
     generateTextReport(patients, states) {
         let report = `BÁO CÁO TRỰC\nSố lượng bệnh nhân hiện có: ${patients.length}\n`;
-        
+
         patients.forEach((patient, idx) => {
             const data = this.formatPatientData(patient, idx, states[idx] || {});
-            
+
             report += `${data.index}. ${data.bed} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
             report += `   Chẩn đoán: ${data.diagnosis}\n`;
             if (data.ppptDisplay) report += `   PPPT: ${data.ppptDisplay}\n`;
             if (data.ngayPtDisplay) report += `   Ngày PT: ${data.ngayPtDisplay}\n`;
             if (data.hxt) report += `   HXT: ${data.hxt}\n`;
         });
-        
+
         return report;
     }
     ,

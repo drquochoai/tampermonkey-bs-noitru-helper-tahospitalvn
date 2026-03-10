@@ -10,7 +10,7 @@ const DateUtils = require('../utils/dateUtils');
  */
 async function createDirectReportGeneration() {
     const data = window.dr_data || [];
-    
+
     // Create dialog
     const { dialog, inner } = DialogManager.createDialog('dr-direct-report-dialog', { maxWidth: '1100px', maxHeight: '88vh' });
     // Layout: flex column with a scrollable content area and a fixed (in-modal) footer
@@ -19,8 +19,8 @@ async function createDirectReportGeneration() {
         inner.style.flexDirection = 'column';
         inner.style.overflowY = 'hidden';
         inner.style.paddingBottom = '0px';
-    } catch (_) {}
-    
+    } catch (_) { }
+
     try {
         // Show loading state
         inner.innerHTML = `
@@ -29,72 +29,74 @@ async function createDirectReportGeneration() {
                 <div>Đang tải dữ liệu báo cáo...</div>
             </div>
         `;
-        
-    // Load checklist state for all patients (already sorted)
-    const { sortedPatients, states } = await ReportService.getBatchChecklistStates(data);
-        
-    // Generate report content (all patients)
-    const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
-    const textReport = ReportService.generateTextReport(sortedPatients, states);
 
-    // Helpers to filter patients by admission date (ngayvv) using preloaded data only
-    function parseAdmitDateToMidnight(dateStr) {
-        if (!dateStr) return null;
-        try {
-            const us = DateUtils.convertToUSFormat(String(dateStr));
-            const d = new Date(us);
-            if (isNaN(d.getTime())) return null;
-            d.setHours(0, 0, 0, 0);
-            return d;
-        } catch (_) { return null; }
-    }
+        // Load checklist state for all patients
+        // Ưu tiên dùng checklistState in-memory từ window.dr_data (đã được cập nhật real-time
+        // khi người dùng chỉnh HXT, CDKT trong sidebar). Chỉ fetch từ server cho BN chưa có.
+        const { sortedPatients, states } = await ReportService.getBatchChecklistStates(data, { preferInMemory: true });
 
-    function filterByAdmitDay(patientsArr, statesArr, targetDate) {
-        const target = new Date(targetDate);
-        target.setHours(0,0,0,0);
-        const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
-        const filtered = zipped.filter(({ p }) => {
-            const d = parseAdmitDateToMidnight(p && p.ngayvv);
-            return d && d.getTime() === target.getTime();
-        });
-        return {
-            patients: filtered.map(z => z.p),
-            states: filtered.map(z => z.s)
-        };
-    }
+        // Generate report content (all patients)
+        const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
+        const textReport = ReportService.generateTextReport(sortedPatients, states);
 
-    const today = new Date(); today.setHours(0,0,0,0);
-    const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-    const { patients: todayPatients, states: todayStates } = filterByAdmitDay(sortedPatients, states, today);
-    const { patients: yesterdayPatients, states: yesterdayStates } = filterByAdmitDay(sortedPatients, states, yesterday);
-    const htmlToday = ReportService.generateHTMLReport(todayPatients, todayStates);
-    const textToday = ReportService.generateTextReport(todayPatients, todayStates);
-    const htmlYesterday = ReportService.generateHTMLReport(yesterdayPatients, yesterdayStates);
-    const textYesterday = ReportService.generateTextReport(yesterdayPatients, yesterdayStates);
+        // Helpers to filter patients by admission date (ngayvv) using preloaded data only
+        function parseAdmitDateToMidnight(dateStr) {
+            if (!dateStr) return null;
+            try {
+                const us = DateUtils.convertToUSFormat(String(dateStr));
+                const d = new Date(us);
+                if (isNaN(d.getTime())) return null;
+                d.setHours(0, 0, 0, 0);
+                return d;
+            } catch (_) { return null; }
+        }
 
-    // Filter by surgery date (latest surgery in state.phauThuatLog[0])
-    function filterBySurgeryDay(patientsArr, statesArr, targetDate) {
-        const target = new Date(targetDate); target.setHours(0,0,0,0);
-        const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
-        const filtered = zipped.filter(({ s }) => {
-            if (!s || !Array.isArray(s.phauThuatLog) || s.phauThuatLog.length === 0) return false;
-            const dStr = s.phauThuatLog[0] && s.phauThuatLog[0].date;
-            const d = parseAdmitDateToMidnight(dStr);
-            return d && d.getTime() === target.getTime();
-        });
-        return {
-            patients: filtered.map(z => z.p),
-            states: filtered.map(z => z.s)
-        };
-    }
+        function filterByAdmitDay(patientsArr, statesArr, targetDate) {
+            const target = new Date(targetDate);
+            target.setHours(0, 0, 0, 0);
+            const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+            const filtered = zipped.filter(({ p }) => {
+                const d = parseAdmitDateToMidnight(p && p.ngayvv);
+                return d && d.getTime() === target.getTime();
+            });
+            return {
+                patients: filtered.map(z => z.p),
+                states: filtered.map(z => z.s)
+            };
+        }
 
-    const { patients: ptTodayPatients, states: ptTodayStates } = filterBySurgeryDay(sortedPatients, states, today);
-    const { patients: ptYesterdayPatients, states: ptYesterdayStates } = filterBySurgeryDay(sortedPatients, states, yesterday);
-    const htmlPtToday = ReportService.generateHTMLReport(ptTodayPatients, ptTodayStates);
-    const textPtToday = ReportService.generateTextReport(ptTodayPatients, ptTodayStates);
-    const htmlPtYesterday = ReportService.generateHTMLReport(ptYesterdayPatients, ptYesterdayStates);
-    const textPtYesterday = ReportService.generateTextReport(ptYesterdayPatients, ptYesterdayStates);
-        
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+        const { patients: todayPatients, states: todayStates } = filterByAdmitDay(sortedPatients, states, today);
+        const { patients: yesterdayPatients, states: yesterdayStates } = filterByAdmitDay(sortedPatients, states, yesterday);
+        const htmlToday = ReportService.generateHTMLReport(todayPatients, todayStates);
+        const textToday = ReportService.generateTextReport(todayPatients, todayStates);
+        const htmlYesterday = ReportService.generateHTMLReport(yesterdayPatients, yesterdayStates);
+        const textYesterday = ReportService.generateTextReport(yesterdayPatients, yesterdayStates);
+
+        // Filter by surgery date (latest surgery in state.phauThuatLog[0])
+        function filterBySurgeryDay(patientsArr, statesArr, targetDate) {
+            const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
+            const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+            const filtered = zipped.filter(({ s }) => {
+                if (!s || !Array.isArray(s.phauThuatLog) || s.phauThuatLog.length === 0) return false;
+                const dStr = s.phauThuatLog[0] && s.phauThuatLog[0].date;
+                const d = parseAdmitDateToMidnight(dStr);
+                return d && d.getTime() === target.getTime();
+            });
+            return {
+                patients: filtered.map(z => z.p),
+                states: filtered.map(z => z.s)
+            };
+        }
+
+        const { patients: ptTodayPatients, states: ptTodayStates } = filterBySurgeryDay(sortedPatients, states, today);
+        const { patients: ptYesterdayPatients, states: ptYesterdayStates } = filterBySurgeryDay(sortedPatients, states, yesterday);
+        const htmlPtToday = ReportService.generateHTMLReport(ptTodayPatients, ptTodayStates);
+        const textPtToday = ReportService.generateTextReport(ptTodayPatients, ptTodayStates);
+        const htmlPtYesterday = ReportService.generateHTMLReport(ptYesterdayPatients, ptYesterdayStates);
+        const textPtYesterday = ReportService.generateTextReport(ptYesterdayPatients, ptYesterdayStates);
+
         // Create action buttons (copy set only)
         const copyButtons = DialogManager.createActionButtons([
             {
@@ -109,7 +111,7 @@ async function createDirectReportGeneration() {
                 text: 'Copy bệnh mới hôm qua',
                 onclick: () => {
                     if (!yesterdayPatients || yesterdayPatients.length === 0) {
-                        try { DialogManager.showToast('Không có bệnh nhân mới hôm qua.'); } catch (_) {}
+                        try { DialogManager.showToast('Không có bệnh nhân mới hôm qua.'); } catch (_) { }
                         return;
                     }
                     copyReportToClipboardRich(htmlYesterday, textYesterday);
@@ -121,7 +123,7 @@ async function createDirectReportGeneration() {
                 text: 'Copy bệnh mới hôm nay',
                 onclick: () => {
                     if (!todayPatients || todayPatients.length === 0) {
-                        try { DialogManager.showToast('Không có bệnh nhân mới hôm nay.'); } catch (_) {}
+                        try { DialogManager.showToast('Không có bệnh nhân mới hôm nay.'); } catch (_) { }
                         return;
                     }
                     copyReportToClipboardRich(htmlToday, textToday);
@@ -133,7 +135,7 @@ async function createDirectReportGeneration() {
                 text: 'Copy bệnh PT hôm qua',
                 onclick: () => {
                     if (!ptYesterdayPatients || ptYesterdayPatients.length === 0) {
-                        try { DialogManager.showToast('Không có bệnh nhân PT hôm qua.'); } catch (_) {}
+                        try { DialogManager.showToast('Không có bệnh nhân PT hôm qua.'); } catch (_) { }
                         return;
                     }
                     copyReportToClipboardRich(htmlPtYesterday, textPtYesterday);
@@ -145,14 +147,14 @@ async function createDirectReportGeneration() {
                 text: 'Copy bệnh PT hôm nay',
                 onclick: () => {
                     if (!ptTodayPatients || ptTodayPatients.length === 0) {
-                        try { DialogManager.showToast('Không có bệnh nhân PT hôm nay.'); } catch (_) {}
+                        try { DialogManager.showToast('Không có bệnh nhân PT hôm nay.'); } catch (_) { }
                         return;
                     }
                     copyReportToClipboardRich(htmlPtToday, textPtToday);
                 }
             }
         ]);
-        
+
         // Update dialog content: a scrollable content area
         inner.innerHTML = `<div id="dr-report-content" style="flex:1; overflow:auto;">${htmlContent}</div>`;
         // Build footer bar fixed within modal (not sticky)
@@ -189,7 +191,7 @@ async function createDirectReportGeneration() {
             if (btnNewT) { btnNewT.style.gridColumn = '2'; btnNewT.style.gridRow = '2'; btnNewT.style.width = '100%'; }
             if (btnPtY) { btnPtY.style.gridColumn = '3'; btnPtY.style.gridRow = '1'; btnPtY.style.width = '100%'; }
             if (btnPtT) { btnPtT.style.gridColumn = '3'; btnPtT.style.gridRow = '2'; btnPtT.style.width = '100%'; }
-        } catch (_) {}
+        } catch (_) { }
 
         if (copyButtons && copyButtons.style) copyButtons.style.marginTop = '0';
         footerBar.appendChild(copyButtons);
@@ -212,7 +214,7 @@ async function createDirectReportGeneration() {
         closeRow.appendChild(closeBtnWrap);
         footerBar.appendChild(closeRow);
         inner.appendChild(footerBar);
-        
+
     } catch (error) {
         console.error('Error generating report:', error);
         inner.innerHTML = `
@@ -221,11 +223,11 @@ async function createDirectReportGeneration() {
                 Có lỗi xảy ra khi tạo báo cáo. Vui lòng thử lại.
             </div>
             ${DialogManager.createActionButtons([{
-                id: 'dr-close-direct-report',
-                className: 'btn btn-secondary', 
-                text: 'Đóng',
-                onclick: () => dialog.remove()
-            }]).outerHTML}
+            id: 'dr-close-direct-report',
+            className: 'btn btn-secondary',
+            text: 'Đóng',
+            onclick: () => dialog.remove()
+        }]).outerHTML}
         `;
     }
 }
@@ -269,9 +271,9 @@ async function copyReportToClipboardRich(html, textFallback) {
             await navigator.clipboard.writeText(textFallback || '');
             DialogManager.showToast('Đã copy báo cáo dạng text (fallback).');
         } catch (e2) {
-            DialogManager.showToast('Lỗi khi copy báo cáo', { 
+            DialogManager.showToast('Lỗi khi copy báo cáo', {
                 background: '#d32f2f',
-                duration: 3000 
+                duration: 3000
             });
         }
     }
@@ -289,7 +291,7 @@ async function fetchToDieuTriData() {
  */
 function addGlobalStyles() {
     if (document.getElementById('dr-global-style')) return;
-    
+
     const style = document.createElement('style');
     style.id = 'dr-global-style';
     style.textContent = `
@@ -488,7 +490,7 @@ function addGlobalStyles() {
                 background: #ffffff; 
                 border-radius: 20px; 
                 box-shadow: 0 2px 12px rgba(0,0,0,0.10); 
-                padding: 24px 20px 50px 20px; 
+                padding: 14px 20px 50px 20px; 
                 min-width: 260px; 
                 max-width: 320px; 
                 flex: 1 1 260px; 
@@ -498,6 +500,23 @@ function addGlobalStyles() {
                 position: relative; 
                 border: 2px solid #e3e3e3; 
                 cursor: pointer; 
+        }
+        /* Room/bed label at the very top of the card — large & centered */
+        .dr-room-label {
+            width: 100%;
+            text-align: center;
+            font-size: 1.35em;
+            font-weight: 800;
+            color: #1565c0;
+            letter-spacing: 0.04em;
+            padding: 2px 0 10px 0;
+            margin-bottom: 4px;
+            border-bottom: 2px solid #bbdefb;
+            word-break: break-word;
+        }
+        .dr-card.dr-blue .dr-room-label {
+            color: #0d47a1;
+            border-bottom-color: #90caf9;
         }
         .dr-card.dr-blue { 
             background: #e3f2fd; 

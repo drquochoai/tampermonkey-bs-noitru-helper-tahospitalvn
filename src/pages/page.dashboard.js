@@ -2,7 +2,6 @@
 
 const Utils = require('../utils');
 const {
-    createDirectReportGeneration,
     addGlobalStyles
 } = require('./page.dashboard.support');
 
@@ -21,6 +20,8 @@ const { createPatientInfoSection } = require('../components/patientInfoSection')
 const SidebarSession = require('../components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
 const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
+const { setupAdvancedFilter, matchesAdvancedFilter, advancedFilterState } = require('../components/advancedFilter');
+const { setupCopyMenu } = require('../components/copyMenu');
 
 // Import utility functions
 const { showToast, copyToClipboard } = require('../utils/uiUtils');
@@ -849,6 +850,9 @@ function showDashboardBenhNhanIfNeeded() {
         // Add bottom bar
         createBottomBar();
 
+        // Setup Advanced Filter
+        setupAdvancedFilter(topBar, () => applyFilter());
+
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
         const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
@@ -872,14 +876,19 @@ function showDashboardBenhNhanIfNeeded() {
                 // dataset flags prepared on card creation
                 const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
                 const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
-                const show = matchesText && matchesXV && matchesCLS;
+                
+                // Advanced filters
+                const item = sortedData.find(p => p.mabn === card.getAttribute('data-mabn'));
+                const matchesAdvanced = !advancedFilterState.active || (item && matchesAdvancedFilter(item));
+
+                const show = matchesText && matchesXV && matchesCLS && matchesAdvanced;
                 card.style.display = show ? '' : 'none';
                 if (show) visible++;
             });
 
             // Update centered compact total, integrating the filter count
             if (totalCompact) {
-                const hasFilter = !!(q || onlyXV || onlyCLS);
+                const hasFilter = !!(q || onlyXV || onlyCLS || advancedFilterState.active);
                 totalCompact.textContent = hasFilter ? `Hiển thị: ${visible}/${sortedData.length}` : `${visible}/${sortedData.length}`;
                 // Color accents: blue when filtered, neutral otherwise
                 if (hasFilter) {
@@ -1135,7 +1144,6 @@ function showDashboardBenhNhanIfNeeded() {
                 </a>
                 <select id="dr-khoa-select" class="dr-khoa-select" title="Chọn khoa"></select>
             </div>
-            <button id="dr-btn-direct-report" class="btn btn-warning" style="font-weight:bold;">Tạo báo cáo trực</button>
         `;
         document.body.appendChild(bottomBar);
 
@@ -1144,11 +1152,6 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Bottom bar styles come from addGlobalStyles()
 
-        // Setup direct report button
-        setTimeout(() => {
-            const btn = document.getElementById('dr-btn-direct-report');
-            if (btn) btn.onclick = createDirectReportGeneration;
-        }, 10);
 
         // Populate khoa dropdown and wire change
         (async () => {
@@ -1576,11 +1579,38 @@ function addOTMButtonsToBottomBar(bottomBar) {
     const dateBtn = document.createElement('button');
     dateBtn.id = 'dr-otm-date-btn';
     dateBtn.className = 'dr-btn dr-otm-btn';
-    dateBtn.textContent = 'Mổ theo ngày';
+    dateBtn.textContent = 'Cập nhật lịch OTM';
     dateBtn.title = 'Chọn khoảng thời gian để lấy dữ liệu mổ từ OTM';
+    
+    // Applying pinkish-purple gradient to match Copy button
+    dateBtn.style.background = 'linear-gradient(135deg, #ec4899, #a855f7)';
+    dateBtn.style.color = 'white';
+    dateBtn.style.border = 'none';
+    dateBtn.style.borderRadius = '8px';
+    dateBtn.style.padding = '8px 16px';
+    dateBtn.style.fontWeight = '600';
+    dateBtn.style.cursor = 'pointer';
+    dateBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    dateBtn.style.transition = 'all 0.2s ease';
+
+    dateBtn.onmouseenter = () => {
+        dateBtn.style.transform = 'translateY(-1px)';
+        dateBtn.style.boxShadow = '0 4px 12px rgba(236, 72, 153, 0.3)';
+        dateBtn.style.filter = 'brightness(1.1)';
+    };
+    dateBtn.onmouseleave = () => {
+        dateBtn.style.transform = 'translateY(0)';
+        dateBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+        dateBtn.style.filter = 'brightness(1)';
+    };
+
     dateBtn.addEventListener('click', () => handleOTMDateClick());
 
     bottomBarLeft.appendChild(dateBtn);
+
+    // Add Copy Menu next to OTM button
+    setupCopyMenu(bottomBar);
+
     console.log('OTM button added to dashboard');
 
     function handleOTMDateClick() {

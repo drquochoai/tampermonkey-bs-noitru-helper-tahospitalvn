@@ -761,6 +761,7 @@ function addGlobalStyles() {
             .no-print { 
                 display: none !important; 
             }
+
             /* White cards (214, 215, 216) - giữ màu trắng khi in */
             .dr-card:not(.dr-blue) {
                 background: #0d8ae3ff !important;
@@ -776,7 +777,7 @@ function addGlobalStyles() {
             .dr-card h2 {
                 color: #000 !important;
             }
-            .dr-bottom-bar {
+            .dr-bottom-bar, .dr-top-filter-bar {
                 display: none !important;
             }
             /* Tắt animation khi in */

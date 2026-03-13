@@ -79,14 +79,16 @@ const BS_CAI_DAT = {
         { label: 'Thay băng', icon: '👗', color: '#310994ff' },
         { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
         { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
-        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' }
+        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' },
+        { label: 'Xquang', icon: '🩺', color: '#2196f3' },
+        { label: 'Đi mổ', icon: '🩹', color: '#ff9800' },
+        { label: 'VLTL', icon: '🩺', color: '#2196f3' }
     ],
 
     // ================== CÀI ĐẶT BÁC SĨ ==================
     danhSachBacSi: [
         'PGS.TS.BS Vũ Hữu Vĩnh',
         'TS.BS Nguyễn Anh Dũng',
-        'BS.CKII Trần Công Quyền',
         'ThS.BS Lê Thị Ngọc Hằng',
         'BS.CKI Trần Quốc Hoài',
         'ThS.BS Lê Chí Hiếu',
@@ -136,7 +138,6 @@ const BS_CAI_DAT = {
 
     // ================== CÀI ĐẶT TAGS ==================
     tags: {
-        maxDisplayTags: 3, // Số lượng tags tối đa hiển thị trên mỗi thẻ bệnh nhân
         showOnlyToday: true, // Chỉ hiển thị y lệnh hôm nay
         defaultIcon: '📋',
 
@@ -222,10 +223,11 @@ const BS_CAI_DAT = {
         },
 
         cards: {
-            gap: '16px',
-            borderRadius: '8px',
-            padding: '16px',
-        }
+            gap: '8px',
+            borderRadius: '13px',
+            padding: '6px',
+        },
+
     }
 };
 

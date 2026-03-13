@@ -7,7 +7,13 @@ const { syncPatientStateToGlobal } = require('../utils/stateSync');
 
 function createDoctorCheckboxes(className) {
     return BS_CAI_DAT.danhSachBacSi.map(doctor =>
-        `<label><input type="checkbox" class="${className}" value="${doctor}"> ${doctor}</label>`
+        `<div style="position:relative; margin-bottom: 4px;">
+            <label style="display:flex; align-items:center; gap:4px; cursor:pointer; width:100%;">
+                <input type="checkbox" class="${className}" value="${doctor}">
+                <span class="dr-doctor-name">${doctor}</span>
+                <span class="dr-pt-role-badge" data-doctor="${doctor}" style="margin-left:auto; font-size:10px; padding:2px 6px; border-radius:10px; color:white; font-weight:bold; display:none; background:#1976d2; white-space:nowrap;"></span>
+            </label>
+        </div>`
     ).join('');
 }
 
@@ -61,9 +67,13 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 <input type="text" id="dr-pt-method-popup" placeholder="Nhập PPPT" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
             </div>
             <div style="margin-bottom:16px;">
-                <label style="font-size:0.9em;color:#666;margin-bottom:6px;display:block;">Bác sĩ thực hiện:</label>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.9em;">
+                <label style="font-size:0.9em;color:#666;margin-bottom:6px;display:block;">Bác sĩ thực hiện (theo thứ tự chọn):</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.9em;margin-bottom:8px;">
                     ${createDoctorCheckboxes('dr-pt-doctor-popup')}
+                </div>
+                <div>
+                    <label style="font-size:0.9em;color:#666;">Bác sĩ khác:</label>
+                    <input type="text" id="dr-pt-other-doctor-popup" placeholder="Tên BS khác (cách nhau bằng dấu phẩy)" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;">
                 </div>
             </div>
             <div style="display: flex; gap: 8px; justify-content: flex-end;">
@@ -85,8 +95,51 @@ function setupPhauThuatHandlers(infoElement, patient) {
         const minuteInput = popup.querySelector('#dr-pt-minute-popup');
         const methodInput = popup.querySelector('#dr-pt-method-popup');
         const doctorCheckboxes = popup.querySelectorAll('.dr-pt-doctor-popup');
+        const otherDoctorInput = popup.querySelector('#dr-pt-other-doctor-popup');
         const saveBtn = popup.querySelector('#dr-save-pt');
         const cancelBtn = popup.querySelector('#dr-cancel-pt');
+
+        let selectedDoctorsOrder = [];
+
+        function updateDoctorBadges() {
+            // Clear all badges first
+            popup.querySelectorAll('.dr-pt-role-badge').forEach(badge => {
+                badge.style.display = 'none';
+                badge.textContent = '';
+            });
+
+            // Update badges based on order
+            selectedDoctorsOrder.forEach((doctor, idx) => {
+                const badge = popup.querySelector(`.dr-pt-role-badge[data-doctor="${doctor}"]`);
+                if (badge) {
+                    badge.style.display = 'inline-block';
+                    if (idx === 0) {
+                        badge.textContent = 'PTV chính';
+                        badge.style.background = '#d32f2f'; // Red for main
+                    } else {
+                        badge.textContent = `Phụ ${idx}`;
+                        badge.style.background = '#1976d2'; // Blue for assistants
+                    }
+                }
+            });
+        }
+
+        // Track selection order
+        doctorCheckboxes.forEach(cb => {
+            cb.addEventListener('change', function() {
+                if (this.checked) {
+                    if (!selectedDoctorsOrder.includes(this.value)) {
+                        selectedDoctorsOrder.push(this.value);
+                    }
+                } else {
+                    selectedDoctorsOrder = selectedDoctorsOrder.filter(d => d !== this.value);
+                }
+                updateDoctorBadges();
+                tryAutoSave();
+            });
+        });
+
+        otherDoctorInput.addEventListener('blur', tryAutoSave);
 
         hourInput.addEventListener('input', function () {
             let value = parseInt(this.value);
@@ -148,10 +201,16 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
             const time = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 
-            const selectedDoctors = Array.from(doctorCheckboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.value);
-            if (selectedDoctors.length === 0) return;
+            let combinedDoctors = [...selectedDoctorsOrder];
+            const otherVal = otherDoctorInput.value.trim();
+            if (otherVal) {
+                const others = otherVal.split(',').map(s => s.trim()).filter(s => !!s);
+                others.forEach(o => {
+                    if (!combinedDoctors.includes(o)) combinedDoctors.push(o);
+                });
+            }
+
+            if (combinedDoctors.length === 0) return;
 
             if (!window.checklistState.phauThuatLog) {
                 window.checklistState.phauThuatLog = [];
@@ -161,7 +220,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 date,
                 time,
                 method,
-                doctors: selectedDoctors.join(', '),
+                doctors: combinedDoctors.join(', '),
                 id: (editIndex !== null && window.checklistState.phauThuatLog[editIndex] && window.checklistState.phauThuatLog[editIndex].id)
                     ? window.checklistState.phauThuatLog[editIndex].id
                     : Date.now()
@@ -208,12 +267,27 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 minuteInput.value = minute;
             }
 
-            // Set doctors
+            // Set doctors and maintain order
             if (editData.doctors) {
-                const doctorList = editData.doctors.split(', ');
-                doctorCheckboxes.forEach(cb => {
-                    cb.checked = doctorList.includes(cb.value);
+                const doctorList = editData.doctors.split(', ').map(s => s.trim());
+                const predefined = BS_CAI_DAT.danhSachBacSi;
+                const others = [];
+
+                doctorList.forEach(doc => {
+                    if (predefined.includes(doc)) {
+                        selectedDoctorsOrder.push(doc);
+                        doctorCheckboxes.forEach(cb => {
+                            if (cb.value === doc) cb.checked = true;
+                        });
+                    } else {
+                        others.push(doc);
+                    }
                 });
+
+                if (others.length > 0) {
+                    otherDoctorInput.value = others.join(', ');
+                }
+                updateDoctorBadges();
             }
         } else {
             // Set defaults for new entry
@@ -296,11 +370,16 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 return;
             }
 
-            const selectedDoctors = Array.from(doctorCheckboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.value);
+            let combinedDoctors = [...selectedDoctorsOrder];
+            const otherVal = otherDoctorInput.value.trim();
+            if (otherVal) {
+                const others = otherVal.split(',').map(s => s.trim()).filter(s => !!s);
+                others.forEach(o => {
+                    if (!combinedDoctors.includes(o)) combinedDoctors.push(o);
+                });
+            }
 
-            if (selectedDoctors.length === 0) {
+            if (combinedDoctors.length === 0) {
                 alert(BS_CAI_DAT.validation.messages.noDoctorSelected);
                 return;
             }
@@ -313,7 +392,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 date: date,
                 time: time,
                 method: method,
-                doctors: selectedDoctors.join(', '),
+                doctors: combinedDoctors.join(', '),
                 id: Date.now()
             };
 
@@ -341,8 +420,13 @@ function setupPhauThuatHandlers(infoElement, patient) {
     }
 
     function loadPhauThuatLog() {
-        if (window.checklistState && window.checklistState.phauThuatLog) {
-            renderPhauThuatLog(window.checklistState.phauThuatLog);
+        const log = (patient && patient.checklistState && Array.isArray(patient.checklistState.phauThuatLog))
+            ? patient.checklistState.phauThuatLog
+            : (window.checklistState && Array.isArray(window.checklistState.phauThuatLog))
+                ? window.checklistState.phauThuatLog
+                : null;
+        if (log) {
+            renderPhauThuatLog(log);
         }
     }
 
@@ -409,7 +493,26 @@ function setupPhauThuatHandlers(infoElement, patient) {
     }
 
     showFormBtn.addEventListener('click', () => createPhauThuatPopup(null));
-    setTimeout(loadPhauThuatLog, 100);
+
+    // Initial load: immediate from patient state or window state
+    loadPhauThuatLog();
+
+    // Sync poll: if patient.checklistState was empty or window.checklistState arrives later, refresh
+    let _syncPollCount = 0;
+    const _syncPoll = setInterval(() => {
+        _syncPollCount++;
+        const wlog = window.checklistState && Array.isArray(window.checklistState.phauThuatLog)
+            ? window.checklistState.phauThuatLog : null;
+        const plog = patient && patient.checklistState && Array.isArray(patient.checklistState.phauThuatLog)
+            ? patient.checklistState.phauThuatLog : null;
+
+        if (wlog && wlog !== plog) {
+            if (patient) patient.checklistState = { ...(patient.checklistState || {}), phauThuatLog: wlog };
+            loadPhauThuatLog();
+            clearInterval(_syncPoll);
+        }
+        if (_syncPollCount >= 20) clearInterval(_syncPoll); // Stop after ~2s
+    }, 100);
 
     window.currentRemovePhauThuat = removePhauThuat;
     window.currentRenderPhauThuatLog = renderPhauThuatLog;

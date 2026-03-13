@@ -182,6 +182,54 @@ const ReportService = {
         if (data.ngayPtDisplay) report += `Ngày PT: ${data.ngayPtDisplay}\n`;
         if (data.hxt) report += `HXT: ${data.hxt}\n`;
         return report;
+    },
+
+    /**
+     * Specialized report for upcoming surgeries (PT ngày mai).
+     * Header: [STT]. [Giờ] - [Tên bệnh nhân] - [MABN]
+     * Row: Bác sĩ thực hiện: [Bác sĩ]
+     * Sorted by surgery time ascending.
+     */
+    generateSurgerySpecialReport(patients, states) {
+        // Zip patients and states for sorting
+        const zipped = patients.map((p, idx) => ({
+            p,
+            s: states[idx] || {},
+            pt: PatientDataMapper.mapPhauThuatData(states[idx]) || {}
+        }));
+
+        // Sort by surgery time ascending
+        zipped.sort((a, b) => {
+            const timeA = a.pt.time || a.pt.gioPhauThuat || '99:99';
+            const timeB = b.pt.time || b.pt.gioPhauThuat || '99:99';
+            return timeA.localeCompare(timeB);
+        });
+
+        let html = '';
+        let text = 'DANH SÁCH PHẪU THUẬT\n\n';
+
+        zipped.forEach((item, idx) => {
+            const data = this.formatPatientData(item.p, idx, item.s);
+            const time = item.pt.time || item.pt.gioPhauThuat || '--:--';
+            const doctors = item.pt.doctors || item.pt.bacSiPhauThuat || 'Chưa rõ';
+
+            // HTML - Standardized style
+            html += `<div style='margin-bottom:12px; line-height:1.15;'>`;
+            html += `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${data.index}. ${time} - ${data.name} - ${data.mabn}</strong></h3>`;
+            html += `<div style='margin:2px 0;'><b>DOB</b>: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}</div>`;
+            html += `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`;
+            html += `<div style='margin:2px 0;'><b>PTV</b>: <span style='color:#d32f2f; font-weight:700;'>${item.pt.bacSi || 'Chưa rõ'}</span></div>`;
+            if (data.ppptDisplay) html += `<div style='margin:2px 0;'><b>PPPT</b>: ${data.ppptDisplay}</div>`;
+            html += `</div>`;
+
+            // Text
+            text += `${data.index}. ${time} - ${data.name} - ${data.mabn}\n`;
+            text += `   PTV: ${item.pt.bacSi || 'Chưa rõ'}\n`;
+            text += `   Chẩn đoán: ${data.diagnosis}\n`;
+            if (data.ppptDisplay) text += `   PPPT: ${data.ppptDisplay}\n`;
+        });
+
+        return { html, text };
     }
 };
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.5
+// @version      1.9.6
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -970,11 +970,24 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const Utils = require('../utils');
 const DateUtils = require('../utils/dateUtils');
 
+/**
+ * Normalize doctor names by removing common titles and extra spaces
+ */
+function normalizeName(name) {
+    if (!name) return '';
+    return name.toLowerCase()
+        .replace(/^(pgs\.ts\.bs|ts\.bs|ths\.bsnt\.cki|ths\.bs|bs\.cki|bs|bác sĩ)\s+/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
 let advancedFilterState = {
     active: false,
     yLenhTags: [],      // Array of strings
+    yLenhTagsLogic: 'OR', // 'OR' | 'AND'
     surgeryName: '',     // %like% search
-    surgeons: [],       // Array of strings (doctor names)
+    surgeons: [],       // Array of objects { name, role: 'any'|'main'|'1'|'2'|'3' }
+    surgeonsLogic: 'OR', // 'OR' | 'AND'
     surgeryDate: null,   // 'yesterday' | 'today' | 'tomorrow' | null
 };
 
@@ -1052,7 +1065,7 @@ function updateFilterBadge(btn) {
  */
 function openFilterDialog(onApply) {
     const { dialog, inner } = DialogManager.createDialog('dr-advanced-filter-dialog', {
-        maxWidth: '600px',
+        maxWidth: '850px',
         maxHeight: '90vh'
     });
 
@@ -1073,19 +1086,23 @@ function openFilterDialog(onApply) {
     const manualTagsArray = Array.from(allManualTags).sort();
 
     inner.innerHTML = `
-        <div style="margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:12px;">
-            <h2 style="margin:0; font-size:1.4em; color:#1e293b;">Bộ lọc nâng cao</h2>
-            <p style="margin:4px 0 0 0; color:#64748b; font-size:0.9em;">Tìm kiếm bệnh nhân theo tiêu chí chuyên sâu</p>
+        <div style="margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:12px; display:flex; justify-content:space-between; align-items:flex-start;">
+            <div>
+                <h2 style="margin:0; font-size:1.4em; color:#1e293b;">Bộ lọc nâng cao</h2>
+                <p style="margin:4px 0 0 0; color:#64748b; font-size:0.9em;">Tìm kiếm bệnh nhân theo tiêu chí chuyên sâu</p>
+            </div>
+            <div id="dr-filter-header-actions" style="display:flex; gap:8px;"></div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:20px;">
-            <!-- Category: Surgery Name -->
-            <section>
                 <h3 style="font-size:1em; margin-bottom:8px; color:#334155; display:flex; align-items:center; gap:6px;">
                     <i class="fas fa-hand-holding-medical" style="color:#1976d2;"></i> Tên phẫu thuật
                 </h3>
-                <input type="text" id="filter-surgery-name" value="${advancedFilterState.surgeryName}" placeholder="Nhập tên mổ (vd: sỏi, túi mật...)" 
-                    style="width:100%; padding:8px 12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
+                <div style="position:relative;">
+                    <input type="text" id="filter-surgery-name" value="${advancedFilterState.surgeryName}" placeholder="Nhập tên mổ (vd: sỏi, túi mật...)" 
+                        style="width:100%; padding:8px 30px 8px 12px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
+                    <span id="clear-surgery-name" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer; color:#94a3b8; display:${advancedFilterState.surgeryName ? 'block' : 'none'};"><i class="fas fa-times-circle"></i></span>
+                </div>
             </section>
 
             <!-- Category: Surgery Date -->
@@ -1103,24 +1120,47 @@ function openFilterDialog(onApply) {
 
             <!-- Category: Surgeons -->
             <section>
-                <h3 style="font-size:1em; margin-bottom:8px; color:#334155; display:flex; align-items:center; gap:6px;">
-                    <i class="fas fa-user-md" style="color:#1976d2;"></i> Phẫu thuật viên
-                </h3>
-                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px; max-height:150px; overflow-y:auto; padding:4px; border:1px solid #f1f5f9; border-radius:6px; background:#f8fafc;">
-                    ${BS_CAI_DAT.danhSachBacSi.map(doc => `
-                        <label style="display:flex; align-items:center; gap:8px; font-size:0.9em; cursor:pointer; padding:2px 4px;">
-                            <input type="checkbox" class="filter-surgeon-check" value="${doc}" ${advancedFilterState.surgeons.includes(doc) ? 'checked' : ''}>
-                            ${doc}
-                        </label>
-                    `).join('')}
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h3 style="font-size:1em; margin:0; color:#334155; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-user-md" style="color:#1976d2;"></i> Phẫu thuật viên
+                    </h3>
+                    <div style="display:flex; background:#f1f5f9; border-radius:12px; padding:2px; font-size:0.8em;">
+                        <button class="logic-toggle ${advancedFilterState.surgeonsLogic === 'OR' ? 'active' : ''}" data-logic="OR" style="border:none; border-radius:10px; padding:2px 8px; cursor:pointer; font-weight:600;">OR</button>
+                        <button class="logic-toggle ${advancedFilterState.surgeonsLogic === 'AND' ? 'active' : ''}" data-logic="AND" style="border:none; border-radius:10px; padding:2px 8px; cursor:pointer; font-weight:600;">AND</button>
+                    </div>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:10px; max-height:180px; overflow-y:auto; padding:8px; border:1px solid #f1f5f9; border-radius:6px; background:#f8fafc;">
+                    ${BS_CAI_DAT.danhSachBacSi.map(doc => {
+                        const selected = advancedFilterState.surgeons.find(s => s.name === doc);
+                        return `
+                        <div class="filter-surgeon-row" style="display:flex; align-items:center; gap:8px; font-size:0.9em; padding:4px; border-radius:4px; transition:background 0.2s;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex: 1;">
+                                <input type="checkbox" class="filter-surgeon-check" value="${doc}" ${selected ? 'checked' : ''}>
+                                <span style="font-weight:${selected ? '600' : '400'}">${doc}</span>
+                            </label>
+                            <select class="filter-surgeon-role" style="font-size:0.8em; padding:2px 4px; border:1px solid #cbd5e1; border-radius:4px; background:white; ${selected ? '' : 'display:none;'}">
+                                <option value="any" ${selected?.role === 'any' ? 'selected' : ''}>Bất kỳ</option>
+                                <option value="main" ${selected?.role === 'main' ? 'selected' : ''}>PTV chính</option>
+                                <option value="1" ${selected?.role === '1' ? 'selected' : ''}>Phụ 1</option>
+                                <option value="2" ${selected?.role === '2' ? 'selected' : ''}>Phụ 2</option>
+                                <option value="3" ${selected?.role === '3' ? 'selected' : ''}>Phụ 3</option>
+                            </select>
+                        </div>
+                    `}).join('')}
                 </div>
             </section>
 
             <!-- Category: Manual Y lệnh tags -->
             <section>
-                <h3 style="font-size:1em; margin-bottom:8px; color:#334155; display:flex; align-items:center; gap:6px;">
-                    <i class="fas fa-tags" style="color:#1976d2;"></i> Log y lệnh (Manual)
-                </h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h3 style="font-size:1em; margin:0; color:#334155; display:flex; align-items:center; gap:6px;">
+                        <i class="fas fa-tags" style="color:#1976d2;"></i> Log y lệnh (Manual)
+                    </h3>
+                    <div style="display:flex; background:#f1f5f9; border-radius:12px; padding:2px; font-size:0.8em;">
+                        <button class="logic-toggle-tags ${advancedFilterState.yLenhTagsLogic === 'OR' ? 'active' : ''}" data-logic="OR" style="border:none; border-radius:10px; padding:2px 8px; cursor:pointer; font-weight:600;">OR</button>
+                        <button class="logic-toggle-tags ${advancedFilterState.yLenhTagsLogic === 'AND' ? 'active' : ''}" data-logic="AND" style="border:none; border-radius:10px; padding:2px 8px; cursor:pointer; font-weight:600;">AND</button>
+                    </div>
+                </div>
                 <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:8px; max-height:200px; overflow-y:auto; padding:4px; border:1px solid #f1f5f9; border-radius:6px; background:#f8fafc;">
                     ${manualTagsArray.length > 0 ? manualTagsArray.map(tag => `
                         <label style="display:flex; align-items:center; gap:8px; font-size:0.9em; cursor:pointer; padding:2px 4px;">
@@ -1150,11 +1190,21 @@ function openFilterDialog(onApply) {
             .filter-date-chip:hover:not(.active) {
                 background: #f1f5f9;
             }
+            .logic-toggle, .logic-toggle-tags {
+                background: transparent;
+                color: #64748b;
+            }
+            .logic-toggle.active, .logic-toggle-tags.active {
+                background: #fff;
+                color: #1976d2;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            }
         </style>
     `;
 
-    // Add buttons
-    const footer = DialogManager.createActionButtons([
+    // Add buttons to header: Only "Bỏ tất cả" remains, filtering is now real-time
+    const headerActions = inner.querySelector('#dr-filter-header-actions');
+    const actionButtons = DialogManager.createActionButtons([
         {
             text: 'Bỏ tất cả',
             className: 'btn-secondary',
@@ -1164,19 +1214,19 @@ function openFilterDialog(onApply) {
                 if (onApply) onApply();
                 updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
             }
-        },
-        {
-            text: 'Áp dụng',
-            className: 'btn-primary',
-            onclick: () => {
-                applyInputs();
-                dialog.remove();
-                if (onApply) onApply();
-                updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
-            }
         }
     ]);
-    inner.appendChild(footer);
+    if (headerActions) {
+        actionButtons.style.marginTop = '0'; // Remove top margin in header
+        headerActions.appendChild(actionButtons);
+    }
+
+    // Real-time trigger helper
+    function triggerUpdate() {
+        applyInputs();
+        if (onApply) onApply();
+        updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
+    }
 
     // Event listeners for date chips
     inner.querySelectorAll('.filter-date-chip').forEach(chip => {
@@ -1184,7 +1234,41 @@ function openFilterDialog(onApply) {
             inner.querySelectorAll('.filter-date-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
             advancedFilterState.surgeryDate = chip.getAttribute('data-date') || null;
+            triggerUpdate();
         };
+    });
+
+    // Logic toggle listeners
+    inner.querySelectorAll('.logic-toggle').forEach(btn => {
+        btn.onclick = () => {
+            inner.querySelectorAll('.logic-toggle').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            advancedFilterState.surgeonsLogic = btn.getAttribute('data-logic');
+            triggerUpdate();
+        };
+    });
+
+    // Logic toggle for tags
+    inner.querySelectorAll('.logic-toggle-tags').forEach(btn => {
+        btn.onclick = () => {
+            inner.querySelectorAll('.logic-toggle-tags').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            advancedFilterState.yLenhTagsLogic = btn.getAttribute('data-logic');
+            triggerUpdate();
+        };
+    });
+
+    // Surgeon checkbox/select listeners
+    inner.querySelectorAll('.filter-surgeon-check').forEach(cb => {
+        cb.onchange = () => {
+            const select = cb.closest('.filter-surgeon-row').querySelector('.filter-surgeon-role');
+            if (select) select.style.display = cb.checked ? 'block' : 'none';
+            triggerUpdate();
+        };
+    });
+
+    inner.querySelectorAll('.filter-surgeon-role, .filter-tag-check').forEach(el => {
+        el.onchange = triggerUpdate;
     });
 
     // Clear icon logic
@@ -1193,11 +1277,13 @@ function openFilterDialog(onApply) {
     if (surgeryInput && clearBtn) {
         surgeryInput.oninput = () => {
             clearBtn.style.display = surgeryInput.value ? 'block' : 'none';
+            triggerUpdate();
         };
         clearBtn.onclick = () => {
             surgeryInput.value = '';
             clearBtn.style.display = 'none';
             surgeryInput.focus();
+            triggerUpdate();
         };
     }
 
@@ -1205,8 +1291,15 @@ function openFilterDialog(onApply) {
         advancedFilterState.surgeryName = (inner.querySelector('#filter-surgery-name').value || '').trim();
         
         advancedFilterState.surgeons = [];
-        inner.querySelectorAll('.filter-surgeon-check:checked').forEach(cb => {
-            advancedFilterState.surgeons.push(cb.value);
+        inner.querySelectorAll('.filter-surgeon-row').forEach(row => {
+            const cb = row.querySelector('.filter-surgeon-check');
+            const select = row.querySelector('.filter-surgeon-role');
+            if (cb && cb.checked) {
+                advancedFilterState.surgeons.push({
+                    name: cb.value,
+                    role: select ? select.value : 'any'
+                });
+            }
         });
 
         advancedFilterState.yLenhTags = [];
@@ -1226,8 +1319,10 @@ function openFilterDialog(onApply) {
     function resetFilter() {
         advancedFilterState.active = false;
         advancedFilterState.yLenhTags = [];
+        advancedFilterState.yLenhTagsLogic = 'OR';
         advancedFilterState.surgeryName = '';
         advancedFilterState.surgeons = [];
+        advancedFilterState.surgeonsLogic = 'OR';
         advancedFilterState.surgeryDate = null;
     }
 }
@@ -1254,17 +1349,42 @@ function matchesAdvancedFilter(item) {
     // 2. Filter by Surgeon
     if (advancedFilterState.surgeons.length > 0) {
         hasCondition = true;
-        let doctorsString = '';
-        if (item.phauThuatInfo) {
-            doctorsString = (item.phauThuatInfo.doctors || '').toLowerCase();
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            doctorsString = (item.checklistState.phauThuatLog[0].doctors || '').toLowerCase();
-        }
         
-        const matchesAnySurgeon = advancedFilterState.surgeons.some(s => 
-            doctorsString.includes(s.toLowerCase())
-        );
-        if (!matchesAnySurgeon) return false;
+        // Extract doctor array from item (most recent surgery)
+        let logEntry = null;
+        if (item.phauThuatInfo) {
+            logEntry = item.phauThuatInfo;
+        } else if (item.checklistState?.phauThuatLog?.[0]) {
+            logEntry = item.checklistState.phauThuatLog[0];
+        }
+
+        if (!logEntry) return false;
+
+        const doctorsString = (logEntry.doctors || '').toLowerCase();
+        // Split by comma and clean up
+        const patientDoctors = doctorsString.split(',').map(s => s.trim()).filter(s => !!s);
+
+        const checkMatch = (sFilter) => {
+            const normalizedFilterName = normalizeName(sFilter.name);
+            const docIdx = patientDoctors.findIndex(pd => normalizeName(pd).includes(normalizedFilterName));
+            if (docIdx === -1) return false;
+            
+            if (sFilter.role === 'any') return true;
+            if (sFilter.role === 'main' && docIdx === 0) return true;
+            if (sFilter.role === '1' && docIdx === 1) return true;
+            if (sFilter.role === '2' && docIdx === 2) return true;
+            if (sFilter.role === '3' && docIdx === 3) return true;
+            
+            return false;
+        };
+
+        if (advancedFilterState.surgeonsLogic === 'AND') {
+            const matchesAll = advancedFilterState.surgeons.every(checkMatch);
+            if (!matchesAll) return false;
+        } else {
+            const matchesAny = advancedFilterState.surgeons.some(checkMatch);
+            if (!matchesAny) return false;
+        }
     }
 
     // 3. Filter by Surgery Date
@@ -1305,10 +1425,17 @@ function matchesAdvancedFilter(item) {
             })
             .map(e => (e.content || '').trim());
         
-        const matchesAnyTag = advancedFilterState.yLenhTags.some(tag => 
-            patientManualTags.includes(tag)
-        );
-        if (!matchesAnyTag) return false;
+        if (advancedFilterState.yLenhTagsLogic === 'AND') {
+            const matchesAll = advancedFilterState.yLenhTags.every(tag => 
+                patientManualTags.includes(tag)
+            );
+            if (!matchesAll) return false;
+        } else {
+            const matchesAny = advancedFilterState.yLenhTags.some(tag => 
+                patientManualTags.includes(tag)
+            );
+            if (!matchesAny) return false;
+        }
     }
 
     // Update active flag for the badge
@@ -3509,7 +3636,8 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 doctors: combinedDoctors.join(', '),
                 id: (editIndex !== null && window.checklistState.phauThuatLog[editIndex] && window.checklistState.phauThuatLog[editIndex].id)
                     ? window.checklistState.phauThuatLog[editIndex].id
-                    : Date.now()
+                    : Date.now(),
+                source: 'manual' // Tag as manual entry
             };
 
             if (editIndex !== null && window.checklistState.phauThuatLog[editIndex]) {
@@ -3679,7 +3807,8 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 time: time,
                 method: method,
                 doctors: combinedDoctors.join(', '),
-                id: Date.now()
+                id: Date.now(),
+                source: 'manual' // Tag as manual entry
             };
 
             if (editIndex !== null) {
@@ -3722,14 +3851,20 @@ function setupPhauThuatHandlers(infoElement, patient) {
             return;
         }
 
-        logContainer.innerHTML = phauThuatArray.map((entry, index) => `
+        logContainer.innerHTML = phauThuatArray.map((entry, index) => {
+            const sourceMarker = entry.source === 'otm' 
+                ? '<span style="color:#1976d2; font-size:0.8em; margin-left:8px;">[OTM]</span>' 
+                : '<span style="color:#d32f2f; font-size:0.8em; margin-left:8px;">[Tay]</span>';
+            
+            return `
             <div class="pt-entry-clickable" data-index="${index}" style="margin-bottom:8px;padding:8px 40px 8px 8px;background:#fff;border-radius:4px;border-left:3px solid #4caf50;position:relative;cursor:pointer;transition:background-color 0.2s;" onmouseover="this.style.backgroundColor='#f5f5f5'" onmouseout="this.style.backgroundColor='#fff'">
                 <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
-                <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}</div>
+                <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}${sourceMarker}</div>
                 <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
                 <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
             </div>
-        `).join('');
+            `;
+        }).join('');
 
         setTimeout(() => {
             logContainer.querySelectorAll('.remove-pt-btn').forEach(btn => {
@@ -6882,7 +7017,8 @@ function dr_otmToLogEntry(otmItem) {
         if (isNaN(d.getTime())) return null;
         const { date, time } = dr_formatVNDateTime(d);
         const method = (otmItem.surgerymethod || '').trim();
-        // Collect doctors from userexec + userassistant
+        // Collect doctors from userexec (Main surgeons) + userassistant (Assistants)
+        // Note: The order in userexec is preserved, ensuring PTV chính is listed first.
         const names = [];
         const pushNames = (arr) => {
             if (Array.isArray(arr)) {
@@ -6895,7 +7031,14 @@ function dr_otmToLogEntry(otmItem) {
         pushNames(otmItem.userexec);
         pushNames(otmItem.userassistant);
         const doctors = names.join(', ');
-        return { date, time, method, doctors, id: `otm-${startIso}` };
+        return { 
+            date, 
+            time, 
+            method, 
+            doctors, 
+            id: `otm-${startIso}`,
+            source: 'otm' // Tag as OTM data
+        };
     } catch (_) { return null; }
 }
 
@@ -12371,6 +12514,8 @@ function formatSurgeryInfo(item) {
         }
         
         const method = ptData.method || ptData.pppt || '';
+        const sourceLabel = ptData.source === 'otm' ? '<span style="color:#1976d2; font-weight:600;">[OTM]</span> ' : 
+                           ptData.source === 'manual' ? '<span style="color:#d32f2f; font-weight:600;">[Tay]</span> ' : '';
         
         // Calculate post-op days
         const surgeryInfo = getSurgeryDateInfo(surgeryDate);
@@ -12395,7 +12540,7 @@ function formatSurgeryInfo(item) {
         console.log('Surgery info found for patient:', item.mabn, 'PPPT:', method, 'DateTime:', dateTime, 'PostOp:', postOpDisplay);
         
         ptInfo = `<div class="dr-pt-info">
-            <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}${postOpDisplay}</div>
+            <div class="dr-value"><span class="dr-label">PPPT:</span> ${sourceLabel}${method}${postOpDisplay}</div>
             <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
         </div>`;
     } else {
@@ -12425,18 +12570,24 @@ function updatePatientCardPhauThuat(patient, customChecklistState = null) {
             };
             
             // If checklistState has phauThuatLog, update patient's phauThuatInfo with latest entry
-            if (checklistState && checklistState.phauThuatLog && checklistState.phauThuatLog.length > 0) {
-                const latestPT = checklistState.phauThuatLog[0]; // Latest is first
-                patientWithState.phauThuatInfo = {
-                    date: latestPT.date,
-                    time: latestPT.time,
-                    method: latestPT.method,
-                    doctors: latestPT.doctors,
-                    // Keep backward compatibility
-                    ngayPhauThuat: latestPT.date,
-                    gioPhauThuat: latestPT.time,
-                    pppt: latestPT.method
-                };
+            // Sync patient's phauThuatInfo with latest entry in checklistState.phauThuatLog
+            if (checklistState && checklistState.phauThuatLog) {
+                if (checklistState.phauThuatLog.length > 0) {
+                    const latestPT = checklistState.phauThuatLog[0];
+                    patientWithState.phauThuatInfo = {
+                        date: latestPT.date,
+                        time: latestPT.time,
+                        method: latestPT.method,
+                        doctors: latestPT.doctors,
+                        source: latestPT.source,
+                        ngayPhauThuat: latestPT.date,
+                        gioPhauThuat: latestPT.time,
+                        pppt: latestPT.method
+                    };
+                } else {
+                    // Log is empty, clear phauThuatInfo
+                    patientWithState.phauThuatInfo = null;
+                }
             }
             
             // Use formatSurgeryInfo to get formatted surgery info with post-op days

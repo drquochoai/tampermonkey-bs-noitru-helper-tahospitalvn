@@ -167,6 +167,8 @@ function formatSurgeryInfo(item) {
         }
         
         const method = ptData.method || ptData.pppt || '';
+        const sourceLabel = ptData.source === 'otm' ? '<span style="color:#1976d2; font-weight:600;">[OTM]</span> ' : 
+                           ptData.source === 'manual' ? '<span style="color:#d32f2f; font-weight:600;">[Tay]</span> ' : '';
         
         // Calculate post-op days
         const surgeryInfo = getSurgeryDateInfo(surgeryDate);
@@ -191,7 +193,7 @@ function formatSurgeryInfo(item) {
         console.log('Surgery info found for patient:', item.mabn, 'PPPT:', method, 'DateTime:', dateTime, 'PostOp:', postOpDisplay);
         
         ptInfo = `<div class="dr-pt-info">
-            <div class="dr-value"><span class="dr-label">PPPT:</span> ${method}${postOpDisplay}</div>
+            <div class="dr-value"><span class="dr-label">PPPT:</span> ${sourceLabel}${method}${postOpDisplay}</div>
             <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
         </div>`;
     } else {
@@ -221,18 +223,24 @@ function updatePatientCardPhauThuat(patient, customChecklistState = null) {
             };
             
             // If checklistState has phauThuatLog, update patient's phauThuatInfo with latest entry
-            if (checklistState && checklistState.phauThuatLog && checklistState.phauThuatLog.length > 0) {
-                const latestPT = checklistState.phauThuatLog[0]; // Latest is first
-                patientWithState.phauThuatInfo = {
-                    date: latestPT.date,
-                    time: latestPT.time,
-                    method: latestPT.method,
-                    doctors: latestPT.doctors,
-                    // Keep backward compatibility
-                    ngayPhauThuat: latestPT.date,
-                    gioPhauThuat: latestPT.time,
-                    pppt: latestPT.method
-                };
+            // Sync patient's phauThuatInfo with latest entry in checklistState.phauThuatLog
+            if (checklistState && checklistState.phauThuatLog) {
+                if (checklistState.phauThuatLog.length > 0) {
+                    const latestPT = checklistState.phauThuatLog[0];
+                    patientWithState.phauThuatInfo = {
+                        date: latestPT.date,
+                        time: latestPT.time,
+                        method: latestPT.method,
+                        doctors: latestPT.doctors,
+                        source: latestPT.source,
+                        ngayPhauThuat: latestPT.date,
+                        gioPhauThuat: latestPT.time,
+                        pppt: latestPT.method
+                    };
+                } else {
+                    // Log is empty, clear phauThuatInfo
+                    patientWithState.phauThuatInfo = null;
+                }
             }
             
             // Use formatSurgeryInfo to get formatted surgery info with post-op days

@@ -1376,7 +1376,8 @@ function dr_otmToLogEntry(otmItem) {
         if (isNaN(d.getTime())) return null;
         const { date, time } = dr_formatVNDateTime(d);
         const method = (otmItem.surgerymethod || '').trim();
-        // Collect doctors from userexec + userassistant
+        // Collect doctors from userexec (Main surgeons) + userassistant (Assistants)
+        // Note: The order in userexec is preserved, ensuring PTV chính is listed first.
         const names = [];
         const pushNames = (arr) => {
             if (Array.isArray(arr)) {
@@ -1389,7 +1390,14 @@ function dr_otmToLogEntry(otmItem) {
         pushNames(otmItem.userexec);
         pushNames(otmItem.userassistant);
         const doctors = names.join(', ');
-        return { date, time, method, doctors, id: `otm-${startIso}` };
+        return { 
+            date, 
+            time, 
+            method, 
+            doctors, 
+            id: `otm-${startIso}`,
+            source: 'otm' // Tag as OTM data
+        };
     } catch (_) { return null; }
 }
 

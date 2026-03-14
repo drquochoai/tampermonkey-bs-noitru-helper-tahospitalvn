@@ -522,11 +522,21 @@ function addGlobalStyles() {
             background: #e3f2fd; 
             border: 2px solid #90caf9; 
         }
-        .dr-card h2 { 
-            margin: 0 0 8px 0; 
-            font-size: 1.2em; 
-            color: #1976d2; 
+        .dr-patient-name { 
+            margin: 0 0 4px 0; 
+            font-size: 1.25em; 
+            color: #1976d2;
+            font-weight: 700;
         }
+        .dr-patient-sub-info {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+            color: #64748b;
+        }
+        .dr-patient-mabn { font-weight: 700; color: #334155; }
+        .dr-patient-gender { color: #64748b; }
         .dr-card .dr-label { 
             font-weight: bold; 
             color: #000; 
@@ -789,16 +799,247 @@ function addGlobalStyles() {
             }
             .dr-card.xuatvienanimation::before,
             .dr-card.xuatvienanimation.dr-blue::before {
-                display: inline-flex; align-items:center; gap:10px;
                 display: none !important;
-            .dr-khoa-select { height: 32px; min-width: 180px; border:1px solid #cbd5e1; border-radius: 8px; padding: 0 8px; }
-            .dr-gear-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:50%; color:#1976d2; border:1px solid rgba(25,118,210,0.25); text-decoration:none; background:#fff; }
-            .dr-gear-btn i { font-size:16px; }
-            .dr-gear-btn:hover { background:#e3f2fd; box-shadow:0 0 0 2px rgba(25,118,210,0.15) inset; }
             }
-            .dr-card.xuatvienanimation::after,
-            .dr-card.xuatvienanimation.dr-blue::after {
-                display: none !important;
+        }
+
+        /* --- Custom Premium Dropdown Styles --- */
+        .dr-view-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dr-dropdown-toggle {
+            padding: 8px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            color: #334155;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            min-width: 160px;
+            justify-content: space-between;
+        }
+        .dr-dropdown-toggle:hover {
+            border-color: #94a3b8;
+            background: #fff;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transform: translateY(-1px);
+        }
+        .dr-dropdown-toggle:active {
+            transform: translateY(0);
+        }
+        .dr-dropdown-toggle i.fa-chevron-down {
+            font-size: 10px;
+            transition: transform 0.2s;
+            color: #64748b;
+        }
+        .dr-view-dropdown.open .dr-dropdown-toggle i.fa-chevron-down {
+            transform: rotate(180deg);
+        }
+        .dr-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 180px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            z-index: 10001;
+            padding: 6px;
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .dr-view-dropdown.open .dr-dropdown-menu {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .dr-dropdown-item {
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #475569;
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .dr-dropdown-item:hover {
+            background: rgba(30, 136, 229, 0.08);
+            color: #1e88e5;
+        }
+        .dr-dropdown-item.active {
+            background: #1e88e5;
+            color: #fff;
+        }
+        .dr-dropdown-item i {
+            width: 16px;
+            text-align: center;
+        }
+
+        /* --- Fit to Screen Mode Styles --- */
+        .dr-fit-container {
+            display: grid;
+            gap: 10px;
+            padding: 15px;
+            width: 100vw;
+            box-sizing: border-box;
+            overflow: hidden; /* No scroll requested */
+            margin: 0 !important;
+        }
+        .dr-fit-container .dr-card {
+            min-width: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 8px !important; /* Slightly smaller padding */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            border-radius: 12px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+            overflow: hidden; /* Prevent content expansion */
+            position: relative;
+        }
+        .dr-fit-container .dr-card .dr-room-label {
+            font-size: var(--fit-title-size, 1.1em);
+            padding-bottom: 2px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #1e88e5; /* Stronger color for location */
+        }
+        .dr-fit-container .dr-card .dr-patient-name {
+            font-size: var(--fit-name-size, 1.25em);
+            font-weight: 800;
+            margin-bottom: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #0f172a;
+        }
+        .dr-fit-container .dr-card .dr-patient-sub-info {
+            display: flex;
+            gap: 10px;
+            font-size: calc(var(--fit-text-size, 0.9em) - 1px);
+            color: #64748b;
+            margin-bottom: 2px;
+            font-weight: 500;
+        }
+        .dr-fit-container .dr-card .dr-value {
+            font-size: var(--fit-text-size, 0.9em);
+            margin-bottom: 1px;
+            line-height: 1.1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dr-fit-container .dr-card .dr-diagnosis-line,
+        .dr-fit-container .dr-card .dr-pt-info,
+        .dr-fit-container .dr-card .dr-hxt-block {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2; /* Clamp to 2 lines to save vertical space */
+            overflow: hidden;
+            font-size: var(--fit-text-size, 0.9em);
+            white-space: normal !important;
+            margin-bottom: 1px;
+        }
+        .dr-fit-container .ylenh-tags {
+            margin-top: 2px;
+            gap: 2px;
+            flex-wrap: wrap;
+            max-height: 2.2em;
+            overflow: hidden;
+        }
+        .dr-fit-container .ylenh-tag {
+            font-size: calc(var(--fit-text-size, 0.9em) - 2px);
+            padding: 1px 4px;
+        }
+
+        /* --- Compact Bars and Hidden UI in Fit Mode --- */
+        body.dr-fit-mode .dr-top-filter-bar {
+            padding: 4px 12px !important;
+            min-height: 0 !important;
+            margin: 0 !important; /* Remove margin as requested */
+        }
+        body.dr-fit-mode .dr-bottom-bar {
+            height: 34px !important; /* Extremely compact bottom bar */
+            padding: 0 16px !important;
+            margin: 0 !important; /* Remove margin as requested */
+        }
+        body.dr-fit-mode .dr-action-buttons {
+            display: none !important; /* Hide action buttons as requested */
+        }
+        body.dr-fit-mode .dr-total-compact {
+            padding: 2px 8px !important;
+            font-size: 11px !important;
+        }
+        body.dr-fit-mode #dr-search-input {
+            padding: 4px 8px !important;
+            font-size: 12px !important;
+        }
+        body.dr-fit-mode .dr-dropdown-toggle {
+            padding: 4px 10px !important;
+            font-size: 12px !important;
+            min-width: 120px !important;
+        }
+        body.dr-fit-mode .dr-khoa-select {
+            height: 24px !important;
+            font-size: 12px !important;
+            padding: 0 24px 0 6px !important;
+            background-size: 12px 12px !important;
+        }
+        body.dr-fit-mode .dr-gear-btn {
+            width: 24px !important;
+            height: 24px !important;
+        }
+        body.dr-fit-mode .dr-gear-btn i {
+            font-size: 12px !important;
+        }
+        body.dr-fit-mode .dr-badge-meds-done {
+            top: -5px !important;
+            right: 5px !important;
+            font-size: 9px !important;
+            padding: 2px 6px !important;
+        }
+
+        /* --- Compact Bottom Bar Buttons --- */
+        body.dr-fit-mode .dr-bottom-bar .dr-btn,
+        body.dr-fit-mode .dr-bottom-bar button {
+            padding: 4px 10px !important;
+            font-size: 11px !important;
+            border-radius: 6px !important;
+            min-height: 0 !important;
+            gap: 4px !important; /* Smaller gap */
+        }
+        body.dr-fit-mode .dr-bottom-bar .dr-copy-menu-item {
+            padding: 6px 10px !important;
+        }
+        body.dr-fit-mode .dr-bottom-bar .dr-copy-menu-item div:first-child {
+            font-size: 0.85em !important;
+        }
+        body.dr-fit-mode .dr-bottom-bar .dr-copy-menu-item div:last-child {
+            font-size: 0.7em !important;
+        }
+        body.dr-fit-mode .dr-copy-dropdown-menu {
+            width: 200px !important;
+        }
+                 display: none !important;
             }
         }
     `;

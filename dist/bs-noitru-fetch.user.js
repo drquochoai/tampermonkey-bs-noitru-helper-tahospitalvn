@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.6
+// @version      1.9.7
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -971,15 +971,18 @@ const Utils = require('../utils');
 const DateUtils = require('../utils/dateUtils');
 
 /**
- * Normalize doctor names by removing common titles and extra spaces
+ * Trích xuất tên gốc của bác sĩ, loại bỏ các chức danh (BS, TS, ThS...)
  */
-function normalizeName(name) {
+function getBaseName(name) {
     if (!name) return '';
+    const titles = ['pgs', 'ts', 'bs', 'ths', 'bsnt', 'cki', 'ckii', 'ck1', 'ck2', 'bác', 'sĩ', 'gs'];
     return name.toLowerCase()
-        .replace(/^(pgs\.ts\.bs|ts\.bs|ths\.bsnt\.cki|ths\.bs|bs\.cki|bs|bác sĩ)\s+/i, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+        .replace(/[.,;/()\-]/g, ' ') // Thay dấu câu bằng khoảng trắng, thay vì dùng regex phức tạp dễ mất chữ 'đ'
+        .split(/\s+/)
+        .filter(w => w && !titles.includes(w))
+        .join(' ');
 }
+
 
 let advancedFilterState = {
     active: false,
@@ -1328,45 +1331,70 @@ function openFilterDialog(onApply) {
 }
 
 /**
+ * Trích xuất ca mổ gần nhất của bệnh nhân từ nhiều nguồn dữ liệu khác nhau
+ */
+function getLatestSurgeryLog(item) {
+    if (!item) return null;
+    
+    // Nguồn 1: Log đã lưu trữ / đã merge (ưu tiên cao nhất)
+    if (item.checklistState?.phauThuatLog?.length > 0) {
+        return item.checklistState.phauThuatLog[0];
+    }
+    
+    // Nguồn 2: Log trực tiếp từ OTM chưa merge vào checklistState
+    if (item._otmPhauThuatLog?.length > 0) {
+        return item._otmPhauThuatLog[0];
+    }
+    
+    // Nguồn 3: Dữ liệu fallback cơ bản
+    if (item.phauThuatInfo) {
+        return item.phauThuatInfo;
+    }
+    
+    return null;
+}
+
+
+/**
  * Filter logic: check if patient matches current criteria
  */
 function matchesAdvancedFilter(item) {
     let hasCondition = false;
     
+    // Lấy thông tin ca phẫu thuật gần nhất của bệnh nhân
+    const logEntry = getLatestSurgeryLog(item);
+    
     // 1. Filter by Surgery Name (PPPT)
     if (advancedFilterState.surgeryName.trim()) {
         hasCondition = true;
+        if (!logEntry) return false;
+        
         const query = advancedFilterState.surgeryName.toLowerCase().trim();
-        let ptNameHtml = '';
-        if (item.phauThuatInfo) {
-            ptNameHtml = (item.phauThuatInfo.method || item.phauThuatInfo.pppt || '').toLowerCase();
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            ptNameHtml = (item.checklistState.phauThuatLog[0].method || '').toLowerCase();
-        }
+        const ptNameHtml = (logEntry.method || logEntry.pppt || '').toLowerCase();
+        
         if (!ptNameHtml.includes(query)) return false;
     }
 
     // 2. Filter by Surgeon
     if (advancedFilterState.surgeons.length > 0) {
         hasCondition = true;
-        
-        // Extract doctor array from item (most recent surgery)
-        let logEntry = null;
-        if (item.phauThuatInfo) {
-            logEntry = item.phauThuatInfo;
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            logEntry = item.checklistState.phauThuatLog[0];
-        }
-
         if (!logEntry) return false;
 
         const doctorsString = (logEntry.doctors || '').toLowerCase();
-        // Split by comma and clean up
-        const patientDoctors = doctorsString.split(',').map(s => s.trim()).filter(s => !!s);
+        // Tách chuỗi bác sĩ theo dấu phẩy / chấm phẩy và loại bỏ khoảng trắng thừa
+        const patientDoctors = doctorsString.split(/[,;]/).map(s => s.trim()).filter(Boolean);
 
         const checkMatch = (sFilter) => {
-            const normalizedFilterName = normalizeName(sFilter.name);
-            const docIdx = patientDoctors.findIndex(pd => normalizeName(pd).includes(normalizedFilterName));
+            const filterBase = getBaseName(sFilter.name);
+            
+            // Xóa bỏ chức danh của cả 2 bên và so sánh tên gốc
+            // Vd: "ThS.BS Lê Chí Hiếu" -> "lê chí hiếu"
+            //     "BS.CKI Lê Chí Hiếu" -> "lê chí hiếu"
+            const docIdx = patientDoctors.findIndex(pd => {
+                const pdBase = getBaseName(pd);
+                return pdBase && filterBase && (pdBase.includes(filterBase) || filterBase.includes(pdBase));
+            });
+            
             if (docIdx === -1) return false;
             
             if (sFilter.role === 'any') return true;
@@ -1385,18 +1413,17 @@ function matchesAdvancedFilter(item) {
             const matchesAny = advancedFilterState.surgeons.some(checkMatch);
             if (!matchesAny) return false;
         }
+        
+        // Final sanity check log if filtered
+        console.log(`[Filter Match] Patient: ${item.hoten} | Doctors: ${patientDoctors.join('|')} | Match Status: SUCCESS`);
     }
 
     // 3. Filter by Surgery Date
     if (advancedFilterState.surgeryDate) {
         hasCondition = true;
-        let surgeryDateStr = null;
-        if (item.phauThuatInfo) {
-            surgeryDateStr = item.phauThuatInfo.date || item.phauThuatInfo.ngayPhauThuat;
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            surgeryDateStr = item.checklistState.phauThuatLog[0].date;
-        }
-
+        if (!logEntry) return false;
+        
+        const surgeryDateStr = logEntry.date || logEntry.ngayPhauThuat;
         if (!surgeryDateStr) return false;
 
         const targetDate = new Date();
@@ -1951,6 +1978,37 @@ function setupCopyMenu(bottomBar) {
                 return;
             }
 
+            // AUTO-UPDATE HXT: If surgery exists but HXT is empty, set to "Ổn định nội khoa"
+            const ApiService = require('../services/apiService');
+            for (let i = 0; i < targetPatients.length; i++) {
+                const p = targetPatients[i];
+                const s = targetStates[i];
+                if (s && Array.isArray(s.phauThuatLog) && s.phauThuatLog.length > 0) {
+                    const currentHxt = (s.huongXuTri || '').trim();
+                    if (!currentHxt) {
+                        const newHxt = 'Ổn định nội khoa';
+                        console.log(`Auto-updating HXT for ${p.mabn} (${p.hoten}) to: ${newHxt}`);
+                        s.huongXuTri = newHxt;
+                        
+                        // Persist to server if possible
+                        try {
+                            const res = await ChecklistService.loadChecklistData(p);
+                            const obj = ChecklistService.findChecklistObject(res);
+                            if (obj) {
+                                await ChecklistService.updateChecklistState(obj, { ...s, huongXuTri: newHxt });
+                                // Synchronize to global window.dr_data if it's there
+                                if (window.dr_data) {
+                                    const globalP = window.dr_data.find(gp => gp.mabn === p.mabn);
+                                    if (globalP && globalP.checklistState) globalP.checklistState.huongXuTri = newHxt;
+                                }
+                            }
+                        } catch (persistErr) {
+                            console.warn(`Failed to persist auto-HXT for ${p.mabn}`, persistErr);
+                        }
+                    }
+                }
+            }
+
             let resultHtml, resultText;
             if (item.type === 'pt-special') {
                 const res = ReportService.generateSurgerySpecialReport(targetPatients, targetStates);
@@ -1991,7 +2049,7 @@ function setupCopyMenu(bottomBar) {
 
 module.exports = { setupCopyMenu };
 
-},{"../pages/page.dashboard.support":23,"../services/reportService":32,"../utils/dateUtils":39,"./dialogManager":9}],9:[function(require,module,exports){
+},{"../pages/page.dashboard.support":23,"../services/apiService":28,"../services/reportService":32,"../utils/dateUtils":39,"./dialogManager":9}],9:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -6424,25 +6482,108 @@ function showDashboardBenhNhanIfNeeded() {
                 <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
                     <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
                 </label>
-                <button id="dr-view-toggle" title="Đổi chế độ hiển thị" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;white-space:nowrap;">Chế độ: <b><span id="dr-view-label"></span></b></button>
+                
+                <!-- Premium View Dropdown -->
+                <div class="dr-view-dropdown" id="dr-view-dropdown-container">
+                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium">
+                        <span><i class="fas fa-eye" style="margin-right:8px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="dr-dropdown-menu">
+                        <div class="dr-dropdown-item" data-view="grid">
+                            <i class="fas fa-th-large"></i> Lưới
+                        </div>
+                        <div class="dr-dropdown-item" data-view="list">
+                            <i class="fas fa-list"></i> Danh sách
+                        </div>
+                        <div class="dr-dropdown-item" data-view="fit">
+                            <i class="fas fa-expand-arrows-alt"></i> Vừa màn hình
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
 
         const container = document.createElement('div');
         // View state
         const VIEW_KEY = 'dr-card-view';
-        const view = (localStorage.getItem(VIEW_KEY) || 'grid');
-        const viewLabelEl = topBar.querySelector('#dr-view-label');
-        const setViewLabel = () => { if (viewLabelEl) viewLabelEl.textContent = (localStorage.getItem(VIEW_KEY) || 'grid') === 'list' ? 'Danh sách' : 'Lưới'; };
+        let view = (localStorage.getItem(VIEW_KEY) || 'grid');
+        
+        // Safety: ensure view is one of supported
+        if (!['grid', 'list', 'fit'].includes(view)) view = 'grid';
+
+        const dropdownContainer = topBar.querySelector('#dr-view-dropdown-container');
+        const viewLabelText = topBar.querySelector('#dr-view-label-text');
+        const dropdownItems = topBar.querySelectorAll('.dr-dropdown-item');
+
+        const updateViewUI = (newView) => {
+            const labels = { 'grid': 'Lưới', 'list': 'Danh sách', 'fit': 'Vừa màn hình' };
+            if (viewLabelText) viewLabelText.textContent = labels[newView] || 'Kiểu hiển thị';
+            dropdownItems.forEach(item => {
+                if (item.getAttribute('data-view') === newView) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        };
+
+        // Initialize UI
+        updateViewUI(view);
+
+        // Toggle dropdown
+        const toggleBtn = topBar.querySelector('#dr-view-toggle-premium');
+        if (toggleBtn) {
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                dropdownContainer.classList.toggle('open');
+            };
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            if (dropdownContainer) dropdownContainer.classList.remove('open');
+        });
+
+        // Handle item selection
+        dropdownItems.forEach(item => {
+            item.onclick = (e) => {
+                const targetView = item.getAttribute('data-view');
+                if (targetView === view) return;
+
+                localStorage.setItem(VIEW_KEY, targetView);
+                
+                // If switching between fit and others, we might need a full re-render or reload
+                // For now, let's try to just re-trigger renderCards if it's fit mode, 
+                // but since the container structure changes much, a reload or re-exec of renderCards with original data is safer.
+                // However, the requested behavior is "không reload lại trang web".
+                
+                if (targetView === 'fit' || view === 'fit') {
+                    // Re-render everything with the new view
+                    renderCards(data); 
+                } else {
+                    // Classic behavior for grid/list (might involve reload if complex)
+                    renderCards(data);
+                }
+            };
+        });
+
         if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
-        container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
-        // Safety padding in case styles load late
-        container.style.paddingBottom = '90px';
+        
+        if (view === 'fit') {
+            container.className = 'dr-fit-container';
+            container.style.paddingBottom = '0'; // Clean slate for fit mode
+            document.body.classList.add('dr-fit-mode');
+        } else {
+            container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
+            container.style.paddingBottom = '90px';
+            document.body.classList.remove('dr-fit-mode');
+        }
 
         const renderItemGrid = (item) => createPatientCard(item);
         const { createListRow } = require('../components/listView');
         const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
-        const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
+        const renderer = view === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
             const card = renderer(item);
             // mark useful attributes for filtering
@@ -6548,8 +6689,63 @@ function showDashboardBenhNhanIfNeeded() {
         chkXuatVien.addEventListener('change', applyFilter);
         chkCanLamSang.addEventListener('change', applyFilter);
 
-        // Initialize view label, compact total and run first filter
-        setViewLabel();
+        // Fit to Screen dynamic adjustment logic
+        function updateFitLayout() {
+            if (view !== 'fit') return;
+            
+            const cards = container.querySelectorAll('.dr-card');
+            if (cards.length === 0) return;
+            
+            const count = cards.length;
+            const w = window.innerWidth - 30; // 15px padding each side
+            
+            const topBarH = topBar.offsetHeight;
+            const bottomBar = document.querySelector('.dr-bottom-bar');
+            const bottomBarH = bottomBar ? bottomBar.offsetHeight : 0;
+            
+            const h = window.innerHeight - (topBarH + bottomBarH + 30); // 15px padding top/bottom
+            
+            // Try to find best grid (rows x cols)
+            let bestCols = 1;
+            let bestRows = count;
+            let minDiff = Infinity;
+            
+            for (let cols = 1; cols <= count; cols++) {
+                const rows = Math.ceil(count / cols);
+                const cardW = w / cols;
+                const cardH = h / rows;
+                const ratio = cardW / cardH;
+                const diff = Math.abs(ratio - 1.4); // Target aspect ratio ~1.4
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    bestCols = cols;
+                    bestRows = rows;
+                }
+            }
+            
+            container.style.gridTemplateColumns = `repeat(${bestCols}, 1fr)`;
+            // Use minmax(0, 1fr) to prevent content from expanding the row height
+            container.style.gridTemplateRows = `repeat(${bestRows}, minmax(0, 1fr))`;
+            container.style.height = `${h + 30}px`; // +30 for the internal padding of container
+            
+            // Scale text based on card height
+            const cardH = h / bestRows;
+            const baseSize = Math.max(10, Math.min(16, cardH / 15));
+            container.style.setProperty('--fit-title-size', `${baseSize * 1.2}px`);
+            container.style.setProperty('--fit-name-size', `${baseSize * 1.1}px`);
+            container.style.setProperty('--fit-text-size', `${baseSize}px`);
+        }
+
+        // Expose to window for post-enrichment updates
+        if (typeof unsafeWindow !== 'undefined') unsafeWindow.dr_updateFitLayout = updateFitLayout;
+        else globalThis.dr_updateFitLayout = updateFitLayout;
+
+        if (view === 'fit') {
+            window.addEventListener('resize', updateFitLayout);
+            setTimeout(updateFitLayout, 0);
+        }
+
+        // Run first filter
         const totalCompactInit = document.getElementById('dr-total-compact');
         if (totalCompactInit) {
             totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
@@ -6604,10 +6800,11 @@ function showDashboardBenhNhanIfNeeded() {
                     // Update surgery status icon
                     DomUpdaters.updateSurgeryIcon(card, item);
 
-                    // Re-evaluate filter visibility after updates (e.g., xuatvienanimation class changes)
+                    // Re-evaluate filter visibility and layout after updates
                     // Delay to allow DOM/class updates done elsewhere
                     setTimeout(() => {
                         applyFilter();
+                        if (typeof dr_updateFitLayout === 'function') dr_updateFitLayout();
                     }, 0);
                 }
             });
@@ -6625,17 +6822,7 @@ function showDashboardBenhNhanIfNeeded() {
             globalThis.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
         }
 
-        // Wire view toggle button
-        const toggleBtn = topBar.querySelector('#dr-view-toggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                const cur = localStorage.getItem('dr-card-view') || 'grid';
-                const next = cur === 'list' ? 'grid' : 'list';
-                localStorage.setItem('dr-card-view', next);
-                setViewLabel();
-                try { window.location.reload(); } catch (_) { }
-            });
-        }
+        // View toggle logic removed as it's now handled by the premium dropdown
     }
 
 
@@ -6661,8 +6848,12 @@ function showDashboardBenhNhanIfNeeded() {
         const { baseText: baseDiagnosis, cdktText, combinedHtml: combinedDiagnosis } = DomUpdaters.composeDiagnosis(item);
         card.innerHTML = `
             <div class="dr-room-label">${formattedLocation}</div>
-            <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'}</h2>
-            <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
+            <h2 class="dr-patient-name">${item.hoten || ''}</h2>
+            <div class="dr-patient-sub-info">
+                <span class="dr-patient-mabn">${item.mabn || ''}</span>
+                <span class="dr-patient-gender">${item.phai === 1 ? 'Nữ' : 'Nam'}</span>
+            </div>
+            <div class="dr-value dr-dob-line"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
             <div class="dr-value dr-diagnosis-line" data-base-cd="${baseDiagnosis.replace(/"/g, '&quot;')}" data-cdkt="${escapeHtml(cdktText).replace(/"/g, '&quot;')}"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
             ${ptInfo}
             ${hxtHtml}
@@ -6735,6 +6926,8 @@ function showDashboardBenhNhanIfNeeded() {
             const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
             DomUpdaters.updateHXT(updated);
             try { DomUpdaters.updateCDKT(updated); } catch (_) { }
+            // Trigger layout recalculation after enrichment
+            if (typeof dr_updateFitLayout === 'function') dr_updateFitLayout();
         } catch (e) {
             console.warn('Preload HXT failed for', item?.mabn, e);
         }
@@ -7023,7 +7216,9 @@ function dr_otmToLogEntry(otmItem) {
         const pushNames = (arr) => {
             if (Array.isArray(arr)) {
                 for (const u of arr) {
-                    const n = (u && u.fullname ? String(u.fullname) : '').trim();
+                    let n = (u && u.fullname ? String(u.fullname) : '').trim();
+                    // Strip designations like (PTV), (PTV chính), (Phụ), etc.
+                    n = n.replace(/\s*\([^)]+\)\s*/g, ' ').trim();
                     if (n && !names.includes(n)) names.push(n);
                 }
             }
@@ -7183,7 +7378,8 @@ function handleOTMProgress(name, oldValue, newValue, remote) {
 function handleOTMSuccess(name, oldValue, newValue, remote) {
     try {
         const data = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
-        showToast(`✅ ${data.data.count} ca mổ đã được tải về!`, 'success', 5000);
+        
+        let successMsg = `✅ ${data.data.count} ca mổ đã được tải về!`;
         console.log('[OTM Success]', data.data);
 
         // Log full dataset once (no per-patient logs)
@@ -7191,17 +7387,25 @@ function handleOTMSuccess(name, oldValue, newValue, remote) {
             console.log('=== SURGERY DATA RECEIVED (FULL) ===', data.data.surgeryData);
             // Merge into in-memory patients and update UI
             const mergeRes = dr_integrateOTMSurgeryData(data.data.surgeryData);
-            const { updatedPatients, addedLogs } = mergeRes;
+            const { updatedPatients, addedLogs, updated } = mergeRes;
+            
             if (updatedPatients > 0) {
-                try { showToast(`🧩 Đã cập nhật PT cho ${updatedPatients} BN (${addedLogs} mục).`, 'success', 4000); } catch (_) { }
+                // Get names of updated patients for the toast
+                const updatedNames = updated.map(u => u.patient.hoten).join(', ');
+                showToast(`✅ ${updatedNames} đã được cập nhật.`, 'success', 5000);
+                
                 // Persist to server in background (append-only)
                 (async () => {
-                    const res = await dr_persistMergedOTMSurgeries(mergeRes.updated, { concurrency: 2 });
+                    const res = await dr_persistMergedOTMSurgeries(updated, { concurrency: 2 });
                     if ((res.saved + res.queued) > 0) {
                         try { showToast(`💾 Lưu ${res.saved} | Hàng đợi ${res.queued} | Lỗi ${res.failed}`, 'info', 4000); } catch (_) { }
                     }
                 })();
+            } else {
+                showToast(successMsg, 'success', 5000);
             }
+        } else {
+            showToast(successMsg, 'success', 5000);
         }
     } catch (error) {
         console.error('Error handling OTM success:', error);
@@ -7298,12 +7502,6 @@ function addOTMButtonsToBottomBar(bottomBar) {
                         alert('Vui lòng chọn ngày bắt đầu và ngày kết thúc');
                     }
                 }
-            },
-            {
-                id: 'otm-cancel-btn',
-                className: 'dr-btn-secondary',
-                text: 'Hủy',
-                onclick: () => dialog.close()
             }
         ]);
 
@@ -7900,11 +8098,21 @@ function addGlobalStyles() {
             background: #e3f2fd; 
             border: 2px solid #90caf9; 
         }
-        .dr-card h2 { 
-            margin: 0 0 8px 0; 
-            font-size: 1.2em; 
-            color: #1976d2; 
+        .dr-patient-name { 
+            margin: 0 0 4px 0; 
+            font-size: 1.25em; 
+            color: #1976d2;
+            font-weight: 700;
         }
+        .dr-patient-sub-info {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+            color: #64748b;
+        }
+        .dr-patient-mabn { font-weight: 700; color: #334155; }
+        .dr-patient-gender { color: #64748b; }
         .dr-card .dr-label { 
             font-weight: bold; 
             color: #000; 
@@ -8167,16 +8375,247 @@ function addGlobalStyles() {
             }
             .dr-card.xuatvienanimation::before,
             .dr-card.xuatvienanimation.dr-blue::before {
-                display: inline-flex; align-items:center; gap:10px;
                 display: none !important;
-            .dr-khoa-select { height: 32px; min-width: 180px; border:1px solid #cbd5e1; border-radius: 8px; padding: 0 8px; }
-            .dr-gear-btn { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:50%; color:#1976d2; border:1px solid rgba(25,118,210,0.25); text-decoration:none; background:#fff; }
-            .dr-gear-btn i { font-size:16px; }
-            .dr-gear-btn:hover { background:#e3f2fd; box-shadow:0 0 0 2px rgba(25,118,210,0.15) inset; }
             }
-            .dr-card.xuatvienanimation::after,
-            .dr-card.xuatvienanimation.dr-blue::after {
-                display: none !important;
+        }
+
+        /* --- Custom Premium Dropdown Styles --- */
+        .dr-view-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dr-dropdown-toggle {
+            padding: 8px 16px;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            color: #334155;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            min-width: 160px;
+            justify-content: space-between;
+        }
+        .dr-dropdown-toggle:hover {
+            border-color: #94a3b8;
+            background: #fff;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transform: translateY(-1px);
+        }
+        .dr-dropdown-toggle:active {
+            transform: translateY(0);
+        }
+        .dr-dropdown-toggle i.fa-chevron-down {
+            font-size: 10px;
+            transition: transform 0.2s;
+            color: #64748b;
+        }
+        .dr-view-dropdown.open .dr-dropdown-toggle i.fa-chevron-down {
+            transform: rotate(180deg);
+        }
+        .dr-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 180px;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            z-index: 10001;
+            padding: 6px;
+            display: none;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .dr-view-dropdown.open .dr-dropdown-menu {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .dr-dropdown-item {
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #475569;
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .dr-dropdown-item:hover {
+            background: rgba(30, 136, 229, 0.08);
+            color: #1e88e5;
+        }
+        .dr-dropdown-item.active {
+            background: #1e88e5;
+            color: #fff;
+        }
+        .dr-dropdown-item i {
+            width: 16px;
+            text-align: center;
+        }
+
+        /* --- Fit to Screen Mode Styles --- */
+        .dr-fit-container {
+            display: grid;
+            gap: 10px;
+            padding: 15px;
+            width: 100vw;
+            box-sizing: border-box;
+            overflow: hidden; /* No scroll requested */
+            margin: 0 !important;
+        }
+        .dr-fit-container .dr-card {
+            min-width: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important;
+            padding: 8px !important; /* Slightly smaller padding */
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            border-radius: 12px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+            overflow: hidden; /* Prevent content expansion */
+            position: relative;
+        }
+        .dr-fit-container .dr-card .dr-room-label {
+            font-size: var(--fit-title-size, 1.1em);
+            padding-bottom: 2px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #1e88e5; /* Stronger color for location */
+        }
+        .dr-fit-container .dr-card .dr-patient-name {
+            font-size: var(--fit-name-size, 1.25em);
+            font-weight: 800;
+            margin-bottom: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #0f172a;
+        }
+        .dr-fit-container .dr-card .dr-patient-sub-info {
+            display: flex;
+            gap: 10px;
+            font-size: calc(var(--fit-text-size, 0.9em) - 1px);
+            color: #64748b;
+            margin-bottom: 2px;
+            font-weight: 500;
+        }
+        .dr-fit-container .dr-card .dr-value {
+            font-size: var(--fit-text-size, 0.9em);
+            margin-bottom: 1px;
+            line-height: 1.1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dr-fit-container .dr-card .dr-diagnosis-line,
+        .dr-fit-container .dr-card .dr-pt-info,
+        .dr-fit-container .dr-card .dr-hxt-block {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2; /* Clamp to 2 lines to save vertical space */
+            overflow: hidden;
+            font-size: var(--fit-text-size, 0.9em);
+            white-space: normal !important;
+            margin-bottom: 1px;
+        }
+        .dr-fit-container .ylenh-tags {
+            margin-top: 2px;
+            gap: 2px;
+            flex-wrap: wrap;
+            max-height: 2.2em;
+            overflow: hidden;
+        }
+        .dr-fit-container .ylenh-tag {
+            font-size: calc(var(--fit-text-size, 0.9em) - 2px);
+            padding: 1px 4px;
+        }
+
+        /* --- Compact Bars and Hidden UI in Fit Mode --- */
+        body.dr-fit-mode .dr-top-filter-bar {
+            padding: 4px 12px !important;
+            min-height: 0 !important;
+            margin: 0 !important; /* Remove margin as requested */
+        }
+        body.dr-fit-mode .dr-bottom-bar {
+            height: 34px !important; /* Extremely compact bottom bar */
+            padding: 0 16px !important;
+            margin: 0 !important; /* Remove margin as requested */
+        }
+        body.dr-fit-mode .dr-action-buttons {
+            display: none !important; /* Hide action buttons as requested */
+        }
+        body.dr-fit-mode .dr-total-compact {
+            padding: 2px 8px !important;
+            font-size: 11px !important;
+        }
+        body.dr-fit-mode #dr-search-input {
+            padding: 4px 8px !important;
+            font-size: 12px !important;
+        }
+        body.dr-fit-mode .dr-dropdown-toggle {
+            padding: 4px 10px !important;
+            font-size: 12px !important;
+            min-width: 120px !important;
+        }
+        body.dr-fit-mode .dr-khoa-select {
+            height: 24px !important;
+            font-size: 12px !important;
+            padding: 0 24px 0 6px !important;
+            background-size: 12px 12px !important;
+        }
+        body.dr-fit-mode .dr-gear-btn {
+            width: 24px !important;
+            height: 24px !important;
+        }
+        body.dr-fit-mode .dr-gear-btn i {
+            font-size: 12px !important;
+        }
+        body.dr-fit-mode .dr-badge-meds-done {
+            top: -5px !important;
+            right: 5px !important;
+            font-size: 9px !important;
+            padding: 2px 6px !important;
+        }
+
+        /* --- Compact Bottom Bar Buttons --- */
+        body.dr-fit-mode .dr-bottom-bar .dr-btn,
+        body.dr-fit-mode .dr-bottom-bar button {
+            padding: 4px 10px !important;
+            font-size: 11px !important;
+            border-radius: 6px !important;
+            min-height: 0 !important;
+            gap: 4px !important; /* Smaller gap */
+        }
+        body.dr-fit-mode .dr-bottom-bar .dr-copy-menu-item {
+            padding: 6px 10px !important;
+        }
+        body.dr-fit-mode .dr-bottom-bar .dr-copy-menu-item div:first-child {
+            font-size: 0.85em !important;
+        }
+        body.dr-fit-mode .dr-bottom-bar .dr-copy-menu-item div:last-child {
+            font-size: 0.7em !important;
+        }
+        body.dr-fit-mode .dr-copy-dropdown-menu {
+            width: 200px !important;
+        }
+                 display: none !important;
             }
         }
     `;
@@ -10826,9 +11265,30 @@ const ReportService = {
         let ngayPtDisplay = '';
         if (phauThuat) {
             const date = phauThuat.ngayPhauThuat || '';
+            const time = phauThuat.gioPhauThuat || '';
             const method = phauThuat.pppt || '';
             const info = SurgeryUtils.getSurgeryDateInfo(date);
-            const hpnSuffix = (info && info.postOpDay !== null) ? ` (HPN${info.postOpDay})` : '';
+            
+            let hpnSuffix = '';
+            if (info && info.postOpDay !== null) {
+                if (info.postOpDay === 0) {
+                    // Check if surgery time has passed
+                    try {
+                        const now = new Date();
+                        const [d, m, y] = date.split('/').map(Number);
+                        const [hh, mm] = time.split(':').map(Number);
+                        const surgeryDate = new Date(y, m - 1, d, hh || 0, mm || 0);
+                        if (now >= surgeryDate) {
+                            hpnSuffix = ' (HPN0)';
+                        }
+                    } catch (_) {
+                        // Fallback to showing it if we can't parse
+                        hpnSuffix = ' (HPN0)';
+                    }
+                } else {
+                    hpnSuffix = ` (HPN${info.postOpDay})`;
+                }
+            }
             // Show PPPT with HPNx when available
             ppptDisplay = `${method}${hpnSuffix}`.trim();
             // Show only the surgery date (no time)

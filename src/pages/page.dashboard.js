@@ -783,25 +783,108 @@ function showDashboardBenhNhanIfNeeded() {
                 <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
                     <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
                 </label>
-                <button id="dr-view-toggle" title="Đổi chế độ hiển thị" style="padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;white-space:nowrap;">Chế độ: <b><span id="dr-view-label"></span></b></button>
+                
+                <!-- Premium View Dropdown -->
+                <div class="dr-view-dropdown" id="dr-view-dropdown-container">
+                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium">
+                        <span><i class="fas fa-eye" style="margin-right:8px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                    <div class="dr-dropdown-menu">
+                        <div class="dr-dropdown-item" data-view="grid">
+                            <i class="fas fa-th-large"></i> Lưới
+                        </div>
+                        <div class="dr-dropdown-item" data-view="list">
+                            <i class="fas fa-list"></i> Danh sách
+                        </div>
+                        <div class="dr-dropdown-item" data-view="fit">
+                            <i class="fas fa-expand-arrows-alt"></i> Vừa màn hình
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
 
         const container = document.createElement('div');
         // View state
         const VIEW_KEY = 'dr-card-view';
-        const view = (localStorage.getItem(VIEW_KEY) || 'grid');
-        const viewLabelEl = topBar.querySelector('#dr-view-label');
-        const setViewLabel = () => { if (viewLabelEl) viewLabelEl.textContent = (localStorage.getItem(VIEW_KEY) || 'grid') === 'list' ? 'Danh sách' : 'Lưới'; };
+        let view = (localStorage.getItem(VIEW_KEY) || 'grid');
+        
+        // Safety: ensure view is one of supported
+        if (!['grid', 'list', 'fit'].includes(view)) view = 'grid';
+
+        const dropdownContainer = topBar.querySelector('#dr-view-dropdown-container');
+        const viewLabelText = topBar.querySelector('#dr-view-label-text');
+        const dropdownItems = topBar.querySelectorAll('.dr-dropdown-item');
+
+        const updateViewUI = (newView) => {
+            const labels = { 'grid': 'Lưới', 'list': 'Danh sách', 'fit': 'Vừa màn hình' };
+            if (viewLabelText) viewLabelText.textContent = labels[newView] || 'Kiểu hiển thị';
+            dropdownItems.forEach(item => {
+                if (item.getAttribute('data-view') === newView) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        };
+
+        // Initialize UI
+        updateViewUI(view);
+
+        // Toggle dropdown
+        const toggleBtn = topBar.querySelector('#dr-view-toggle-premium');
+        if (toggleBtn) {
+            toggleBtn.onclick = (e) => {
+                e.stopPropagation();
+                dropdownContainer.classList.toggle('open');
+            };
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', () => {
+            if (dropdownContainer) dropdownContainer.classList.remove('open');
+        });
+
+        // Handle item selection
+        dropdownItems.forEach(item => {
+            item.onclick = (e) => {
+                const targetView = item.getAttribute('data-view');
+                if (targetView === view) return;
+
+                localStorage.setItem(VIEW_KEY, targetView);
+                
+                // If switching between fit and others, we might need a full re-render or reload
+                // For now, let's try to just re-trigger renderCards if it's fit mode, 
+                // but since the container structure changes much, a reload or re-exec of renderCards with original data is safer.
+                // However, the requested behavior is "không reload lại trang web".
+                
+                if (targetView === 'fit' || view === 'fit') {
+                    // Re-render everything with the new view
+                    renderCards(data); 
+                } else {
+                    // Classic behavior for grid/list (might involve reload if complex)
+                    renderCards(data);
+                }
+            };
+        });
+
         if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
-        container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
-        // Safety padding in case styles load late
-        container.style.paddingBottom = '90px';
+        
+        if (view === 'fit') {
+            container.className = 'dr-fit-container';
+            container.style.paddingBottom = '0'; // Clean slate for fit mode
+            document.body.classList.add('dr-fit-mode');
+        } else {
+            container.className = view === 'list' ? 'dr-list-container' : 'dr-card-list';
+            container.style.paddingBottom = '90px';
+            document.body.classList.remove('dr-fit-mode');
+        }
 
         const renderItemGrid = (item) => createPatientCard(item);
         const { createListRow } = require('../components/listView');
         const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
-        const renderer = (localStorage.getItem('dr-card-view') || 'grid') === 'list' ? renderItemList : renderItemGrid;
+        const renderer = view === 'list' ? renderItemList : renderItemGrid;
         sortedData.forEach(item => {
             const card = renderer(item);
             // mark useful attributes for filtering
@@ -907,8 +990,63 @@ function showDashboardBenhNhanIfNeeded() {
         chkXuatVien.addEventListener('change', applyFilter);
         chkCanLamSang.addEventListener('change', applyFilter);
 
-        // Initialize view label, compact total and run first filter
-        setViewLabel();
+        // Fit to Screen dynamic adjustment logic
+        function updateFitLayout() {
+            if (view !== 'fit') return;
+            
+            const cards = container.querySelectorAll('.dr-card');
+            if (cards.length === 0) return;
+            
+            const count = cards.length;
+            const w = window.innerWidth - 30; // 15px padding each side
+            
+            const topBarH = topBar.offsetHeight;
+            const bottomBar = document.querySelector('.dr-bottom-bar');
+            const bottomBarH = bottomBar ? bottomBar.offsetHeight : 0;
+            
+            const h = window.innerHeight - (topBarH + bottomBarH + 30); // 15px padding top/bottom
+            
+            // Try to find best grid (rows x cols)
+            let bestCols = 1;
+            let bestRows = count;
+            let minDiff = Infinity;
+            
+            for (let cols = 1; cols <= count; cols++) {
+                const rows = Math.ceil(count / cols);
+                const cardW = w / cols;
+                const cardH = h / rows;
+                const ratio = cardW / cardH;
+                const diff = Math.abs(ratio - 1.4); // Target aspect ratio ~1.4
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    bestCols = cols;
+                    bestRows = rows;
+                }
+            }
+            
+            container.style.gridTemplateColumns = `repeat(${bestCols}, 1fr)`;
+            // Use minmax(0, 1fr) to prevent content from expanding the row height
+            container.style.gridTemplateRows = `repeat(${bestRows}, minmax(0, 1fr))`;
+            container.style.height = `${h + 30}px`; // +30 for the internal padding of container
+            
+            // Scale text based on card height
+            const cardH = h / bestRows;
+            const baseSize = Math.max(10, Math.min(16, cardH / 15));
+            container.style.setProperty('--fit-title-size', `${baseSize * 1.2}px`);
+            container.style.setProperty('--fit-name-size', `${baseSize * 1.1}px`);
+            container.style.setProperty('--fit-text-size', `${baseSize}px`);
+        }
+
+        // Expose to window for post-enrichment updates
+        if (typeof unsafeWindow !== 'undefined') unsafeWindow.dr_updateFitLayout = updateFitLayout;
+        else globalThis.dr_updateFitLayout = updateFitLayout;
+
+        if (view === 'fit') {
+            window.addEventListener('resize', updateFitLayout);
+            setTimeout(updateFitLayout, 0);
+        }
+
+        // Run first filter
         const totalCompactInit = document.getElementById('dr-total-compact');
         if (totalCompactInit) {
             totalCompactInit.textContent = `${sortedData.length}/${sortedData.length}`;
@@ -963,10 +1101,11 @@ function showDashboardBenhNhanIfNeeded() {
                     // Update surgery status icon
                     DomUpdaters.updateSurgeryIcon(card, item);
 
-                    // Re-evaluate filter visibility after updates (e.g., xuatvienanimation class changes)
+                    // Re-evaluate filter visibility and layout after updates
                     // Delay to allow DOM/class updates done elsewhere
                     setTimeout(() => {
                         applyFilter();
+                        if (typeof dr_updateFitLayout === 'function') dr_updateFitLayout();
                     }, 0);
                 }
             });
@@ -984,17 +1123,7 @@ function showDashboardBenhNhanIfNeeded() {
             globalThis.checkAllCelebrationAnimations = checkAllCelebrationAnimations;
         }
 
-        // Wire view toggle button
-        const toggleBtn = topBar.querySelector('#dr-view-toggle');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                const cur = localStorage.getItem('dr-card-view') || 'grid';
-                const next = cur === 'list' ? 'grid' : 'list';
-                localStorage.setItem('dr-card-view', next);
-                setViewLabel();
-                try { window.location.reload(); } catch (_) { }
-            });
-        }
+        // View toggle logic removed as it's now handled by the premium dropdown
     }
 
 
@@ -1020,8 +1149,12 @@ function showDashboardBenhNhanIfNeeded() {
         const { baseText: baseDiagnosis, cdktText, combinedHtml: combinedDiagnosis } = DomUpdaters.composeDiagnosis(item);
         card.innerHTML = `
             <div class="dr-room-label">${formattedLocation}</div>
-            <h2>${item.hoten || ''} <span style="font-size:0.9em;color:#888;">${item.mabn ? ' - ' + item.mabn : ''}</span> - ${item.phai === 1 ? 'Nữ' : 'Nam'}</h2>
-            <div class="dr-value"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
+            <h2 class="dr-patient-name">${item.hoten || ''}</h2>
+            <div class="dr-patient-sub-info">
+                <span class="dr-patient-mabn">${item.mabn || ''}</span>
+                <span class="dr-patient-gender">${item.phai === 1 ? 'Nữ' : 'Nam'}</span>
+            </div>
+            <div class="dr-value dr-dob-line"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
             <div class="dr-value dr-diagnosis-line" data-base-cd="${baseDiagnosis.replace(/"/g, '&quot;')}" data-cdkt="${escapeHtml(cdktText).replace(/"/g, '&quot;')}"><span class="dr-label">Chẩn đoán:</span> ${combinedDiagnosis}</div>
             ${ptInfo}
             ${hxtHtml}
@@ -1094,6 +1227,8 @@ function showDashboardBenhNhanIfNeeded() {
             const updated = { ...item, checklistState: { ...(item.checklistState || {}), ...state } };
             DomUpdaters.updateHXT(updated);
             try { DomUpdaters.updateCDKT(updated); } catch (_) { }
+            // Trigger layout recalculation after enrichment
+            if (typeof dr_updateFitLayout === 'function') dr_updateFitLayout();
         } catch (e) {
             console.warn('Preload HXT failed for', item?.mabn, e);
         }
@@ -1382,7 +1517,9 @@ function dr_otmToLogEntry(otmItem) {
         const pushNames = (arr) => {
             if (Array.isArray(arr)) {
                 for (const u of arr) {
-                    const n = (u && u.fullname ? String(u.fullname) : '').trim();
+                    let n = (u && u.fullname ? String(u.fullname) : '').trim();
+                    // Strip designations like (PTV), (PTV chính), (Phụ), etc.
+                    n = n.replace(/\s*\([^)]+\)\s*/g, ' ').trim();
                     if (n && !names.includes(n)) names.push(n);
                 }
             }
@@ -1542,7 +1679,8 @@ function handleOTMProgress(name, oldValue, newValue, remote) {
 function handleOTMSuccess(name, oldValue, newValue, remote) {
     try {
         const data = typeof newValue === 'string' ? JSON.parse(newValue) : newValue;
-        showToast(`✅ ${data.data.count} ca mổ đã được tải về!`, 'success', 5000);
+        
+        let successMsg = `✅ ${data.data.count} ca mổ đã được tải về!`;
         console.log('[OTM Success]', data.data);
 
         // Log full dataset once (no per-patient logs)
@@ -1550,17 +1688,25 @@ function handleOTMSuccess(name, oldValue, newValue, remote) {
             console.log('=== SURGERY DATA RECEIVED (FULL) ===', data.data.surgeryData);
             // Merge into in-memory patients and update UI
             const mergeRes = dr_integrateOTMSurgeryData(data.data.surgeryData);
-            const { updatedPatients, addedLogs } = mergeRes;
+            const { updatedPatients, addedLogs, updated } = mergeRes;
+            
             if (updatedPatients > 0) {
-                try { showToast(`🧩 Đã cập nhật PT cho ${updatedPatients} BN (${addedLogs} mục).`, 'success', 4000); } catch (_) { }
+                // Get names of updated patients for the toast
+                const updatedNames = updated.map(u => u.patient.hoten).join(', ');
+                showToast(`✅ ${updatedNames} đã được cập nhật.`, 'success', 5000);
+                
                 // Persist to server in background (append-only)
                 (async () => {
-                    const res = await dr_persistMergedOTMSurgeries(mergeRes.updated, { concurrency: 2 });
+                    const res = await dr_persistMergedOTMSurgeries(updated, { concurrency: 2 });
                     if ((res.saved + res.queued) > 0) {
                         try { showToast(`💾 Lưu ${res.saved} | Hàng đợi ${res.queued} | Lỗi ${res.failed}`, 'info', 4000); } catch (_) { }
                     }
                 })();
+            } else {
+                showToast(successMsg, 'success', 5000);
             }
+        } else {
+            showToast(successMsg, 'success', 5000);
         }
     } catch (error) {
         console.error('Error handling OTM success:', error);
@@ -1657,12 +1803,6 @@ function addOTMButtonsToBottomBar(bottomBar) {
                         alert('Vui lòng chọn ngày bắt đầu và ngày kết thúc');
                     }
                 }
-            },
-            {
-                id: 'otm-cancel-btn',
-                className: 'dr-btn-secondary',
-                text: 'Hủy',
-                onclick: () => dialog.close()
             }
         ]);
 

@@ -5,15 +5,18 @@ const Utils = require('../utils');
 const DateUtils = require('../utils/dateUtils');
 
 /**
- * Normalize doctor names by removing common titles and extra spaces
+ * Trích xuất tên gốc của bác sĩ, loại bỏ các chức danh (BS, TS, ThS...)
  */
-function normalizeName(name) {
+function getBaseName(name) {
     if (!name) return '';
+    const titles = ['pgs', 'ts', 'bs', 'ths', 'bsnt', 'cki', 'ckii', 'ck1', 'ck2', 'bác', 'sĩ', 'gs'];
     return name.toLowerCase()
-        .replace(/^(pgs\.ts\.bs|ts\.bs|ths\.bsnt\.cki|ths\.bs|bs\.cki|bs|bác sĩ)\s+/i, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+        .replace(/[.,;/()\-]/g, ' ') // Thay dấu câu bằng khoảng trắng, thay vì dùng regex phức tạp dễ mất chữ 'đ'
+        .split(/\s+/)
+        .filter(w => w && !titles.includes(w))
+        .join(' ');
 }
+
 
 let advancedFilterState = {
     active: false,
@@ -362,45 +365,70 @@ function openFilterDialog(onApply) {
 }
 
 /**
+ * Trích xuất ca mổ gần nhất của bệnh nhân từ nhiều nguồn dữ liệu khác nhau
+ */
+function getLatestSurgeryLog(item) {
+    if (!item) return null;
+    
+    // Nguồn 1: Log đã lưu trữ / đã merge (ưu tiên cao nhất)
+    if (item.checklistState?.phauThuatLog?.length > 0) {
+        return item.checklistState.phauThuatLog[0];
+    }
+    
+    // Nguồn 2: Log trực tiếp từ OTM chưa merge vào checklistState
+    if (item._otmPhauThuatLog?.length > 0) {
+        return item._otmPhauThuatLog[0];
+    }
+    
+    // Nguồn 3: Dữ liệu fallback cơ bản
+    if (item.phauThuatInfo) {
+        return item.phauThuatInfo;
+    }
+    
+    return null;
+}
+
+
+/**
  * Filter logic: check if patient matches current criteria
  */
 function matchesAdvancedFilter(item) {
     let hasCondition = false;
     
+    // Lấy thông tin ca phẫu thuật gần nhất của bệnh nhân
+    const logEntry = getLatestSurgeryLog(item);
+    
     // 1. Filter by Surgery Name (PPPT)
     if (advancedFilterState.surgeryName.trim()) {
         hasCondition = true;
+        if (!logEntry) return false;
+        
         const query = advancedFilterState.surgeryName.toLowerCase().trim();
-        let ptNameHtml = '';
-        if (item.phauThuatInfo) {
-            ptNameHtml = (item.phauThuatInfo.method || item.phauThuatInfo.pppt || '').toLowerCase();
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            ptNameHtml = (item.checklistState.phauThuatLog[0].method || '').toLowerCase();
-        }
+        const ptNameHtml = (logEntry.method || logEntry.pppt || '').toLowerCase();
+        
         if (!ptNameHtml.includes(query)) return false;
     }
 
     // 2. Filter by Surgeon
     if (advancedFilterState.surgeons.length > 0) {
         hasCondition = true;
-        
-        // Extract doctor array from item (most recent surgery)
-        let logEntry = null;
-        if (item.phauThuatInfo) {
-            logEntry = item.phauThuatInfo;
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            logEntry = item.checklistState.phauThuatLog[0];
-        }
-
         if (!logEntry) return false;
 
         const doctorsString = (logEntry.doctors || '').toLowerCase();
-        // Split by comma and clean up
-        const patientDoctors = doctorsString.split(',').map(s => s.trim()).filter(s => !!s);
+        // Tách chuỗi bác sĩ theo dấu phẩy / chấm phẩy và loại bỏ khoảng trắng thừa
+        const patientDoctors = doctorsString.split(/[,;]/).map(s => s.trim()).filter(Boolean);
 
         const checkMatch = (sFilter) => {
-            const normalizedFilterName = normalizeName(sFilter.name);
-            const docIdx = patientDoctors.findIndex(pd => normalizeName(pd).includes(normalizedFilterName));
+            const filterBase = getBaseName(sFilter.name);
+            
+            // Xóa bỏ chức danh của cả 2 bên và so sánh tên gốc
+            // Vd: "ThS.BS Lê Chí Hiếu" -> "lê chí hiếu"
+            //     "BS.CKI Lê Chí Hiếu" -> "lê chí hiếu"
+            const docIdx = patientDoctors.findIndex(pd => {
+                const pdBase = getBaseName(pd);
+                return pdBase && filterBase && (pdBase.includes(filterBase) || filterBase.includes(pdBase));
+            });
+            
             if (docIdx === -1) return false;
             
             if (sFilter.role === 'any') return true;
@@ -419,18 +447,17 @@ function matchesAdvancedFilter(item) {
             const matchesAny = advancedFilterState.surgeons.some(checkMatch);
             if (!matchesAny) return false;
         }
+        
+        // Final sanity check log if filtered
+        console.log(`[Filter Match] Patient: ${item.hoten} | Doctors: ${patientDoctors.join('|')} | Match Status: SUCCESS`);
     }
 
     // 3. Filter by Surgery Date
     if (advancedFilterState.surgeryDate) {
         hasCondition = true;
-        let surgeryDateStr = null;
-        if (item.phauThuatInfo) {
-            surgeryDateStr = item.phauThuatInfo.date || item.phauThuatInfo.ngayPhauThuat;
-        } else if (item.checklistState?.phauThuatLog?.[0]) {
-            surgeryDateStr = item.checklistState.phauThuatLog[0].date;
-        }
-
+        if (!logEntry) return false;
+        
+        const surgeryDateStr = logEntry.date || logEntry.ngayPhauThuat;
         if (!surgeryDateStr) return false;
 
         const targetDate = new Date();

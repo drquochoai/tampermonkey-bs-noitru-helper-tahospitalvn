@@ -62,9 +62,30 @@ const ReportService = {
         let ngayPtDisplay = '';
         if (phauThuat) {
             const date = phauThuat.ngayPhauThuat || '';
+            const time = phauThuat.gioPhauThuat || '';
             const method = phauThuat.pppt || '';
             const info = SurgeryUtils.getSurgeryDateInfo(date);
-            const hpnSuffix = (info && info.postOpDay !== null) ? ` (HPN${info.postOpDay})` : '';
+            
+            let hpnSuffix = '';
+            if (info && info.postOpDay !== null) {
+                if (info.postOpDay === 0) {
+                    // Check if surgery time has passed
+                    try {
+                        const now = new Date();
+                        const [d, m, y] = date.split('/').map(Number);
+                        const [hh, mm] = time.split(':').map(Number);
+                        const surgeryDate = new Date(y, m - 1, d, hh || 0, mm || 0);
+                        if (now >= surgeryDate) {
+                            hpnSuffix = ' (HPN0)';
+                        }
+                    } catch (_) {
+                        // Fallback to showing it if we can't parse
+                        hpnSuffix = ' (HPN0)';
+                    }
+                } else {
+                    hpnSuffix = ` (HPN${info.postOpDay})`;
+                }
+            }
             // Show PPPT with HPNx when available
             ppptDisplay = `${method}${hpnSuffix}`.trim();
             // Show only the surgery date (no time)

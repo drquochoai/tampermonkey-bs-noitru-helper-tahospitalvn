@@ -181,6 +181,37 @@ function setupCopyMenu(bottomBar) {
                 return;
             }
 
+            // AUTO-UPDATE HXT: If surgery exists but HXT is empty, set to "Ổn định nội khoa"
+            const ApiService = require('../services/apiService');
+            for (let i = 0; i < targetPatients.length; i++) {
+                const p = targetPatients[i];
+                const s = targetStates[i];
+                if (s && Array.isArray(s.phauThuatLog) && s.phauThuatLog.length > 0) {
+                    const currentHxt = (s.huongXuTri || '').trim();
+                    if (!currentHxt) {
+                        const newHxt = 'Ổn định nội khoa';
+                        console.log(`Auto-updating HXT for ${p.mabn} (${p.hoten}) to: ${newHxt}`);
+                        s.huongXuTri = newHxt;
+                        
+                        // Persist to server if possible
+                        try {
+                            const res = await ChecklistService.loadChecklistData(p);
+                            const obj = ChecklistService.findChecklistObject(res);
+                            if (obj) {
+                                await ChecklistService.updateChecklistState(obj, { ...s, huongXuTri: newHxt });
+                                // Synchronize to global window.dr_data if it's there
+                                if (window.dr_data) {
+                                    const globalP = window.dr_data.find(gp => gp.mabn === p.mabn);
+                                    if (globalP && globalP.checklistState) globalP.checklistState.huongXuTri = newHxt;
+                                }
+                            }
+                        } catch (persistErr) {
+                            console.warn(`Failed to persist auto-HXT for ${p.mabn}`, persistErr);
+                        }
+                    }
+                }
+            }
+
             let resultHtml, resultText;
             if (item.type === 'pt-special') {
                 const res = ReportService.generateSurgerySpecialReport(targetPatients, targetStates);

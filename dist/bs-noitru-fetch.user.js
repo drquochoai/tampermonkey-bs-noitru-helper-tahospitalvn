@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.7
+// @version      1.9.8
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -397,7 +397,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":44}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":46}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -840,7 +840,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":7,"./components/hsbaDataFetcher":10,"./googleAppsScript":19,"./pages/otm-entry":20,"./pages/page.dashboard":22,"./pages/page.lichmo.homnay":24,"./pages/page.settings":26,"./services/checklistService":29,"./utils":37,"./utils/hsbaV2Download":42}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":8,"./components/hsbaDataFetcher":12,"./googleAppsScript":21,"./pages/otm-entry":22,"./pages/page.dashboard":24,"./pages/page.lichmo.homnay":26,"./pages/page.settings":28,"./services/checklistService":31,"./utils":39,"./utils/hsbaV2Download":44}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -963,7 +963,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":23,"../services/checklistService":29,"../services/reportService":32}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":25,"../services/checklistService":31,"../services/reportService":34}],5:[function(require,module,exports){
 // advancedFilter.js - Logic for advanced dashboard filtering
 const DialogManager = require('./dialogManager');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1477,7 +1477,7 @@ module.exports = {
     advancedFilterState
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":37,"../utils/dateUtils":39,"./dialogManager":9}],6:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":39,"../utils/dateUtils":41,"./dialogManager":10}],6:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -1521,6 +1521,121 @@ function createAutoLoginToggle({ enabled, onToggle, onDblClick, title }) {
 module.exports = { createAutoLoginToggle, applyToggleStyles };
 
 },{}],7:[function(require,module,exports){
+// contextMenu.js
+const { copyToClipboard } = require('../utils/uiUtils');
+
+// Define global showToast if not pulled from uiUtils properly due to scoping
+const showToastFallback = (msg) => {
+    if (window.showToast) {
+        window.showToast(msg);
+    } else {
+        alert(msg);
+    }
+};
+
+class ContextMenu {
+    constructor() {
+        this.menu = null;
+        document.addEventListener('click', () => this.hide());
+        window.addEventListener('scroll', () => this.hide(), { passive: true });
+        window.addEventListener('resize', () => this.hide(), { passive: true });
+    }
+
+    hide() {
+        if (this.menu) {
+            this.menu.remove();
+            this.menu = null;
+        }
+    }
+
+    show(e, patient) {
+        e.preventDefault();
+        this.hide();
+
+        const menu = document.createElement('div');
+        menu.className = 'dr-context-menu';
+        
+        // Use actionButtons to perform actions directly
+        menu.innerHTML = `
+            <div class="dr-context-menu-item" id="ctx-copy">
+                <span>📋</span> Copy báo cáo (1 BN)
+            </div>
+            <div class="dr-context-menu-item" id="ctx-tdt">
+                <span>📄</span> Mở Tờ Điều Trị
+            </div>
+            <div class="dr-context-menu-item" id="ctx-hsba">
+                <span>🏥</span> Mở HSBAv2
+            </div>
+        `;
+
+        menu.style.left = `${e.clientX}px`;
+        menu.style.top = `${e.clientY}px`;
+        
+        document.body.appendChild(menu);
+        this.menu = menu;
+
+        // Try adjusting position if it goes out of bounds
+        setTimeout(() => {
+            const rect = menu.getBoundingClientRect();
+            if (rect.right > window.innerWidth) {
+                menu.style.left = `${window.innerWidth - rect.width - 10}px`;
+            }
+            if (rect.bottom > window.innerHeight) {
+                menu.style.top = `${window.innerHeight - rect.height - 10}px`;
+            }
+        }, 0);
+
+        menu.querySelector('#ctx-copy').onclick = async (evt) => {
+            evt.stopPropagation();
+            this.hide();
+            try {
+                const ChecklistService = require('../services/checklistService');
+                const ReportService = require('../services/reportService');
+                const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
+                
+                const res = await ChecklistService.loadChecklistData(patient);
+                const obj = ChecklistService.findChecklistObject(res);
+                const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
+                const html = ReportService.generateSingleHTML(patient, state);
+                const text = ReportService.generateSingleText(patient, state);
+                await copyReportToClipboardRich(html, text);
+            } catch (err) {
+                console.error('Copy single-patient report failed:', err);
+                showToastFallback('Lỗi khi copy báo cáo bệnh nhân');
+            }
+        };
+
+        menu.querySelector('#ctx-tdt').onclick = (evt) => {
+            evt.stopPropagation();
+            if (patient.mabn) {
+                window.open(`/to-dieu-tri?mabn=${encodeURIComponent(patient.mabn)}`, '_blank');
+            }
+        };
+
+        menu.querySelector('#ctx-hsba').onclick = (evt) => {
+            evt.stopPropagation();
+            if (patient.mabn) {
+                try {
+                    const { openHSBAV2Link } = require('./actionButtons');
+                    openHSBAV2Link(patient.mabn);
+                } catch(e) { 
+                    window.open(`/hoso/${encodeURIComponent(String(patient.mabn))}`, '_blank');
+                }
+            }
+        };
+    }
+    
+    attachToCard(card, patient) {
+        card.addEventListener('contextmenu', (e) => {
+            this.show(e, patient);
+        });
+    }
+}
+
+const contextMenu = new ContextMenu();
+module.exports = contextMenu;
+
+},{"../pages/page.dashboard.support":25,"../services/checklistService":31,"../services/reportService":34,"../utils/uiUtils":52,"./actionButtons":4}],8:[function(require,module,exports){
 // copyDienTienAI.js
 // Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
 
@@ -1794,7 +1909,7 @@ module.exports = {
     setStatus
 };
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 // copyMenu.js - Dropdown menu for quick report copying
 const DialogManager = require('./dialogManager');
 const ReportService = require('../services/reportService');
@@ -2049,7 +2164,7 @@ function setupCopyMenu(bottomBar) {
 
 module.exports = { setupCopyMenu };
 
-},{"../pages/page.dashboard.support":23,"../services/apiService":28,"../services/reportService":32,"../utils/dateUtils":39,"./dialogManager":9}],9:[function(require,module,exports){
+},{"../pages/page.dashboard.support":25,"../services/apiService":30,"../services/reportService":34,"../utils/dateUtils":41,"./dialogManager":10}],10:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -2168,7 +2283,154 @@ const DialogManager = {
 
 module.exports = DialogManager;
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
+// displaySettings.js
+
+class DisplaySettings {
+    constructor() {
+        this.STORAGE_KEY = 'dr_display_settings';
+        this.defaults = {
+            showHXT: true,
+            showPPPT: true,
+            showSurgeon: true,
+            autoCopyPID: true
+        };
+        this.settings = { ...this.defaults, ...this.load() };
+        this.applyToBody();
+    }
+
+    load() {
+        try {
+            const saved = localStorage.getItem(this.STORAGE_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch (e) {
+            console.error('Lỗi load settings:', e);
+            return {};
+        }
+    }
+
+    save() {
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.settings));
+            this.applyToBody();
+        } catch (e) {
+            console.error('Lỗi save settings:', e);
+        }
+    }
+
+    get(key) {
+        return this.settings[key] !== undefined ? this.settings[key] : this.defaults[key];
+    }
+
+    set(key, value) {
+        this.settings[key] = value;
+        this.save();
+    }
+
+    applyToBody() {
+        if (!this.settings.showHXT) document.body.classList.add('dr-hide-hxt');
+        else document.body.classList.remove('dr-hide-hxt');
+
+        if (!this.settings.showPPPT) document.body.classList.add('dr-hide-pppt');
+        else document.body.classList.remove('dr-hide-pppt');
+
+        if (!this.settings.showSurgeon) document.body.classList.add('dr-hide-surgeon');
+        else document.body.classList.remove('dr-hide-surgeon');
+    }
+
+    createIcon(container) {
+        const rightBar = container.querySelector('.dr-topbar-right');
+        if (!rightBar) return;
+        
+        const btn = document.createElement('button');
+        btn.innerHTML = '⚙️ Cài đặt';
+        btn.style.cssText = 'background:none; border:1px solid #ddd; padding:6px 10px; border-radius:6px; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:4px;';
+        btn.title = "Cài đặt hiển thị";
+        
+        btn.onclick = () => this.showModal();
+        
+        // Insert before the view dropdown if exists
+        const viewDropdown = rightBar.querySelector('.dr-view-dropdown-container') || rightBar.querySelector('.dr-view-dropdown');
+        if (viewDropdown) {
+            rightBar.insertBefore(btn, viewDropdown);
+        } else {
+            rightBar.appendChild(btn);
+        }
+    }
+
+    showModal() {
+        const overlay = document.createElement('div');
+        overlay.className = 'dr-settings-modal-overlay';
+        
+        const modal = document.createElement('div');
+        modal.className = 'dr-settings-modal';
+        
+        modal.innerHTML = `
+            <div class="dr-settings-header">
+                <h3>Cài đặt hiển thị & tính năng</h3>
+                <button class="dr-settings-close">×</button>
+            </div>
+            <div class="dr-settings-body">
+                <div class="dr-settings-row">
+                    <span class="dr-settings-label">Hiện thẻ Hướng xử trí (HXT)</span>
+                    <label class="dr-switch">
+                        <input type="checkbox" id="setting-hxt" ${this.settings.showHXT ? 'checked' : ''}>
+                        <span class="dr-slider"></span>
+                    </label>
+                </div>
+                <div class="dr-settings-row">
+                    <span class="dr-settings-label">Hiện Phương pháp phẫu thuật</span>
+                    <label class="dr-switch">
+                        <input type="checkbox" id="setting-pppt" ${this.settings.showPPPT ? 'checked' : ''}>
+                        <span class="dr-slider"></span>
+                    </label>
+                </div>
+                <div class="dr-settings-row">
+                    <span class="dr-settings-label">Hiện Bác sĩ thực hiện</span>
+                    <label class="dr-switch">
+                        <input type="checkbox" id="setting-surgeon" ${this.settings.showSurgeon ? 'checked' : ''}>
+                        <span class="dr-slider"></span>
+                    </label>
+                </div>
+                <div class="dr-settings-row">
+                    <span class="dr-settings-label" title="Click vào mã bệnh nhân để copy nhanh">Tự động Copy PID khi click</span>
+                    <label class="dr-switch">
+                        <input type="checkbox" id="setting-autocopy" ${this.settings.autoCopyPID ? 'checked' : ''}>
+                        <span class="dr-slider"></span>
+                    </label>
+                </div>
+            </div>
+        `;
+        
+        const closeBtn = modal.querySelector('.dr-settings-close');
+        
+        const close = () => {
+            if (document.body.contains(overlay)) {
+                document.body.removeChild(overlay);
+            }
+        };
+        
+        closeBtn.onclick = close;
+        overlay.onclick = (e) => {
+            if (e.target === overlay) close();
+        };
+        
+        // Handlers
+        modal.querySelector('#setting-hxt').onchange = (e) => this.set('showHXT', e.target.checked);
+        modal.querySelector('#setting-pppt').onchange = (e) => this.set('showPPPT', e.target.checked);
+        modal.querySelector('#setting-surgeon').onchange = (e) => this.set('showSurgeon', e.target.checked);
+        modal.querySelector('#setting-autocopy').onchange = (e) => this.set('autoCopyPID', e.target.checked);
+        
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+    }
+}
+
+// Singleton instance
+const displaySettings = new DisplaySettings();
+module.exports = displaySettings;
+
+},{}],12:[function(require,module,exports){
 // hsbaDataFetcher.js - Fetch HSBA V2 data via background tab and GraphQL
 
 /*
@@ -2966,7 +3228,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":29,"./dialogManager":9}],11:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":31,"./dialogManager":10}],13:[function(require,module,exports){
 // components/khoaSelect.js - Reusable khoa selection button with dropdown
 
 const ApiService = require('../services/apiService');
@@ -3071,7 +3333,7 @@ function createKhoaSelect(opts) {
 
 module.exports = { createKhoaSelect };
 
-},{"../services/apiService":28}],12:[function(require,module,exports){
+},{"../services/apiService":30}],14:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -3151,7 +3413,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":23,"../services/checklistService":29,"../services/reportService":32,"../utils":37,"../utils/domUpdaters":40,"../utils/htmlUtils":43,"../utils/patientDataMapper":45,"../utils/tagUtils":48,"./actionButtons":4}],13:[function(require,module,exports){
+},{"../pages/page.dashboard.support":25,"../services/checklistService":31,"../services/reportService":34,"../utils":39,"../utils/domUpdaters":42,"../utils/htmlUtils":45,"../utils/patientDataMapper":47,"../utils/tagUtils":50,"./actionButtons":4}],15:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -3180,7 +3442,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],14:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 let SidebarSession = null;
 try { SidebarSession = require('./sidebarSession'); } catch(_) {}
@@ -3257,7 +3519,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":17}],15:[function(require,module,exports){
+},{"./sidebarSession":19}],17:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -3276,7 +3538,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     const room = patient.teN_PHONG || '';
     const bed = patient.teN_GIUONG || '';
     info.innerHTML = `
-        <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
+        <h2 style="margin-top:0">${patient.hoten || ''} <span class="dr-patient-mabn-sidebar" style="font-size:0.9em;color:#888;cursor:pointer;" title="Click để copy mã BN">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
         <div><b>DOB:</b> ${dob} (${age}) - ${gender} - ${room} - ${bed}</div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
         <div style="margin-top:8px; display:grid; grid-template-columns:max-content 1fr; align-items:start; column-gap:10px;">
@@ -3463,12 +3725,31 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         persistIfDirty();
     });
 
+    // Setup PID auto-copy
+    setTimeout(() => {
+        const pidSpan = info.querySelector('.dr-patient-mabn-sidebar');
+        if (pidSpan && patient.mabn) {
+            pidSpan.addEventListener('click', async () => {
+                try {
+                    const displaySettings = require('./displaySettings');
+                    if (displaySettings.get('autoCopyPID')) {
+                        const { copyToClipboard, showToast } = require('../utils/uiUtils');
+                        const success = await copyToClipboard(patient.mabn);
+                        if (success) {
+                            showToast(`Đã copy PID: ${patient.mabn}`);
+                        }
+                    }
+                } catch(e) { console.warn('Lỗi copy PID sidebar', e); }
+            });
+        }
+    }, 10);
+
     return info;
 }
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":29,"../services/reportService":32,"../utils":37,"../utils/globalFnUtils":41,"../utils/stateSync":46,"./phauThuatHandlers":16,"./yLenhHandlers":18}],16:[function(require,module,exports){
+},{"../services/checklistService":31,"../services/reportService":34,"../utils":39,"../utils/globalFnUtils":43,"../utils/stateSync":48,"../utils/uiUtils":52,"./displaySettings":11,"./phauThuatHandlers":18,"./yLenhHandlers":20}],18:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4000,7 +4281,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":29,"../utils/globalFnUtils":41,"../utils/stateSync":46,"../utils/surgeryUtils":47}],17:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":31,"../utils/globalFnUtils":43,"../utils/stateSync":48,"../utils/surgeryUtils":49}],19:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -4035,7 +4316,7 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],18:[function(require,module,exports){
+},{}],20:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4499,7 +4780,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":29,"../utils/dateUtils":39,"../utils/globalFnUtils":41,"../utils/stateSync":46}],19:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":31,"../utils/dateUtils":41,"../utils/globalFnUtils":43,"../utils/stateSync":48}],21:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -4585,7 +4866,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],20:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 // otm-entry.js - Entry point for OTM content script
 (function() {
     'use strict';
@@ -4606,7 +4887,7 @@ module.exports = {
 
 })();
 
-},{"./otm.content.script":21}],21:[function(require,module,exports){
+},{"./otm.content.script":23}],23:[function(require,module,exports){
 // otm.content.js - Content script for OTM surgery data fetching
 (function() {
     'use strict';
@@ -5695,7 +5976,7 @@ module.exports = {
 
 })();
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
@@ -5715,6 +5996,7 @@ const ModalManager = require('../components/modalManager');
 const LoginHandler = require('../components/loginHandler');
 
 // Import newly refactored components
+const { removeAccents, hasAccents } = require('../utils/textUtils');
 const { createPatientInfoSection } = require('../components/patientInfoSection');
 const SidebarSession = require('../components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
@@ -6469,7 +6751,7 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         topBar.innerHTML = `
             <div class="dr-topbar-left" style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
-                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
+                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh" 
                     style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
             </div>
             <div class="dr-topbar-center" style="flex:0 0 auto; display:flex; justify-content:center; min-width:140px;">
@@ -6632,6 +6914,11 @@ function showDashboardBenhNhanIfNeeded() {
         // Add bottom bar
         createBottomBar();
 
+        try {
+            const displaySettings = require('../components/displaySettings');
+            displaySettings.createIcon(topBar);
+        } catch(e) { console.warn('Lỗi init display settings', e); }
+
         // Setup Advanced Filter
         setupAdvancedFilter(topBar, () => applyFilter());
 
@@ -6642,19 +6929,47 @@ function showDashboardBenhNhanIfNeeded() {
         const totalCompact = topBar.querySelector('#dr-total-compact');
 
         function applyFilter() {
-            const q = (searchInput.value || '').trim().toLowerCase();
+            const rawQ = (searchInput.value || '').trim();
             const onlyXV = !!chkXuatVien.checked;
             const onlyCLS = !!chkCanLamSang.checked;
             let visible = 0;
 
+            // Split by comma and process each keyword
+            const keywords = rawQ.split(',')
+                .map(k => k.trim())
+                .filter(k => k !== '');
+
             const cards = container.querySelectorAll('.dr-card, .dr-list-row');
             cards.forEach(card => {
-                const txt = card.textContent.toLowerCase();
-                const matchesText = q === '' || txt.includes(q) ||
-                    card.getAttribute('data-mabn')?.toLowerCase().includes(q) ||
-                    card.getAttribute('data-name')?.includes(q) ||
-                    card.getAttribute('data-cd')?.includes(q) ||
-                    card.getAttribute('data-loc')?.includes(q);
+                const nameAttr = card.getAttribute('data-name') || '';
+                const mabnAttr = card.getAttribute('data-mabn') || '';
+                const cdAttr = card.getAttribute('data-cd') || '';
+                const locAttr = card.getAttribute('data-loc') || '';
+                const fullTxt = card.textContent || '';
+
+                // AND logic: all keywords must match at least one field
+                const matchesText = keywords.length === 0 || keywords.every(k => {
+                    const searchKey = k.toLowerCase();
+                    const useExactMatch = hasAccents(k);
+
+                    if (useExactMatch) {
+                        // Smart search: if user typed accents, search exactly (case-insensitive)
+                        return nameAttr.toLowerCase().includes(searchKey) || 
+                               mabnAttr.toLowerCase().includes(searchKey) || 
+                               cdAttr.toLowerCase().includes(searchKey) || 
+                               locAttr.toLowerCase().includes(searchKey) || 
+                               fullTxt.toLowerCase().includes(searchKey);
+                    } else {
+                        // Fallback: accent-insensitive search if no accents in keyword
+                        const normKey = removeAccents(searchKey);
+                        return removeAccents(nameAttr).includes(normKey) || 
+                               removeAccents(mabnAttr).includes(normKey) || 
+                               removeAccents(cdAttr).includes(normKey) || 
+                               removeAccents(locAttr).includes(normKey) || 
+                               removeAccents(fullTxt).includes(normKey);
+                    }
+                });
+
                 // dataset flags prepared on card creation
                 const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
                 const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
@@ -6670,7 +6985,7 @@ function showDashboardBenhNhanIfNeeded() {
 
             // Update centered compact total, integrating the filter count
             if (totalCompact) {
-                const hasFilter = !!(q || onlyXV || onlyCLS || advancedFilterState.active);
+                const hasFilter = !!(keywords.length > 0 || onlyXV || onlyCLS || advancedFilterState.active);
                 totalCompact.textContent = hasFilter ? `Hiển thị: ${visible}/${sortedData.length}` : `${visible}/${sortedData.length}`;
                 // Color accents: blue when filtered, neutral otherwise
                 if (hasFilter) {
@@ -6688,6 +7003,30 @@ function showDashboardBenhNhanIfNeeded() {
         searchInput.addEventListener('input', applyFilter);
         chkXuatVien.addEventListener('change', applyFilter);
         chkCanLamSang.addEventListener('change', applyFilter);
+
+        // Escape key to clear search
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                applyFilter();
+                // Optionally blur after clearing
+                // searchInput.blur();
+            }
+        });
+
+        // Hotkey support: "/" to focus search
+        const hotkeyHandler = (e) => {
+            // Only trigger if not already in an input/textarea
+            if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                e.preventDefault();
+                const input = document.getElementById('dr-search-input');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }
+        };
+        document.addEventListener('keydown', hotkeyHandler);
 
         // Fit to Screen dynamic adjustment logic
         function updateFitLayout() {
@@ -6850,7 +7189,7 @@ function showDashboardBenhNhanIfNeeded() {
             <div class="dr-room-label">${formattedLocation}</div>
             <h2 class="dr-patient-name">${item.hoten || ''}</h2>
             <div class="dr-patient-sub-info">
-                <span class="dr-patient-mabn">${item.mabn || ''}</span>
+                <span class="dr-patient-mabn" style="cursor:pointer;" title="Click để copy mã BN">${item.mabn || ''}</span>
                 <span class="dr-patient-gender">${item.phai === 1 ? 'Nữ' : 'Nam'}</span>
             </div>
             <div class="dr-value dr-dob-line"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
@@ -6881,6 +7220,29 @@ function showDashboardBenhNhanIfNeeded() {
         try { updateMedsDoneBadge(card, item); } catch (_) { }
 
         card.onclick = () => showSidebar(item);
+        
+        try {
+            const contextMenu = require('../components/contextMenu');
+            contextMenu.attachToCard(card, item);
+        } catch(e) { console.warn('Lỗi attach contextMenu', e); }
+
+        const pidSpan = card.querySelector('.dr-patient-mabn');
+        if (pidSpan && item.mabn) {
+            pidSpan.onclick = async (e) => {
+                e.stopPropagation(); // prevent opening sidebar
+                try {
+                    const displaySettings = require('../components/displaySettings');
+                    if (displaySettings.get('autoCopyPID')) {
+                        const { copyToClipboard, showToast } = require('../utils/uiUtils');
+                        const success = await copyToClipboard(item.mabn);
+                        if (success) {
+                            showToast(`Đã copy PID: ${item.mabn}`);
+                        }
+                    }
+                } catch(err) { console.warn('Lỗi copy PID', err); }
+            };
+        }
+
         // Preload HXT from checklist state after rendering card (non-blocking)
         setTimeout(() => {
             preloadHXTForPatient(item);
@@ -7573,7 +7935,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/copyDienTienAI":7,"../components/copyMenu":8,"../components/dialogManager":9,"../components/hsbaDataFetcher":10,"../components/listView":12,"../components/loginHandler":13,"../components/modalManager":14,"../components/patientInfoSection":15,"../components/phauThuatHandlers":16,"../components/sidebarSession":17,"../services/apiService":28,"../services/checklistService":29,"../services/patientService":31,"../utils":37,"../utils/checklistUtils":38,"../utils/domUpdaters":40,"../utils/htmlUtils":43,"../utils/khoaUtils":44,"../utils/patientDataMapper":45,"../utils/surgeryUtils":47,"../utils/tagUtils":48,"../utils/uiUtils":49,"./page.dashboard.support":23}],23:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/contextMenu":7,"../components/copyDienTienAI":8,"../components/copyMenu":9,"../components/dialogManager":10,"../components/displaySettings":11,"../components/hsbaDataFetcher":12,"../components/listView":14,"../components/loginHandler":15,"../components/modalManager":16,"../components/patientInfoSection":17,"../components/phauThuatHandlers":18,"../components/sidebarSession":19,"../services/apiService":30,"../services/checklistService":31,"../services/patientService":33,"../utils":39,"../utils/checklistUtils":40,"../utils/domUpdaters":42,"../utils/htmlUtils":45,"../utils/khoaUtils":46,"../utils/patientDataMapper":47,"../utils/surgeryUtils":49,"../utils/tagUtils":50,"../utils/textUtils":51,"../utils/uiUtils":52,"./page.dashboard.support":25}],25:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -8050,6 +8412,80 @@ function addGlobalStyles() {
         /* Unify HXT typography */
         .dr-hxt-block { color: #0f172a; font-size: 13px; line-height: 1.35; }
         .dr-hxt-block .dr-label { color: #0f172a; font-weight: 700; }
+
+        /* Display Settings dynamic visibility */
+        body.dr-hide-hxt .dr-hxt-block { display: none !important; }
+        body.dr-hide-pppt .dr-pt-info .dr-value:first-child { display: none !important; }
+        body.dr-hide-surgeon .dr-surgeon-line { display: none !important; }
+        .dr-surgeon-line { color: #555; font-size: 0.9em; margin-bottom: 2px; }
+
+        /* Context Menu Styles */
+        .dr-context-menu {
+            position: fixed;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 4px 0;
+            min-width: 180px;
+            z-index: 1000000;
+            font-size: 14px;
+        }
+        .dr-context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #333;
+            transition: background 0.15s;
+        }
+        .dr-context-menu-item:hover {
+            background: #f1f5f9;
+        }
+        
+        /* Modal Settings Styles */
+        .dr-settings-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.4); z-index: 999998;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .dr-settings-modal {
+            background: #fff; border-radius: 8px; width: 400px;
+            max-width: 90vw; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            overflow: hidden; z-index: 999999;
+        }
+        .dr-settings-header {
+            padding: 16px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .dr-settings-header h3 { margin: 0; color: #0f172a; font-size: 16px; font-weight: 600; }
+        .dr-settings-close {
+            background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b;
+        }
+        .dr-settings-body { padding: 20px; }
+        .dr-settings-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9;
+        }
+        .dr-settings-row:last-child { border-bottom: none; }
+        .dr-settings-label { color: #334155; font-weight: 500; font-size: 14px; }
+        
+        /* Toggle Switch */
+        .dr-switch {
+            position: relative; display: inline-block; width: 40px; height: 22px;
+        }
+        .dr-switch input { opacity: 0; width: 0; height: 0; }
+        .dr-slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1; transition: .3s; border-radius: 22px;
+        }
+        .dr-slider:before {
+            position: absolute; content: ""; height: 18px; width: 18px; left: 2px; bottom: 2px;
+            background-color: white; transition: .3s; border-radius: 50%;
+        }
+        input:checked + .dr-slider { background-color: #1976d2; }
+        input:checked + .dr-slider:before { transform: translateX(18px); }
         @media (max-width: 600px) {
             .dr-list-row { padding: 12px 10px 8px 10px; gap: 10px; }
             .dr-list-title { font-size: 14px; }
@@ -8667,7 +9103,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":9,"../services/apiService":28,"../services/reportService":32,"../utils/dateUtils":39}],24:[function(require,module,exports){
+},{"../components/dialogManager":10,"../services/apiService":30,"../services/reportService":34,"../utils/dateUtils":41}],26:[function(require,module,exports){
 // page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
@@ -9124,7 +9560,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":11,"../services/otm.token":30,"../services/surgeonSettingsService":35,"../utils/khoaUtils":44,"../utils/uiUtils":49}],25:[function(require,module,exports){
+},{"../components/khoaSelect":13,"../services/otm.token":32,"../services/surgeonSettingsService":37,"../utils/khoaUtils":46,"../utils/uiUtils":52}],27:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -9279,7 +9715,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":28,"../services/settingsService":34}],26:[function(require,module,exports){
+},{"../services/apiService":30,"../services/settingsService":36}],28:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
@@ -9642,7 +10078,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":27,"../services/settingsService":34,"../settings-open-world":36,"./page.settings-open-world":25}],27:[function(require,module,exports){
+},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":29,"../services/settingsService":36,"../settings-open-world":38,"./page.settings-open-world":27}],29:[function(require,module,exports){
 // page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
@@ -10033,7 +10469,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":30,"../services/surgeonSettingsService":35,"../utils/khoaUtils":44}],28:[function(require,module,exports){
+},{"../services/otm.token":32,"../services/surgeonSettingsService":37,"../utils/khoaUtils":46}],30:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -10190,7 +10626,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":44}],29:[function(require,module,exports){
+},{"../utils/khoaUtils":46}],31:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -10458,7 +10894,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":39,"./apiService":28,"./saveQueue":33}],30:[function(require,module,exports){
+},{"../utils/dateUtils":41,"./apiService":30,"./saveQueue":35}],32:[function(require,module,exports){
 // otm.token.js - OTM Token management service
 // This service manages OTM authentication tokens and direct API access
 
@@ -10975,7 +11411,7 @@ const OTMTokenService = {
 
 module.exports = OTMTokenService;
 
-},{"./apiService":28}],31:[function(require,module,exports){
+},{"./apiService":30}],33:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
@@ -11200,7 +11636,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":13,"../pages/page.dashboard.support":23,"../utils/patientDataMapper":45,"./checklistService":29}],32:[function(require,module,exports){
+},{"../components/loginHandler":15,"../pages/page.dashboard.support":25,"../utils/patientDataMapper":47,"./checklistService":31}],34:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -11384,7 +11820,8 @@ const ReportService = {
         patients.forEach((patient, idx) => {
             const data = this.formatPatientData(patient, idx, states[idx] || {});
 
-            report += `${data.index}. ${data.bed} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+            const locationText = data.room ? `${data.room} ${data.bed}`.trim() : data.bed;
+            report += `${data.index}. ${locationText} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
             report += `   Chẩn đoán: ${data.diagnosis}\n`;
             if (data.ppptDisplay) report += `   PPPT: ${data.ppptDisplay}\n`;
             if (data.ngayPtDisplay) report += `   Ngày PT: ${data.ngayPtDisplay}\n`;
@@ -11400,7 +11837,8 @@ const ReportService = {
     generateSingleText(patient, state = {}) {
         const data = this.formatPatientData(patient, 0, state);
         let report = '';
-        report += `${data.bed} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+        const locationText = data.room ? `${data.room} ${data.bed}`.trim() : data.bed;
+        report += `${locationText} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
         report += `Chẩn đoán: ${data.diagnosis}\n`;
         if (data.ppptDisplay) report += `PPPT: ${data.ppptDisplay}\n`;
         if (data.ngayPtDisplay) report += `Ngày PT: ${data.ngayPtDisplay}\n`;
@@ -11459,7 +11897,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":39,"../utils/htmlUtils":43,"../utils/patientDataMapper":45,"../utils/surgeryUtils":47,"./checklistService":29}],33:[function(require,module,exports){
+},{"../utils/dateUtils":41,"../utils/htmlUtils":45,"../utils/patientDataMapper":47,"../utils/surgeryUtils":49,"./checklistService":31}],35:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -11523,7 +11961,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],34:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -11665,7 +12103,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":44,"./apiService":28}],35:[function(require,module,exports){
+},{"../utils/khoaUtils":46,"./apiService":30}],37:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -11760,14 +12198,14 @@ const SurgeonSettingsService = {
 
 module.exports = SurgeonSettingsService;
 
-},{"./apiService":28}],36:[function(require,module,exports){
+},{"./apiService":30}],38:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
 // This allows requiring '../settings-open-world' from files inside src/pages
 module.exports = require('./pages/page.settings-open-world');
 
-},{"./pages/page.settings-open-world":25}],37:[function(require,module,exports){
+},{"./pages/page.settings-open-world":27}],39:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -11862,7 +12300,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],38:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -12022,7 +12460,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":29,"./uiUtils":49}],39:[function(require,module,exports){
+},{"../services/checklistService":31,"./uiUtils":52}],41:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -12110,7 +12548,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],40:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -12227,7 +12665,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":43,"./surgeryUtils":47,"./tagUtils":48}],41:[function(require,module,exports){
+},{"./htmlUtils":45,"./surgeryUtils":49,"./tagUtils":50}],43:[function(require,module,exports){
 // globalFnUtils.js - Helper to call functions that may live on multiple global scopes
 // (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
 
@@ -12259,7 +12697,7 @@ function callGlobalFn(fnName, ...args) {
 
 module.exports = { callGlobalFn };
 
-},{}],42:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -12503,7 +12941,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],43:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -12518,7 +12956,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],44:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -12534,7 +12972,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],45:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -12785,7 +13223,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],46:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 // stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
 
 /**
@@ -12804,7 +13242,7 @@ function syncPatientStateToGlobal(mabn, newState) {
 
 module.exports = { syncPatientStateToGlobal };
 
-},{}],47:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -12999,8 +13437,10 @@ function formatSurgeryInfo(item) {
         
         console.log('Surgery info found for patient:', item.mabn, 'PPPT:', method, 'DateTime:', dateTime, 'PostOp:', postOpDisplay);
         
+        const doctorsInfo = ptData.doctors ? `<div class="dr-surgeon-line"><span class="dr-label">BS:</span> ${ptData.doctors}</div>` : '';
         ptInfo = `<div class="dr-pt-info">
             <div class="dr-value"><span class="dr-label">PPPT:</span> ${sourceLabel}${method}${postOpDisplay}</div>
+            ${doctorsInfo}
             <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
         </div>`;
     } else {
@@ -13085,7 +13525,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],48:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -13356,7 +13796,41 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],49:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],51:[function(require,module,exports){
+/**
+ * Normalizes Vietnamese text by removing diacritics/accents
+ * @param {string} str - The string to normalize
+ * @returns {string} - The normalized string
+ */
+function removeAccents(str) {
+    if (!str) return '';
+    return str
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+}
+
+/**
+ * Detects if a string contains Vietnamese diacritics
+ * @param {string} str - The string to check
+ * @returns {boolean} - True if it has accents
+ */
+function hasAccents(str) {
+    if (!str) return false;
+    // Check if normalizing and then removing accents results in a different string
+    const normalized = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const hasD = /[đĐ]/.test(str);
+    return str.normalize('NFD') !== normalized || hasD;
+}
+
+module.exports = {
+    removeAccents,
+    hasAccents
+};
+
+},{}],52:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

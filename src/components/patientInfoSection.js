@@ -16,7 +16,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
     const room = patient.teN_PHONG || '';
     const bed = patient.teN_GIUONG || '';
     info.innerHTML = `
-        <h2 style="margin-top:0">${patient.hoten || ''} <span style="font-size:0.9em;color:#888;">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
+        <h2 style="margin-top:0">${patient.hoten || ''} <span class="dr-patient-mabn-sidebar" style="font-size:0.9em;color:#888;cursor:pointer;" title="Click để copy mã BN">${patient.mabn ? ' - ' + patient.mabn : ''}</span></h2>
         <div><b>DOB:</b> ${dob} (${age}) - ${gender} - ${room} - ${bed}</div>
         <div><b>Chẩn đoán:</b> <span id="dr-chandoan">${patient.chandoanvk || ''}</span></div>
         <div style="margin-top:8px; display:grid; grid-template-columns:max-content 1fr; align-items:start; column-gap:10px;">
@@ -202,6 +202,25 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         }
         persistIfDirty();
     });
+
+    // Setup PID auto-copy
+    setTimeout(() => {
+        const pidSpan = info.querySelector('.dr-patient-mabn-sidebar');
+        if (pidSpan && patient.mabn) {
+            pidSpan.addEventListener('click', async () => {
+                try {
+                    const displaySettings = require('./displaySettings');
+                    if (displaySettings.get('autoCopyPID')) {
+                        const { copyToClipboard, showToast } = require('../utils/uiUtils');
+                        const success = await copyToClipboard(patient.mabn);
+                        if (success) {
+                            showToast(`Đã copy PID: ${patient.mabn}`);
+                        }
+                    }
+                } catch(e) { console.warn('Lỗi copy PID sidebar', e); }
+            });
+        }
+    }, 10);
 
     return info;
 }

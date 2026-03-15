@@ -474,6 +474,80 @@ function addGlobalStyles() {
         /* Unify HXT typography */
         .dr-hxt-block { color: #0f172a; font-size: 13px; line-height: 1.35; }
         .dr-hxt-block .dr-label { color: #0f172a; font-weight: 700; }
+
+        /* Display Settings dynamic visibility */
+        body.dr-hide-hxt .dr-hxt-block { display: none !important; }
+        body.dr-hide-pppt .dr-pt-info .dr-value:first-child { display: none !important; }
+        body.dr-hide-surgeon .dr-surgeon-line { display: none !important; }
+        .dr-surgeon-line { color: #555; font-size: 0.9em; margin-bottom: 2px; }
+
+        /* Context Menu Styles */
+        .dr-context-menu {
+            position: fixed;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            padding: 4px 0;
+            min-width: 180px;
+            z-index: 1000000;
+            font-size: 14px;
+        }
+        .dr-context-menu-item {
+            padding: 8px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #333;
+            transition: background 0.15s;
+        }
+        .dr-context-menu-item:hover {
+            background: #f1f5f9;
+        }
+        
+        /* Modal Settings Styles */
+        .dr-settings-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.4); z-index: 999998;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .dr-settings-modal {
+            background: #fff; border-radius: 8px; width: 400px;
+            max-width: 90vw; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            overflow: hidden; z-index: 999999;
+        }
+        .dr-settings-header {
+            padding: 16px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .dr-settings-header h3 { margin: 0; color: #0f172a; font-size: 16px; font-weight: 600; }
+        .dr-settings-close {
+            background: none; border: none; font-size: 20px; cursor: pointer; color: #64748b;
+        }
+        .dr-settings-body { padding: 20px; }
+        .dr-settings-row {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; padding: 8px 0; border-bottom: 1px solid #f1f5f9;
+        }
+        .dr-settings-row:last-child { border-bottom: none; }
+        .dr-settings-label { color: #334155; font-weight: 500; font-size: 14px; }
+        
+        /* Toggle Switch */
+        .dr-switch {
+            position: relative; display: inline-block; width: 40px; height: 22px;
+        }
+        .dr-switch input { opacity: 0; width: 0; height: 0; }
+        .dr-slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #cbd5e1; transition: .3s; border-radius: 22px;
+        }
+        .dr-slider:before {
+            position: absolute; content: ""; height: 18px; width: 18px; left: 2px; bottom: 2px;
+            background-color: white; transition: .3s; border-radius: 50%;
+        }
+        input:checked + .dr-slider { background-color: #1976d2; }
+        input:checked + .dr-slider:before { transform: translateX(18px); }
         @media (max-width: 600px) {
             .dr-list-row { padding: 12px 10px 8px 10px; gap: 10px; }
             .dr-list-title { font-size: 14px; }

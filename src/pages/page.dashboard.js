@@ -16,6 +16,7 @@ const ModalManager = require('../components/modalManager');
 const LoginHandler = require('../components/loginHandler');
 
 // Import newly refactored components
+const { removeAccents, hasAccents } = require('../utils/textUtils');
 const { createPatientInfoSection } = require('../components/patientInfoSection');
 const SidebarSession = require('../components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
@@ -770,7 +771,7 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         topBar.innerHTML = `
             <div class="dr-topbar-left" style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
-                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán..." 
+                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh" 
                     style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
             </div>
             <div class="dr-topbar-center" style="flex:0 0 auto; display:flex; justify-content:center; min-width:140px;">
@@ -933,6 +934,11 @@ function showDashboardBenhNhanIfNeeded() {
         // Add bottom bar
         createBottomBar();
 
+        try {
+            const displaySettings = require('../components/displaySettings');
+            displaySettings.createIcon(topBar);
+        } catch(e) { console.warn('Lỗi init display settings', e); }
+
         // Setup Advanced Filter
         setupAdvancedFilter(topBar, () => applyFilter());
 
@@ -943,19 +949,47 @@ function showDashboardBenhNhanIfNeeded() {
         const totalCompact = topBar.querySelector('#dr-total-compact');
 
         function applyFilter() {
-            const q = (searchInput.value || '').trim().toLowerCase();
+            const rawQ = (searchInput.value || '').trim();
             const onlyXV = !!chkXuatVien.checked;
             const onlyCLS = !!chkCanLamSang.checked;
             let visible = 0;
 
+            // Split by comma and process each keyword
+            const keywords = rawQ.split(',')
+                .map(k => k.trim())
+                .filter(k => k !== '');
+
             const cards = container.querySelectorAll('.dr-card, .dr-list-row');
             cards.forEach(card => {
-                const txt = card.textContent.toLowerCase();
-                const matchesText = q === '' || txt.includes(q) ||
-                    card.getAttribute('data-mabn')?.toLowerCase().includes(q) ||
-                    card.getAttribute('data-name')?.includes(q) ||
-                    card.getAttribute('data-cd')?.includes(q) ||
-                    card.getAttribute('data-loc')?.includes(q);
+                const nameAttr = card.getAttribute('data-name') || '';
+                const mabnAttr = card.getAttribute('data-mabn') || '';
+                const cdAttr = card.getAttribute('data-cd') || '';
+                const locAttr = card.getAttribute('data-loc') || '';
+                const fullTxt = card.textContent || '';
+
+                // AND logic: all keywords must match at least one field
+                const matchesText = keywords.length === 0 || keywords.every(k => {
+                    const searchKey = k.toLowerCase();
+                    const useExactMatch = hasAccents(k);
+
+                    if (useExactMatch) {
+                        // Smart search: if user typed accents, search exactly (case-insensitive)
+                        return nameAttr.toLowerCase().includes(searchKey) || 
+                               mabnAttr.toLowerCase().includes(searchKey) || 
+                               cdAttr.toLowerCase().includes(searchKey) || 
+                               locAttr.toLowerCase().includes(searchKey) || 
+                               fullTxt.toLowerCase().includes(searchKey);
+                    } else {
+                        // Fallback: accent-insensitive search if no accents in keyword
+                        const normKey = removeAccents(searchKey);
+                        return removeAccents(nameAttr).includes(normKey) || 
+                               removeAccents(mabnAttr).includes(normKey) || 
+                               removeAccents(cdAttr).includes(normKey) || 
+                               removeAccents(locAttr).includes(normKey) || 
+                               removeAccents(fullTxt).includes(normKey);
+                    }
+                });
+
                 // dataset flags prepared on card creation
                 const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
                 const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
@@ -971,7 +1005,7 @@ function showDashboardBenhNhanIfNeeded() {
 
             // Update centered compact total, integrating the filter count
             if (totalCompact) {
-                const hasFilter = !!(q || onlyXV || onlyCLS || advancedFilterState.active);
+                const hasFilter = !!(keywords.length > 0 || onlyXV || onlyCLS || advancedFilterState.active);
                 totalCompact.textContent = hasFilter ? `Hiển thị: ${visible}/${sortedData.length}` : `${visible}/${sortedData.length}`;
                 // Color accents: blue when filtered, neutral otherwise
                 if (hasFilter) {
@@ -989,6 +1023,30 @@ function showDashboardBenhNhanIfNeeded() {
         searchInput.addEventListener('input', applyFilter);
         chkXuatVien.addEventListener('change', applyFilter);
         chkCanLamSang.addEventListener('change', applyFilter);
+
+        // Escape key to clear search
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                searchInput.value = '';
+                applyFilter();
+                // Optionally blur after clearing
+                // searchInput.blur();
+            }
+        });
+
+        // Hotkey support: "/" to focus search
+        const hotkeyHandler = (e) => {
+            // Only trigger if not already in an input/textarea
+            if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                e.preventDefault();
+                const input = document.getElementById('dr-search-input');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }
+        };
+        document.addEventListener('keydown', hotkeyHandler);
 
         // Fit to Screen dynamic adjustment logic
         function updateFitLayout() {
@@ -1151,7 +1209,7 @@ function showDashboardBenhNhanIfNeeded() {
             <div class="dr-room-label">${formattedLocation}</div>
             <h2 class="dr-patient-name">${item.hoten || ''}</h2>
             <div class="dr-patient-sub-info">
-                <span class="dr-patient-mabn">${item.mabn || ''}</span>
+                <span class="dr-patient-mabn" style="cursor:pointer;" title="Click để copy mã BN">${item.mabn || ''}</span>
                 <span class="dr-patient-gender">${item.phai === 1 ? 'Nữ' : 'Nam'}</span>
             </div>
             <div class="dr-value dr-dob-line"><span class="dr-label">Ngày sinh:</span> ${item.ngaysinh ? Utils.formatDate(item.ngaysinh) : ''} (${Utils.calculateAge(item.ngaysinh)} tuổi)</div>
@@ -1182,6 +1240,29 @@ function showDashboardBenhNhanIfNeeded() {
         try { updateMedsDoneBadge(card, item); } catch (_) { }
 
         card.onclick = () => showSidebar(item);
+        
+        try {
+            const contextMenu = require('../components/contextMenu');
+            contextMenu.attachToCard(card, item);
+        } catch(e) { console.warn('Lỗi attach contextMenu', e); }
+
+        const pidSpan = card.querySelector('.dr-patient-mabn');
+        if (pidSpan && item.mabn) {
+            pidSpan.onclick = async (e) => {
+                e.stopPropagation(); // prevent opening sidebar
+                try {
+                    const displaySettings = require('../components/displaySettings');
+                    if (displaySettings.get('autoCopyPID')) {
+                        const { copyToClipboard, showToast } = require('../utils/uiUtils');
+                        const success = await copyToClipboard(item.mabn);
+                        if (success) {
+                            showToast(`Đã copy PID: ${item.mabn}`);
+                        }
+                    }
+                } catch(err) { console.warn('Lỗi copy PID', err); }
+            };
+        }
+
         // Preload HXT from checklist state after rendering card (non-blocking)
         setTimeout(() => {
             preloadHXTForPatient(item);

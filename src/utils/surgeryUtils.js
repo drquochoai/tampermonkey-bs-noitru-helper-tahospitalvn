@@ -192,8 +192,10 @@ function formatSurgeryInfo(item) {
         
         console.log('Surgery info found for patient:', item.mabn, 'PPPT:', method, 'DateTime:', dateTime, 'PostOp:', postOpDisplay);
         
+        const doctorsInfo = ptData.doctors ? `<div class="dr-surgeon-line"><span class="dr-label">BS:</span> ${ptData.doctors}</div>` : '';
         ptInfo = `<div class="dr-pt-info">
             <div class="dr-value"><span class="dr-label">PPPT:</span> ${sourceLabel}${method}${postOpDisplay}</div>
+            ${doctorsInfo}
             <div class="dr-value"><span class="dr-label">Ngày PT:</span> ${dateTime}</div>
         </div>`;
     } else {

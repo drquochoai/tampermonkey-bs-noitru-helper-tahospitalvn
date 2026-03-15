@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.8
+// @version      1.9.9
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -397,7 +397,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":46}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":49}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -840,7 +840,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":8,"./components/hsbaDataFetcher":12,"./googleAppsScript":21,"./pages/otm-entry":22,"./pages/page.dashboard":24,"./pages/page.lichmo.homnay":26,"./pages/page.settings":28,"./services/checklistService":31,"./utils":39,"./utils/hsbaV2Download":44}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":9,"./components/hsbaDataFetcher":13,"./googleAppsScript":23,"./pages/otm-entry":24,"./pages/page.dashboard":26,"./pages/page.lichmo.homnay":28,"./pages/page.settings":30,"./services/checklistService":33,"./utils":42,"./utils/hsbaV2Download":47}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -963,7 +963,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":25,"../services/checklistService":31,"../services/reportService":34}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":27,"../services/checklistService":33,"../services/reportService":36}],5:[function(require,module,exports){
 // advancedFilter.js - Logic for advanced dashboard filtering
 const DialogManager = require('./dialogManager');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1006,7 +1006,8 @@ function setupAdvancedFilter(topBar, onApply) {
     filterBtn.id = 'dr-advanced-filter-btn';
     filterBtn.title = 'Lọc nâng cao theo Y lệnh, Phẫu thuật...';
     filterBtn.style.cssText = `
-        padding: 8px 12px;
+        height: 38px;
+        padding: 0 12px;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         background: #f8fafc;
@@ -1017,6 +1018,7 @@ function setupAdvancedFilter(topBar, onApply) {
         font-weight: 600;
         color: #475569;
         transition: all 0.2s;
+        white-space: nowrap;
     `;
     filterBtn.innerHTML = '<i class="fas fa-filter"></i> Lọc nâng cao <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span>';
     
@@ -1477,7 +1479,7 @@ module.exports = {
     advancedFilterState
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":39,"../utils/dateUtils":41,"./dialogManager":10}],6:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":42,"../utils/dateUtils":44,"./dialogManager":11}],6:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -1521,6 +1523,91 @@ function createAutoLoginToggle({ enabled, onToggle, onDblClick, title }) {
 module.exports = { createAutoLoginToggle, applyToggleStyles };
 
 },{}],7:[function(require,module,exports){
+// cardTooltip.js - Global hover tooltip for patient cards
+const Utils = require('../utils');
+
+/**
+ * Attach hover tooltip to a patient card
+ * @param {HTMLElement} card - The card or wrapper element to trigger the tooltip
+ * @param {HTMLElement} contentSource - The element to clone into the tooltip (usually the card itself)
+ */
+function attach(card, contentSource) {
+    if (!card || !contentSource) return;
+
+    card.addEventListener('mouseenter', (e) => {
+        let tooltip = document.getElementById('dr-global-card-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.id = 'dr-global-card-tooltip';
+            tooltip.style.cssText = `
+                position: fixed;
+                z-index: 100000;
+                pointer-events: none;
+                background: white;
+                border-radius: 12px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                width: 320px;
+                transform: translate(15px, 15px);
+                display: none;
+            `;
+            document.body.appendChild(tooltip);
+        }
+
+        const clone = contentSource.cloneNode(true);
+        // Ensure clone is visible and reset any truncations
+        clone.style.maxHeight = 'none';
+        clone.style.overflow = 'visible';
+        clone.style.opacity = '1';
+        clone.classList.remove('dr-tracking-card'); // Remove tracking specific styles if any
+        
+        // Remove interactive stuff from clone
+        const rmBtns = clone.querySelectorAll('button, .dr-tracking-remove, .dr-action-buttons');
+        rmBtns.forEach(b => b.remove());
+
+        // Fix CSS clamp to show full text for specific lines
+        const lines = clone.querySelectorAll('.dr-diagnosis-line, .dr-pt-info, .dr-hxt-block');
+        lines.forEach(l => {
+            l.style.webkitLineClamp = 'unset';
+            l.style.display = 'block';
+            l.style.whiteSpace = 'normal';
+        });
+
+        tooltip.innerHTML = '';
+        tooltip.appendChild(clone);
+        tooltip.style.display = 'block';
+    });
+
+    card.addEventListener('mousemove', (e) => {
+        const tooltip = document.getElementById('dr-global-card-tooltip');
+        if (tooltip && tooltip.style.display === 'block') {
+            let top = e.clientY + 15;
+            let left = e.clientX + 15;
+            
+            // Wait for next frame to get height correctly if needed, 
+            // but usually it's already there
+            const rect = tooltip.getBoundingClientRect();
+            if (top + rect.height > window.innerHeight) {
+                top = e.clientY - rect.height - 15;
+            }
+            if (left + rect.width > window.innerWidth) {
+                left = e.clientX - rect.width - 15;
+            }
+            tooltip.style.top = top + 'px';
+            tooltip.style.left = left + 'px';
+        }
+    });
+
+    card.addEventListener('mouseleave', () => {
+        const tooltip = document.getElementById('dr-global-card-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    });
+}
+
+module.exports = { attach };
+
+},{"../utils":42}],8:[function(require,module,exports){
 // contextMenu.js
 const { copyToClipboard } = require('../utils/uiUtils');
 
@@ -1566,6 +1653,11 @@ class ContextMenu {
             <div class="dr-context-menu-item" id="ctx-hsba">
                 <span>🏥</span> Mở HSBAv2
             </div>
+            ${patient.theodoi ? `
+            <div class="dr-context-menu-item" id="ctx-remove-tracking" style="color:#d32f2f; border-top:1px solid #eee;">
+                <span>❌</span> Xóa khỏi DS theo dõi
+            </div>
+            ` : ''}
         `;
 
         menu.style.left = `${e.clientX}px`;
@@ -1623,6 +1715,19 @@ class ContextMenu {
                 }
             }
         };
+        
+        if (patient.theodoi) {
+            const rmItem = menu.querySelector('#ctx-remove-tracking');
+            if (rmItem) {
+                rmItem.onclick = async (evt) => {
+                    evt.stopPropagation();
+                    this.hide();
+                    if (typeof window.dr_removeTrackedPatient === 'function') {
+                        await window.dr_removeTrackedPatient(patient.mabn);
+                    }
+                };
+            }
+        }
     }
     
     attachToCard(card, patient) {
@@ -1635,7 +1740,7 @@ class ContextMenu {
 const contextMenu = new ContextMenu();
 module.exports = contextMenu;
 
-},{"../pages/page.dashboard.support":25,"../services/checklistService":31,"../services/reportService":34,"../utils/uiUtils":52,"./actionButtons":4}],8:[function(require,module,exports){
+},{"../pages/page.dashboard.support":27,"../services/checklistService":33,"../services/reportService":36,"../utils/uiUtils":55,"./actionButtons":4}],9:[function(require,module,exports){
 // copyDienTienAI.js
 // Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
 
@@ -1909,7 +2014,7 @@ module.exports = {
     setStatus
 };
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 // copyMenu.js - Dropdown menu for quick report copying
 const DialogManager = require('./dialogManager');
 const ReportService = require('../services/reportService');
@@ -2164,7 +2269,7 @@ function setupCopyMenu(bottomBar) {
 
 module.exports = { setupCopyMenu };
 
-},{"../pages/page.dashboard.support":25,"../services/apiService":30,"../services/reportService":34,"../utils/dateUtils":41,"./dialogManager":10}],10:[function(require,module,exports){
+},{"../pages/page.dashboard.support":27,"../services/apiService":32,"../services/reportService":36,"../utils/dateUtils":44,"./dialogManager":11}],11:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -2283,7 +2388,7 @@ const DialogManager = {
 
 module.exports = DialogManager;
 
-},{}],11:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 // displaySettings.js
 
 class DisplaySettings {
@@ -2430,7 +2535,7 @@ class DisplaySettings {
 const displaySettings = new DisplaySettings();
 module.exports = displaySettings;
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 // hsbaDataFetcher.js - Fetch HSBA V2 data via background tab and GraphQL
 
 /*
@@ -3228,7 +3333,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":31,"./dialogManager":10}],13:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":33,"./dialogManager":11}],14:[function(require,module,exports){
 // components/khoaSelect.js - Reusable khoa selection button with dropdown
 
 const ApiService = require('../services/apiService');
@@ -3333,7 +3438,7 @@ function createKhoaSelect(opts) {
 
 module.exports = { createKhoaSelect };
 
-},{"../services/apiService":30}],14:[function(require,module,exports){
+},{"../services/apiService":32}],15:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -3413,7 +3518,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":25,"../services/checklistService":31,"../services/reportService":34,"../utils":39,"../utils/domUpdaters":42,"../utils/htmlUtils":45,"../utils/patientDataMapper":47,"../utils/tagUtils":50,"./actionButtons":4}],15:[function(require,module,exports){
+},{"../pages/page.dashboard.support":27,"../services/checklistService":33,"../services/reportService":36,"../utils":42,"../utils/domUpdaters":45,"../utils/htmlUtils":48,"../utils/patientDataMapper":50,"../utils/tagUtils":53,"./actionButtons":4}],16:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -3442,7 +3547,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 let SidebarSession = null;
 try { SidebarSession = require('./sidebarSession'); } catch(_) {}
@@ -3519,7 +3624,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":19}],17:[function(require,module,exports){
+},{"./sidebarSession":20}],18:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -3749,7 +3854,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":31,"../services/reportService":34,"../utils":39,"../utils/globalFnUtils":43,"../utils/stateSync":48,"../utils/uiUtils":52,"./displaySettings":11,"./phauThuatHandlers":18,"./yLenhHandlers":20}],18:[function(require,module,exports){
+},{"../services/checklistService":33,"../services/reportService":36,"../utils":42,"../utils/globalFnUtils":46,"../utils/stateSync":51,"../utils/uiUtils":55,"./displaySettings":12,"./phauThuatHandlers":19,"./yLenhHandlers":22}],19:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4281,7 +4386,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":31,"../utils/globalFnUtils":43,"../utils/stateSync":48,"../utils/surgeryUtils":49}],19:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":33,"../utils/globalFnUtils":46,"../utils/stateSync":51,"../utils/surgeryUtils":52}],20:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -4316,7 +4421,598 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],20:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
+// components/trackingUI.js
+
+const ApiService = require('../services/apiService');
+const TrackedPatientService = require('../services/trackedPatientService');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
+const DialogManager = require('./dialogManager');
+const cardTooltip = require('./cardTooltip');
+
+function setupTrackingUI(topBar, mainContainer, createPatientCard) {
+    const btn = topBar.querySelector('#dr-tracking-btn');
+    const badge = topBar.querySelector('#dr-tracking-badge');
+    if (!btn || !badge) return;
+
+    // Build the outer tracking container
+    const trackingContainer = document.createElement('div');
+    trackingContainer.id = 'dr-tracking-container';
+    trackingContainer.style.cssText = `
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 400px;
+        background: #fff;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 12px;
+        display: none;
+        flex-direction: column;
+        z-index: 2000;
+        max-height: 70vh;
+        overflow-y: auto;
+        margin-top: 8px;
+        min-height: 200px;
+    `;
+
+    // 1. State Persistence
+    let isTrackingOpen = localStorage.getItem('dr_tracking_is_open') === 'true';
+    if (isTrackingOpen) {
+        trackingContainer.style.display = 'flex';
+        // Need to wait for DOM insertion and layout init
+        requestAnimationFrame(() => updateLayoutStyle());
+    }
+
+    btn.parentElement.appendChild(trackingContainer);
+
+    let isSidebarMode = localStorage.getItem('dr_tracking_sidebar') === 'true';
+
+    function updateLayoutStyle() {
+        if (isSidebarMode) {
+            trackingContainer.style.position = 'fixed';
+            trackingContainer.style.top = '65px';
+            trackingContainer.style.left = '0';
+            trackingContainer.style.height = 'calc(100vh - 120px)';
+            trackingContainer.style.maxHeight = 'none';
+            trackingContainer.style.width = '25vw';
+            trackingContainer.style.minWidth = '300px';
+            trackingContainer.style.maxWidth = '400px';
+            trackingContainer.style.borderRadius = '0';
+            trackingContainer.style.border = 'none';
+            trackingContainer.style.borderRight = '1px solid #ddd';
+            trackingContainer.style.margin = '0';
+            trackingContainer.style.boxShadow = '2px 0 8px rgba(0,0,0,0.05)';
+
+            const sidebarWidth = 'clamp(300px, 25vw, 400px)';
+            requestAnimationFrame(() => {
+                mainContainer.style.marginLeft = sidebarWidth;
+                mainContainer.style.width = `calc(100% - ${sidebarWidth})`;
+            });
+            mainContainer.style.transition = 'margin-left 0.2s ease, width 0.2s ease';
+        } else {
+            trackingContainer.style.position = 'absolute';
+            trackingContainer.style.top = '100%';
+            trackingContainer.style.left = '0';
+            trackingContainer.style.height = 'auto';
+            trackingContainer.style.maxHeight = '70vh';
+            trackingContainer.style.width = '400px';
+            trackingContainer.style.borderRadius = '8px';
+            trackingContainer.style.border = '1px solid #ddd';
+            trackingContainer.style.margin = '8px 0 0 0';
+            trackingContainer.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+
+            mainContainer.style.marginLeft = '0';
+            mainContainer.style.width = '100%';
+        }
+    }
+
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = trackingContainer.style.display === 'flex';
+        trackingContainer.style.display = isVisible ? 'none' : 'flex';
+        
+        // 1. State Persistence
+        localStorage.setItem('dr_tracking_is_open', trackingContainer.style.display === 'flex');
+
+        if (!isVisible) {
+            updateLayoutStyle();
+        } else {
+            if (isSidebarMode) mainContainer.style.marginLeft = '0';
+        }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!isSidebarMode && trackingContainer.style.display === 'flex' && !btn.parentElement.contains(e.target) && !trackingContainer.contains(e.target)) {
+            trackingContainer.style.display = 'none';
+            localStorage.setItem('dr_tracking_is_open', false);
+        }
+    });
+
+    // States
+    let trackedState = { pids: [], cache: {} };
+    let trackedObj = null;
+    let activePatients = [];
+    let dummyPatients = [];
+
+    async function loadDataAndRender() {
+        trackingContainer.innerHTML = '<div style="text-align:center; padding: 20px; color:#666;">⏳ Đang tải dữ liệu bệnh nhân theo dõi...</div>';
+
+        try {
+            const deptId = getSelectedKhoa('551');
+            const res = await TrackedPatientService.getOrCreateTrackedPatients(deptId);
+            trackedObj = res.checklistObj;
+            let loadedPids = res.pids || [];
+            trackedState.cache = res.cache || {};
+
+            // 5. Auto deduplicate from current dept active list
+            if (Array.isArray(window.dr_data)) {
+                const currentDeptPids = window.dr_data.map(p => p.mabn);
+                const originalLength = loadedPids.length;
+                loadedPids = loadedPids.filter(pid => !currentDeptPids.includes(pid));
+                
+                if (loadedPids.length !== originalLength) {
+                     // Save immediately back to API
+                     trackedState.pids = loadedPids;
+                     await TrackedPatientService.updateTrackedState(trackedObj, trackedState);
+                }
+            }
+            trackedState.pids = loadedPids;
+            badge.textContent = trackedState.pids.length;
+
+            if (trackedState.pids.length === 0) {
+                activePatients = [];
+                dummyPatients = [];
+                renderUI();
+                return;
+            }
+
+            const promises = trackedState.pids.map(async pid => {
+                try {
+                    const resStr = await ApiService.fetchPatientByPID(pid);
+                    const r = typeof resStr === 'string' ? JSON.parse(resStr) : resStr;
+                    if (r && r.data && r.data.length > 0) {
+                        const pt = r.data[0];
+                        pt.theodoi = true;
+                        return pt;
+                    }
+                    return { mabn: pid, error: true, _rawPid: true };
+                } catch (e) {
+                    return { mabn: pid, error: true, _rawPid: true };
+                }
+            });
+
+            const fetched = await Promise.all(promises);
+            let valid = fetched.filter(p => !p._rawPid);
+
+            // Enrich the data
+            let cacheUpdated = false;
+            if (valid.length > 0) {
+                const PatientService = require('../services/patientService');
+                activePatients = await PatientService.enrichPatientDataWithChecklist(valid);
+                
+                // 4. Update cache with fresh active patient data
+                activePatients.forEach(pt => {
+                    const basicInfo = {
+                        hoten: pt.hoten || '',
+                        mabn: pt.mabn || '',
+                        chandoanvk: pt.chandoanvk || '',
+                        teN_PHONG: pt.teN_PHONG || pt.teN_GIUONG || '',
+                        phai: pt.phai,
+                        ngaysinh: pt.ngaysinh,
+                        // Get surgery name directly if available
+                        pppt: (pt.checklistState && Array.isArray(pt.checklistState.phauThuatList) && pt.checklistState.phauThuatList.length > 0) ? pt.checklistState.phauThuatList[0].pppt : ''
+                    };
+                    trackedState.cache[pt.mabn] = basicInfo;
+                    cacheUpdated = true;
+                });
+            } else {
+                activePatients = [];
+            }
+
+            // Save cache to server quietly if updated
+            if (cacheUpdated) {
+                TrackedPatientService.updateTrackedState(trackedObj, trackedState);
+            }
+
+            dummyPatients = fetched.filter(p => p._rawPid);
+
+            renderUI();
+        } catch (e) {
+            trackingContainer.innerHTML = '<div style="text-align:center; padding: 20px; color:#d32f2f;">Lỗi khi tải dữ liệu.</div>';
+            console.error(e);
+        }
+    }
+
+    function renderUI() {
+        trackingContainer.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:8px; flex-shrink:0;">
+                <h4 style="margin:0; color:#1976d2; font-size:15px;"><i class="fas fa-user-clock"></i> Bệnh nhân đang theo dõi</h4>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <div style="position:relative;" id="dr-tracking-copy-wrapper">
+                        <button id="dr-tracking-copy-btn" title="Click để copy ngay DS Hiện tại / Rê chuột để thêm lựa chọn" style="background:none; border:none; cursor:pointer; color:#666; font-size:14px;">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                        <div id="dr-tracking-copy-menu" style="display:none; position:absolute; right:0; top:100%; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.15); border-radius:4px; border:1px solid #eee; z-index:100; min-width:200px; padding:4px 0;">
+                            <div class="dr-tracking-copy-item" data-type="active" style="padding:8px 12px; cursor:pointer; font-size:13px; color:#333; border-bottom:1px solid #f5f5f5;">
+                                <i class="fas fa-users" style="width:16px; color:#1976d2; text-align:center; margin-right:4px;"></i> Copy DS Hiện tại
+                            </div>
+                            <div class="dr-tracking-copy-item" data-type="dummy" style="padding:8px 12px; cursor:pointer; font-size:13px; color:#333;">
+                                <i class="fas fa-user-times" style="width:16px; color:#d32f2f; text-align:center; margin-right:4px;"></i> Copy DS Đã XV
+                            </div>
+                        </div>
+                    </div>
+                    <button id="dr-tracking-toggle-mode" title="Chuyển đổi Dropdown / Sidebar" style="background:none; border:none; cursor:pointer; color:#666; font-size:14px;">
+                        <i class="fas ${isSidebarMode ? 'fa-window-restore' : 'fa-columns'}"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div style="display:flex; gap:8px; margin-bottom:12px; flex-shrink:0;">
+                <input type="text" id="dr-tracking-input" placeholder="Nhập PID (mabn)..." 
+                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                    style="flex:1; padding:6px 10px; border:1px solid #cbd5e1; border-radius:4px; font-size:13px;">
+                <button id="dr-tracking-add" style="padding:6px 12px; background:#1976d2; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:13px; font-weight:bold;">Thêm</button>
+            </div>
+            
+            <div id="dr-tracking-scroll-area" style="overflow-y:auto; overflow-x:hidden; flex:1;">
+                <div id="dr-tracking-active-list" style="margin-bottom:16px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; width:100%; box-sizing:border-box;"></div>
+                
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-top:8px; border-top:1px dashed #eee;">
+                    <div style="font-size:12px; color:#666; font-weight:bold;">Không có dữ liệu (đã Xuất viện):</div>
+                    <button id="dr-tracking-bulk-remove" style="background:none; border:none; cursor:pointer; color:#d32f2f; font-size:12px;" title="Xóa toàn bộ mã lỗi rỗng">
+                        <i class="fas fa-trash-alt"></i> Xóa rỗng
+                    </button>
+                </div>
+                <div id="dr-tracking-dummy-list"></div>
+            </div>
+        `;
+
+        trackingContainer.querySelector('#dr-tracking-toggle-mode').addEventListener('click', () => {
+            isSidebarMode = !isSidebarMode;
+            localStorage.setItem('dr_tracking_sidebar', isSidebarMode);
+            updateLayoutStyle();
+            renderUI();
+        });
+
+        // Copy menu logic
+        const copyWrapper = trackingContainer.querySelector('#dr-tracking-copy-wrapper');
+        const copyBtn = trackingContainer.querySelector('#dr-tracking-copy-btn');
+        const copyMenu = trackingContainer.querySelector('#dr-tracking-copy-menu');
+
+        copyWrapper.onmouseenter = () => { copyMenu.style.display = 'block'; };
+        copyWrapper.onmouseleave = () => { copyMenu.style.display = 'none'; };
+
+        copyBtn.onclick = (e) => {
+            e.stopPropagation();
+            copyMenu.style.display = 'none';
+            // Trigger first item (active) click
+            const activeItem = copyMenu.querySelector('.dr-tracking-copy-item[data-type="active"]');
+            if (activeItem) activeItem.click();
+        };
+
+        trackingContainer.querySelectorAll('.dr-tracking-copy-item').forEach(item => {
+            item.addEventListener('mouseenter', function() { this.style.backgroundColor = '#f0f9ff'; });
+            item.addEventListener('mouseleave', function() { this.style.backgroundColor = 'transparent'; });
+            item.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                trackingContainer.querySelector('#dr-tracking-copy-menu').style.display = 'none';
+                const type = e.currentTarget.dataset.type;
+
+                if (type === 'active') {
+                    if (activePatients.length === 0) return DialogManager.showToast('Không có bệnh nhân hiện tại!', { background: '#ff9800' });
+                    try {
+                        const ReportService = require('../services/reportService');
+                        const targetStates = activePatients.map(p => p.checklistState || {});
+                        let resultHtml = ReportService.generateHTMLReport(activePatients, targetStates);
+                        let resultText = ReportService.generateTextReport(activePatients, targetStates);
+
+                        // Red color for tracking header
+                        resultHtml = resultHtml.replace(/#1976d2/g, '#8b0000').replace(/Khoa /g, 'Theo dõi ');
+
+                        const dashboardSupport = require('../pages/page.dashboard.support');
+                        if (typeof dashboardSupport.copyReportToClipboardRich === 'function') {
+                            await dashboardSupport.copyReportToClipboardRich(resultHtml, resultText);
+                            DialogManager.showToast('Đã copy danh sách hiện tại!', { background: '#b91c1c' });
+                        } else {
+                            DialogManager.showToast('Không tìm thấy tính năng copy', { background: '#d32f2f' });
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        DialogManager.showToast('Lỗi khi copy danh sách!', { background: '#d32f2f' });
+                    }
+                } else if (type === 'dummy') {
+                    if (dummyPatients.length === 0) return DialogManager.showToast('Không có bệnh nhân đã xuất viện!', { background: '#ff9800' });
+                    let html = '<table border="1" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">';
+                    html += '<tr style="background:#f2f2f2;"><th>STT</th><th>Mã BN</th><th>Họ tên</th><th>Giới tính</th><th>Tuổi</th><th>Chẩn đoán</th></tr>';
+                    
+                    const Utils = require('../utils/textUtils');
+                    dummyPatients.forEach((d, index) => {
+                        const cacheInfo = trackedState.cache[d.mabn] || {};
+                        const name = cacheInfo.hoten || '';
+                        const gender = cacheInfo.phai === 1 ? 'Nữ' : (cacheInfo.phai === 0 ? 'Nam' : '');
+                        const ageStr = cacheInfo.ngaysinh ? Utils.calculateAge(cacheInfo.ngaysinh) : '';
+                        const diag = cacheInfo.chandoanvk || '';
+                        
+                        html += `<tr>
+                            <td style="text-align:center;">${index + 1}</td>
+                            <td style="text-align:center;">${d.mabn}</td>
+                            <td>${name}</td>
+                            <td style="text-align:center;">${gender}</td>
+                            <td style="text-align:center;">${ageStr}</td>
+                            <td>${diag}</td>
+                        </tr>`;
+                    });
+                    html += '</table>';
+                    
+                    try {
+                        const blobHtml = new Blob([html], { type: 'text/html' });
+                        const blobText = new Blob(['Danh sách bệnh nhân đã xuất viện theo dõi'], { type: 'text/plain' });
+                        const data = [new ClipboardItem({ 'text/html': blobHtml, 'text/plain': blobText })];
+                        await navigator.clipboard.write(data);
+                        DialogManager.showToast('Đã copy danh sách bệnh nhân xuất viện!', { background: '#b91c1c' });
+                    } catch (err) {
+                        console.error('Copy failed', err);
+                        DialogManager.showToast('Lỗi khi sao chép!', { background: '#d32f2f' });
+                    }
+                }
+            });
+        });
+
+        const activeListEl = trackingContainer.querySelector('#dr-tracking-active-list');
+        const dummyListEl = trackingContainer.querySelector('#dr-tracking-dummy-list');
+
+        if (activePatients.length === 0) {
+            activeListEl.innerHTML = '<div style="color:#999; font-size:12px; font-style:italic; padding:10px;">Không có BN active</div>';
+        } else {
+            activePatients.forEach(pt => {
+                // Wrapper to handle layout and removal within sidebar
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'position:relative; width:100%; min-width:0; box-sizing:border-box;';
+
+                // create normal dr-card
+                let card;
+                if (typeof createPatientCard === 'function') {
+                    card = createPatientCard(pt);
+                    // Override card styles slightly to fit container
+                    card.classList.remove('dr-blue'); // remove interfering class
+                    card.classList.remove('dr-yellow');
+                    card.style.cssText += 'background-color: #fff0f0 !important; background-image: none !important;';
+                    card.style.minWidth = '0';
+                    card.style.flex = 'none';
+                    card.style.width = '100%';
+                    card.style.margin = '0 auto';
+                    card.classList.add('dr-tracking-card');
+                } else {
+                    card = document.createElement('div');
+                    card.textContent = pt.hoten + ' (' + pt.mabn + ')';
+                }
+
+                wrap.appendChild(card);
+
+                // Add a remove button directly to this wrapper
+                const rmBtn = document.createElement('button');
+                rmBtn.innerHTML = '<i class="fas fa-times"></i>';
+                rmBtn.title = 'Ngừng theo dõi';
+                rmBtn.style.cssText = 'position:absolute; top:4px; right:4px; background:#d32f2f; color:#fff; border:none; width:22px; height:22px; border-radius:50%; cursor:pointer; font-size:11px; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 4px rgba(0,0,0,0.2); z-index:10; opacity:0.8;';
+
+                rmBtn.onclick = async (e) => {
+                    e.stopPropagation();
+                    await removePatient(pt.mabn);
+                };
+
+                wrap.appendChild(rmBtn);
+                
+                // Use global cardTooltip
+                cardTooltip.attach(wrap, card);
+
+                activeListEl.appendChild(wrap);
+            });
+        }
+
+        if (dummyPatients.length === 0) {
+            dummyListEl.innerHTML = '<div style="color:#999; font-size:12px; font-style:italic;">Trống</div>';
+        } else {
+            dummyPatients.forEach(d => {
+                const div = document.createElement('div');
+                div.style.cssText = `display:flex; justify-content:space-between; align-items:center; padding:8px 10px; background:#f9fafb; border:1px solid #f1f5f9; border-radius:6px; margin-bottom:8px; box-shadow:0 1px 2px rgba(0,0,0,0.05);`;
+                
+                let infoHtml = '';
+                const cacheInfo = trackedState.cache[d.mabn];
+                // 4. Caching Discharged Patients Data
+                if (cacheInfo && cacheInfo.hoten) {
+                    const Utils = require('../utils/textUtils');
+                    const gender = cacheInfo.phai === 1 ? 'Nữ' : 'Nam';
+                    const ageStr = cacheInfo.ngaysinh ? `(${Utils.calculateAge(cacheInfo.ngaysinh)} tuổi)` : '';
+                    infoHtml = `
+                        <div style="flex:1; min-width:0; padding-right:8px;">
+                            <div style="font-size:13px; font-weight:700; color:#334155;">${cacheInfo.hoten}</div>
+                            <div style="font-size:11px; color:#64748b; margin-top:2px;">
+                                <span style="color:#1976d2; font-weight:600;">${d.mabn}</span> &bull; ${gender} ${ageStr}
+                            </div>
+                            <div style="font-size:11px; color:#64748b; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${cacheInfo.chandoanvk}">
+                                ${cacheInfo.chandoanvk ? 'CĐ: ' + cacheInfo.chandoanvk : ''}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    infoHtml = `<div style="flex:1; min-width:0; color:#94a3b8; font-size:13px; font-weight:600;">PID: ${d.mabn}</div>`;
+                }
+
+                div.innerHTML = `
+                    ${infoHtml}
+                    <button class="dr-tracking-remove" style="background:none; border:none; color:#d32f2f; cursor:pointer; padding:4px;" title="Xóa khỏi theo dõi"><i class="fas fa-times"></i></button>
+                `;
+                div.querySelector('.dr-tracking-remove').onclick = async () => {
+                    await removePatient(d.mabn);
+                };
+                dummyListEl.appendChild(div);
+            });
+        }
+
+        // 3. Bulk Remove Empties Handler
+        trackingContainer.querySelector('#dr-tracking-bulk-remove').addEventListener('click', async () => {
+            if (dummyPatients.length === 0) {
+                DialogManager.showToast('Không có mã rỗng nào để xóa!', { background: '#ff9800' });
+                return;
+            }
+            if (!confirm(`Xóa toàn bộ ${dummyPatients.length} bệnh nhân rỗng/đã xuất viện khỏi danh sách?`)) return;
+            
+            const dummyPids = dummyPatients.map(p => p.mabn);
+            trackedState.pids = trackedState.pids.filter(p => !dummyPids.includes(p));
+            // optional: clean up cache
+            dummyPids.forEach(pid => delete trackedState.cache[pid]);
+            
+            badge.textContent = trackedState.pids.length;
+            dummyPatients = [];
+            renderUI();
+
+            const success = await TrackedPatientService.updateTrackedState(trackedObj, trackedState);
+            if (!success) {
+                DialogManager.showToast('Có lỗi khi xóa hàng loạt!', { background: '#d32f2f' });
+                loadDataAndRender(); // full revert
+            }
+        });
+
+        // 2. Bulk Add handler
+        trackingContainer.querySelector('#dr-tracking-add').addEventListener('click', async () => {
+            const input = trackingContainer.querySelector('#dr-tracking-input');
+            const rawVal = input.value.trim();
+            if (!rawVal) return;
+            
+            input.disabled = true;
+            const btnAdd = trackingContainer.querySelector('#dr-tracking-add');
+            btnAdd.textContent = '...';
+
+            // Split by comma, space or newline and filter empties
+            const pidsToAdd = rawVal.split(/[\s,]+/).filter(Boolean);
+            const newValidPids = [];
+            const duplicatePids = [];
+
+            const currentDeptPids = window.dr_data ? window.dr_data.map(p => p.mabn) : [];
+
+            pidsToAdd.forEach(pid => {
+                if (trackedState.pids.includes(pid)) {
+                    duplicatePids.push(pid);
+                } else if (currentDeptPids.includes(pid)) {
+                    const deptPt = window.dr_data.find(p => p.mabn === pid);
+                    const name = deptPt ? deptPt.hoten : pid;
+                    DialogManager.showToast(`Bệnh nhân ${name} đã có ở Khoa!`, { background: '#d32f2f' });
+                } else {
+                    newValidPids.push(pid);
+                }
+            });
+
+            if (newValidPids.length === 0) {
+                if (duplicatePids.length > 0) {
+                     DialogManager.showToast('Các PID này đã có trong danh sách theo dõi hoặc Khoa!', { background: '#ff9800' });
+                }
+                input.disabled = false;
+                btnAdd.textContent = 'Thêm';
+                return;
+            }
+
+            const newState = { pids: [...trackedState.pids, ...newValidPids], cache: trackedState.cache };
+            const success = await TrackedPatientService.updateTrackedState(trackedObj, newState);
+
+            if (success) {
+                trackedState.pids.push(...newValidPids);
+                badge.textContent = trackedState.pids.length;
+                input.value = '';
+                
+                // Fetch dynamically for the new PIDs
+                const fetchPromises = newValidPids.map(async pid => {
+                    try {
+                        const resStr = await ApiService.fetchPatientByPID(pid);
+                        const r = typeof resStr === 'string' ? JSON.parse(resStr) : resStr;
+                        if (r && r.data && r.data.length > 0) {
+                            const pt = r.data[0];
+                            pt.theodoi = true;
+                            return pt;
+                        } else {
+                            return { mabn: pid, error: true, _rawPid: true };
+                        }
+                    } catch (err) {
+                        return { mabn: pid, error: true, _rawPid: true };
+                    }
+                });
+
+                const fetchedNew = await Promise.all(fetchPromises);
+                const validNew = fetchedNew.filter(p => !p._rawPid);
+                
+                if (validNew.length > 0) {
+                    const PatientService = require('../services/patientService');
+                    const enrichedNew = await PatientService.enrichPatientDataWithChecklist(validNew);
+                    
+                    enrichedNew.forEach(pt => {
+                        const basicInfo = {
+                            hoten: pt.hoten || '',
+                            mabn: pt.mabn || '',
+                            chandoanvk: pt.chandoanvk || '',
+                            teN_PHONG: pt.teN_PHONG || pt.teN_GIUONG || '',
+                            phai: pt.phai,
+                            ngaysinh: pt.ngaysinh,
+                            pppt: (pt.checklistState && Array.isArray(pt.checklistState.phauThuatList) && pt.checklistState.phauThuatList.length > 0) ? pt.checklistState.phauThuatList[0].pppt : ''
+                        };
+                        trackedState.cache[pt.mabn] = basicInfo;
+                        activePatients.push(pt);
+                    });
+                    
+                    // Fire-and-forget back to save cache
+                    TrackedPatientService.updateTrackedState(trackedObj, trackedState);
+                }
+                
+                const dummyNew = fetchedNew.filter(p => p._rawPid);
+                dummyPatients.push(...dummyNew);
+
+                if (duplicatePids.length > 0) {
+                    alert('Đã thêm thành công, bỏ qua các PIDs trùng: ' + duplicatePids.join(', '));
+                }
+                renderUI();
+            } else {
+                alert('Có lỗi khi lưu bệnh nhân theo dõi!');
+            }
+            input.disabled = false;
+            btnAdd.textContent = 'Thêm';
+        });
+    }
+
+    async function removePatient(pid) {
+        if (!confirm(`Xóa PID ${pid} khỏi danh sách theo dõi?`)) return;
+
+        // Optimistic UI update
+        const oldPids = [...trackedState.pids];
+        trackedState.pids = trackedState.pids.filter(p => p !== pid);
+        badge.textContent = trackedState.pids.length;
+
+        activePatients = activePatients.filter(p => p.mabn !== pid);
+        dummyPatients = dummyPatients.filter(p => p.mabn !== pid);
+        // optional: delete cache too to save space
+        delete trackedState.cache[pid];
+        
+        renderUI();
+
+        const success = await TrackedPatientService.updateTrackedState(trackedObj, trackedState);
+        if (!success) {
+            alert('Có lỗi khi xóa bệnh nhân!');
+            // revert
+            trackedState.pids = oldPids;
+            badge.textContent = trackedState.pids.length;
+            loadDataAndRender(); // full reload to be safe
+        }
+    }
+
+    // Expose globally for context menu
+    window.dr_removeTrackedPatient = removePatient;
+
+    // Initialize network fetch in background
+    loadDataAndRender();
+}
+
+module.exports = { setupTrackingUI };
+
+},{"../pages/page.dashboard.support":27,"../services/apiService":32,"../services/patientService":35,"../services/reportService":36,"../services/trackedPatientService":40,"../utils/khoaUtils":49,"../utils/textUtils":54,"./cardTooltip":7,"./dialogManager":11}],22:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4780,7 +5476,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":31,"../utils/dateUtils":41,"../utils/globalFnUtils":43,"../utils/stateSync":48}],21:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":33,"../utils/dateUtils":44,"../utils/globalFnUtils":46,"../utils/stateSync":51}],23:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -4866,7 +5562,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 // otm-entry.js - Entry point for OTM content script
 (function() {
     'use strict';
@@ -4887,7 +5583,7 @@ module.exports = {
 
 })();
 
-},{"./otm.content.script":23}],23:[function(require,module,exports){
+},{"./otm.content.script":25}],25:[function(require,module,exports){
 // otm.content.js - Content script for OTM surgery data fetching
 (function() {
     'use strict';
@@ -5976,7 +6672,7 @@ module.exports = {
 
 })();
 
-},{}],24:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
@@ -5998,6 +6694,7 @@ const LoginHandler = require('../components/loginHandler');
 // Import newly refactored components
 const { removeAccents, hasAccents } = require('../utils/textUtils');
 const { createPatientInfoSection } = require('../components/patientInfoSection');
+const cardTooltip = require('../components/cardTooltip');
 const SidebarSession = require('../components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
 const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
@@ -6751,8 +7448,15 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         topBar.innerHTML = `
             <div class="dr-topbar-left" style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+                <div style="position:relative;">
+                    <button id="dr-tracking-btn" title="Danh sách bệnh nhân theo dõi khác khoa" style="height:38px; padding: 0 14px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; cursor:pointer; font-weight:700; color:#1976d2; display:flex; align-items:center; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.05); white-space:nowrap;">
+                        <i class="fas fa-user-clock"></i> Theo dõi
+                    </button>
+                    <span id="dr-tracking-badge" style="position:absolute; top:-6px; right:-6px; background:#d32f2f; color:#fff; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.2);">0</span>
+                </div>
                 <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh" 
-                    style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
+                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                    style="flex:1; min-width: 220px; height:38px; padding: 0 10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
             </div>
             <div class="dr-topbar-center" style="flex:0 0 auto; display:flex; justify-content:center; min-width:140px;">
                 <span id="dr-total-compact" style="display:inline-block; text-align:center; color:#0f172a; font-weight:700; white-space:nowrap; background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 10px; border-radius:9999px; min-width:110px;">0/0</span>
@@ -6767,9 +7471,9 @@ function showDashboardBenhNhanIfNeeded() {
                 
                 <!-- Premium View Dropdown -->
                 <div class="dr-view-dropdown" id="dr-view-dropdown-container">
-                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium">
-                        <span><i class="fas fa-eye" style="margin-right:8px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
-                        <i class="fas fa-chevron-down"></i>
+                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium" style="height:38px; display:flex; align-items:center; box-sizing:border-box; padding: 0 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-weight:600; color:#475569; gap:8px; cursor:pointer;">
+                        <span><i class="fas fa-eye" style="margin-right:0px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
+                        <i class="fas fa-chevron-down" style="font-size:0.8em; opacity:0.7;"></i>
                     </div>
                     <div class="dr-dropdown-menu">
                         <div class="dr-dropdown-item" data-view="grid">
@@ -6907,9 +7611,15 @@ function showDashboardBenhNhanIfNeeded() {
             container.appendChild(card);
         });
 
-        // Append top bar then container
+        // Introduce a generalized wrapper for ALL views so layout padding/margins apply consistently
+        const wrapper = document.createElement('div');
+        wrapper.id = 'dr-main-wrapper';
+        wrapper.style.cssText = 'transition: margin-left 0.2s ease; width: 100%; box-sizing: border-box;';
+        wrapper.appendChild(container);
+
+        // Append top bar then wrapper
         document.body.appendChild(topBar);
-        document.body.appendChild(container);
+        document.body.appendChild(wrapper);
 
         // Add bottom bar
         createBottomBar();
@@ -6921,6 +7631,14 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Setup Advanced Filter
         setupAdvancedFilter(topBar, () => applyFilter());
+
+        // Setup Tracking UI
+        try {
+            const { setupTrackingUI } = require('../components/trackingUI');
+            setupTrackingUI(topBar, wrapper, createPatientCard);
+        } catch (e) {
+            console.error('Lỗi khi setup Tracking UI:', e);
+        }
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
@@ -7247,6 +7965,9 @@ function showDashboardBenhNhanIfNeeded() {
         setTimeout(() => {
             preloadHXTForPatient(item);
         }, 0);
+
+        // Global hover tooltip
+        cardTooltip.attach(card, card);
 
         return card;
     }
@@ -7935,7 +8656,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/contextMenu":7,"../components/copyDienTienAI":8,"../components/copyMenu":9,"../components/dialogManager":10,"../components/displaySettings":11,"../components/hsbaDataFetcher":12,"../components/listView":14,"../components/loginHandler":15,"../components/modalManager":16,"../components/patientInfoSection":17,"../components/phauThuatHandlers":18,"../components/sidebarSession":19,"../services/apiService":30,"../services/checklistService":31,"../services/patientService":33,"../utils":39,"../utils/checklistUtils":40,"../utils/domUpdaters":42,"../utils/htmlUtils":45,"../utils/khoaUtils":46,"../utils/patientDataMapper":47,"../utils/surgeryUtils":49,"../utils/tagUtils":50,"../utils/textUtils":51,"../utils/uiUtils":52,"./page.dashboard.support":25}],25:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/cardTooltip":7,"../components/contextMenu":8,"../components/copyDienTienAI":9,"../components/copyMenu":10,"../components/dialogManager":11,"../components/displaySettings":12,"../components/hsbaDataFetcher":13,"../components/listView":15,"../components/loginHandler":16,"../components/modalManager":17,"../components/patientInfoSection":18,"../components/phauThuatHandlers":19,"../components/sidebarSession":20,"../components/trackingUI":21,"../services/apiService":32,"../services/checklistService":33,"../services/patientService":35,"../utils":42,"../utils/checklistUtils":43,"../utils/domUpdaters":45,"../utils/htmlUtils":48,"../utils/khoaUtils":49,"../utils/patientDataMapper":50,"../utils/surgeryUtils":52,"../utils/tagUtils":53,"../utils/textUtils":54,"../utils/uiUtils":55,"./page.dashboard.support":27}],27:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -8786,8 +9507,8 @@ function addGlobalStyles() {
 
             /* White cards (214, 215, 216) - giữ màu trắng khi in */
             .dr-card:not(.dr-blue) {
-                background: #0d8ae3ff !important;
-                border: 2px solid #c4490bff !important;
+                background: #fff !important;
+                border: 2px solid #ddd !important;
                 color: #000 !important;
             }
             /* Blue cards (các phòng khác) - giữ background blue khi in */
@@ -8812,6 +9533,51 @@ function addGlobalStyles() {
             .dr-card.xuatvienanimation::before,
             .dr-card.xuatvienanimation.dr-blue::before {
                 display: none !important;
+            }
+
+            /* Hỗ trợ in danh sách theo dõi */
+            #dr-tracking-container {
+                display: flex !important;
+                position: relative !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                max-height: none !important;
+                border: none !important;
+                border-top: 2px solid #333 !important;
+                box-shadow: none !important;
+                padding: 20px 0 !important;
+                margin-top: 40px !important;
+                page-break-before: always;
+                background: #fff !important;
+            }
+            #dr-tracking-scroll-area {
+                overflow: visible !important;
+                height: auto !important;
+                flex: none !important;
+            }
+            #dr-tracking-active-list {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 15px !important;
+                width: 100% !important;
+            }
+            .dr-card.dr-tracking-card {
+                max-height: none !important;
+                border: 1px solid #eee !important;
+                page-break-inside: avoid;
+            }
+            /* Ẩn phần nhập liệu và các nút toggle khi in */
+            #dr-tracking-container > div:nth-child(2),
+            #dr-tracking-toggle-mode,
+            #dr-tracking-copy-wrapper,
+            .dr-tracking-remove {
+                display: none !important;
+            }
+            #dr-tracking-container h4 {
+                font-size: 18px !important;
+                margin-bottom: 15px !important;
             }
         }
 
@@ -8906,10 +9672,9 @@ function addGlobalStyles() {
             display: grid;
             gap: 10px;
             padding: 15px;
-            width: 100vw;
+            width: 100%;
             box-sizing: border-box;
             overflow: hidden; /* No scroll requested */
-            margin: 0 !important;
         }
         .dr-fit-container .dr-card {
             min-width: 0 !important;
@@ -9054,6 +9819,91 @@ function addGlobalStyles() {
                  display: none !important;
             }
         }
+
+        /* Tracking UI Fit Cards (mimic fit container) with Hover Expansion */
+        #dr-tracking-active-list .dr-card {
+            background-color: #fff0f0 !important;
+            box-sizing: border-box !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 4px 6px !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            border-radius: 10px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+            position: relative;
+            max-height: 120px;
+            overflow: hidden !important;
+            transition: box-shadow 0.2s ease, max-height 0.3s ease;
+            z-index: 1;
+        }
+        #dr-tracking-active-list .dr-card .dr-room-label {
+            font-size: 1.1em;
+            padding-bottom: 2px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #1e88e5;
+        }
+        #dr-tracking-active-list .dr-card .dr-patient-name {
+            font-size: 1.1em;
+            font-weight: 800;
+            margin-bottom: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #0f172a;
+        }
+        #dr-tracking-active-list .dr-card .dr-patient-sub-info {
+            display: flex;
+            gap: 10px;
+            font-size: 0.85em;
+            color: #64748b;
+            margin-bottom: 2px;
+            font-weight: 500;
+        }
+        #dr-tracking-active-list .dr-card .dr-value {
+            font-size: 0.82em;
+            margin-bottom: 0px;
+            line-height: 1.2;
+            white-space: normal !important;
+            word-break: break-word;
+            overflow: hidden;
+            padding-top: 0;
+        }
+        #dr-tracking-active-list .dr-card .dr-diagnosis-line,
+        #dr-tracking-active-list .dr-card .dr-pt-info,
+        #dr-tracking-active-list .dr-card .dr-hxt-block {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            font-size: 0.85em;
+            white-space: normal !important;
+            margin-bottom: 1px;
+        }
+        #dr-tracking-active-list .ylenh-tags {
+            margin-top: 2px;
+            gap: 2px;
+            flex-wrap: wrap;
+            max-height: 2.2em;
+            overflow: hidden;
+        }
+        #dr-tracking-active-list .ylenh-tag {
+            font-size: 10px;
+            padding: 1px 4px;
+            line-height: 1.2;
+        }
+        #dr-tracking-active-list .dr-action-buttons {
+            transform: scale(0.85);
+            transform-origin: bottom right;
+            right: 8px !important;
+            bottom: 6px !important;
+        }
     `;
     document.head.appendChild(style);
 }
@@ -9103,7 +9953,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":10,"../services/apiService":30,"../services/reportService":34,"../utils/dateUtils":41}],26:[function(require,module,exports){
+},{"../components/dialogManager":11,"../services/apiService":32,"../services/reportService":36,"../utils/dateUtils":44}],28:[function(require,module,exports){
 // page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
@@ -9560,7 +10410,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":13,"../services/otm.token":32,"../services/surgeonSettingsService":37,"../utils/khoaUtils":46,"../utils/uiUtils":52}],27:[function(require,module,exports){
+},{"../components/khoaSelect":14,"../services/otm.token":34,"../services/surgeonSettingsService":39,"../utils/khoaUtils":49,"../utils/uiUtils":55}],29:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -9715,7 +10565,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":30,"../services/settingsService":36}],28:[function(require,module,exports){
+},{"../services/apiService":32,"../services/settingsService":38}],30:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
@@ -10078,7 +10928,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":29,"../services/settingsService":36,"../settings-open-world":38,"./page.settings-open-world":27}],29:[function(require,module,exports){
+},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":31,"../services/settingsService":38,"../settings-open-world":41,"./page.settings-open-world":29}],31:[function(require,module,exports){
 // page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
@@ -10469,7 +11319,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":32,"../services/surgeonSettingsService":37,"../utils/khoaUtils":46}],30:[function(require,module,exports){
+},{"../services/otm.token":34,"../services/surgeonSettingsService":39,"../utils/khoaUtils":49}],32:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -10556,6 +11406,47 @@ const ApiService = {
     },
 
     /**
+     * Fetch a specific patient's data by PID
+     */
+    async fetchPatientByPID(pid) {
+        try {
+            const formData = new FormData();
+            formData.append('loaibn', '');
+            formData.append('mabn', pid);
+            formData.append('tk', '0');
+            formData.append('cbAll', '1');
+
+            const response = await fetch('/ToDieuTri/Search', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': '*/*'
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            let data;
+            const contentType = response.headers.get('content-type');
+            
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+
+            return data;
+        } catch (error) {
+            console.error(`Lỗi khi lấy dữ liệu patient PID ${pid}:`, error);
+            throw error;
+        }
+    },
+
+    /**
      * Update checklist data
      */
     async updateChecklistData(oldData, checklistState, { signal } = {}) {
@@ -10626,7 +11517,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":46}],31:[function(require,module,exports){
+},{"../utils/khoaUtils":49}],33:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -10894,7 +11785,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":41,"./apiService":30,"./saveQueue":35}],32:[function(require,module,exports){
+},{"../utils/dateUtils":44,"./apiService":32,"./saveQueue":37}],34:[function(require,module,exports){
 // otm.token.js - OTM Token management service
 // This service manages OTM authentication tokens and direct API access
 
@@ -11411,7 +12302,7 @@ const OTMTokenService = {
 
 module.exports = OTMTokenService;
 
-},{"./apiService":30}],33:[function(require,module,exports){
+},{"./apiService":32}],35:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
@@ -11636,7 +12527,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":15,"../pages/page.dashboard.support":25,"../utils/patientDataMapper":47,"./checklistService":31}],34:[function(require,module,exports){
+},{"../components/loginHandler":16,"../pages/page.dashboard.support":27,"../utils/patientDataMapper":50,"./checklistService":33}],36:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -11897,7 +12788,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":41,"../utils/htmlUtils":45,"../utils/patientDataMapper":47,"../utils/surgeryUtils":49,"./checklistService":31}],35:[function(require,module,exports){
+},{"../utils/dateUtils":44,"../utils/htmlUtils":48,"../utils/patientDataMapper":50,"../utils/surgeryUtils":52,"./checklistService":33}],37:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -11961,7 +12852,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],36:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -12103,7 +12994,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":46,"./apiService":30}],37:[function(require,module,exports){
+},{"../utils/khoaUtils":49,"./apiService":32}],39:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -12198,14 +13089,108 @@ const SurgeonSettingsService = {
 
 module.exports = SurgeonSettingsService;
 
-},{"./apiService":30}],38:[function(require,module,exports){
+},{"./apiService":32}],40:[function(require,module,exports){
+// trackedPatientService.js - Manage tracked patients (from other departments)
+
+const ApiService = require('./apiService');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
+
+const TrackedPatientService = {
+    async loadTrackedPhieu(deptId) {
+        const mabn = `${deptId}theodoi`;
+        const formData = new FormData();
+        formData.append('mabn', mabn);
+        // very wide range
+        formData.append('tungay', '01/01/1001 01:01');
+        formData.append('denngay', '01/01/3001 01:01');
+
+        const resp = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        const result = await resp.json();
+        const data = (result && result.data) || [];
+        const found = data.find(item => item && item.mabn === mabn && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        return found;
+    },
+
+    parseTrackedState(checklistObj) {
+        if (!checklistObj || !checklistObj.chuky) return { pids: [], cache: {} };
+        try {
+            const parsed = JSON.parse(checklistObj.chuky);
+            return {
+                pids: Array.isArray(parsed?.pids) ? parsed.pids : [],
+                cache: (parsed && typeof parsed.cache === 'object') ? parsed.cache : {}
+            };
+        } catch {
+            return { pids: [], cache: {} };
+        }
+    },
+
+    async createTrackedPhieu(deptId) {
+        const mabn = `${deptId}theodoi`;
+        const formData = new FormData();
+        formData.append('status', '1');
+        formData.append('thebaohiemyte', 'Không');
+        formData.append('chuky', JSON.stringify({ pids: [], cache: {} }));
+        formData.append('khac', '--*--');
+        formData.append('khu', '1');
+        formData.append('mabn', mabn);
+        formData.append('bieumauid', '027');
+        formData.append('makp', deptId);
+        formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
+        formData.append('actiontype', '');
+        formData.append('hoten', `${mabn}%`);
+        formData.append('ngaysinh', '10/10/1999');
+        formData.append('gioitinh', 'Nam');
+
+        const response = await fetch('/ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN/CreateAjax', {
+            method: 'POST',
+            credentials: 'include',
+            body: formData
+        });
+        return response.json();
+    },
+
+    async updateTrackedState(oldData, state) {
+        try {
+            const res = await ApiService.updateChecklistData(oldData, state);
+            return res && (res.Status == 1 || res.isValid);
+        } catch (e) {
+            console.error('Failed to update tracked patients state:', e);
+            return false;
+        }
+    },
+
+    async getOrCreateTrackedPatients(deptId) {
+        if (!deptId) return { checklistObj: null, pids: [] };
+        
+        let checklistObj = await this.loadTrackedPhieu(deptId);
+        if (!checklistObj) {
+            const created = await this.createTrackedPhieu(deptId);
+            if (created && created.isValid && created.data) {
+                checklistObj = await this.loadTrackedPhieu(deptId);
+            }
+        }
+        
+        const state = checklistObj ? this.parseTrackedState(checklistObj) : { pids: [], cache: {} };
+        if (!Array.isArray(state.pids)) state.pids = [];
+        if (typeof state.cache !== 'object') state.cache = {};
+        return { checklistObj, pids: state.pids, cache: state.cache };
+    }
+};
+
+module.exports = TrackedPatientService;
+
+},{"../utils/khoaUtils":49,"./apiService":32}],41:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
 // This allows requiring '../settings-open-world' from files inside src/pages
 module.exports = require('./pages/page.settings-open-world');
 
-},{"./pages/page.settings-open-world":27}],39:[function(require,module,exports){
+},{"./pages/page.settings-open-world":29}],42:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -12300,7 +13285,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],40:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -12460,7 +13445,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":31,"./uiUtils":52}],41:[function(require,module,exports){
+},{"../services/checklistService":33,"./uiUtils":55}],44:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -12548,7 +13533,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],42:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -12665,7 +13650,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":45,"./surgeryUtils":49,"./tagUtils":50}],43:[function(require,module,exports){
+},{"./htmlUtils":48,"./surgeryUtils":52,"./tagUtils":53}],46:[function(require,module,exports){
 // globalFnUtils.js - Helper to call functions that may live on multiple global scopes
 // (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
 
@@ -12697,7 +13682,7 @@ function callGlobalFn(fnName, ...args) {
 
 module.exports = { callGlobalFn };
 
-},{}],44:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -12941,7 +13926,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],45:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -12956,7 +13941,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],46:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -12972,7 +13957,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],47:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -13223,7 +14208,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],48:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 // stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
 
 /**
@@ -13242,7 +14227,7 @@ function syncPatientStateToGlobal(mabn, newState) {
 
 module.exports = { syncPatientStateToGlobal };
 
-},{}],49:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -13525,7 +14510,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],50:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -13796,7 +14781,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],51:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],54:[function(require,module,exports){
 /**
  * Normalizes Vietnamese text by removing diacritics/accents
  * @param {string} str - The string to normalize
@@ -13830,7 +14815,7 @@ module.exports = {
     hasAccents
 };
 
-},{}],52:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

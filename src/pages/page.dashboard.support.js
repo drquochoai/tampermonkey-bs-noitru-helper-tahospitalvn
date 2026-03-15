@@ -848,8 +848,8 @@ function addGlobalStyles() {
 
             /* White cards (214, 215, 216) - giữ màu trắng khi in */
             .dr-card:not(.dr-blue) {
-                background: #0d8ae3ff !important;
-                border: 2px solid #c4490bff !important;
+                background: #fff !important;
+                border: 2px solid #ddd !important;
                 color: #000 !important;
             }
             /* Blue cards (các phòng khác) - giữ background blue khi in */
@@ -874,6 +874,51 @@ function addGlobalStyles() {
             .dr-card.xuatvienanimation::before,
             .dr-card.xuatvienanimation.dr-blue::before {
                 display: none !important;
+            }
+
+            /* Hỗ trợ in danh sách theo dõi */
+            #dr-tracking-container {
+                display: flex !important;
+                position: relative !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: auto !important;
+                max-height: none !important;
+                border: none !important;
+                border-top: 2px solid #333 !important;
+                box-shadow: none !important;
+                padding: 20px 0 !important;
+                margin-top: 40px !important;
+                page-break-before: always;
+                background: #fff !important;
+            }
+            #dr-tracking-scroll-area {
+                overflow: visible !important;
+                height: auto !important;
+                flex: none !important;
+            }
+            #dr-tracking-active-list {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 15px !important;
+                width: 100% !important;
+            }
+            .dr-card.dr-tracking-card {
+                max-height: none !important;
+                border: 1px solid #eee !important;
+                page-break-inside: avoid;
+            }
+            /* Ẩn phần nhập liệu và các nút toggle khi in */
+            #dr-tracking-container > div:nth-child(2),
+            #dr-tracking-toggle-mode,
+            #dr-tracking-copy-wrapper,
+            .dr-tracking-remove {
+                display: none !important;
+            }
+            #dr-tracking-container h4 {
+                font-size: 18px !important;
+                margin-bottom: 15px !important;
             }
         }
 
@@ -968,10 +1013,9 @@ function addGlobalStyles() {
             display: grid;
             gap: 10px;
             padding: 15px;
-            width: 100vw;
+            width: 100%;
             box-sizing: border-box;
             overflow: hidden; /* No scroll requested */
-            margin: 0 !important;
         }
         .dr-fit-container .dr-card {
             min-width: 0 !important;
@@ -1115,6 +1159,91 @@ function addGlobalStyles() {
         }
                  display: none !important;
             }
+        }
+
+        /* Tracking UI Fit Cards (mimic fit container) with Hover Expansion */
+        #dr-tracking-active-list .dr-card {
+            background-color: #fff0f0 !important;
+            box-sizing: border-box !important;
+            min-width: 0 !important;
+            max-width: none !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 4px 6px !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            border-radius: 10px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+            position: relative;
+            max-height: 120px;
+            overflow: hidden !important;
+            transition: box-shadow 0.2s ease, max-height 0.3s ease;
+            z-index: 1;
+        }
+        #dr-tracking-active-list .dr-card .dr-room-label {
+            font-size: 1.1em;
+            padding-bottom: 2px;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #1e88e5;
+        }
+        #dr-tracking-active-list .dr-card .dr-patient-name {
+            font-size: 1.1em;
+            font-weight: 800;
+            margin-bottom: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #0f172a;
+        }
+        #dr-tracking-active-list .dr-card .dr-patient-sub-info {
+            display: flex;
+            gap: 10px;
+            font-size: 0.85em;
+            color: #64748b;
+            margin-bottom: 2px;
+            font-weight: 500;
+        }
+        #dr-tracking-active-list .dr-card .dr-value {
+            font-size: 0.82em;
+            margin-bottom: 0px;
+            line-height: 1.2;
+            white-space: normal !important;
+            word-break: break-word;
+            overflow: hidden;
+            padding-top: 0;
+        }
+        #dr-tracking-active-list .dr-card .dr-diagnosis-line,
+        #dr-tracking-active-list .dr-card .dr-pt-info,
+        #dr-tracking-active-list .dr-card .dr-hxt-block {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            overflow: hidden;
+            font-size: 0.85em;
+            white-space: normal !important;
+            margin-bottom: 1px;
+        }
+        #dr-tracking-active-list .ylenh-tags {
+            margin-top: 2px;
+            gap: 2px;
+            flex-wrap: wrap;
+            max-height: 2.2em;
+            overflow: hidden;
+        }
+        #dr-tracking-active-list .ylenh-tag {
+            font-size: 10px;
+            padding: 1px 4px;
+            line-height: 1.2;
+        }
+        #dr-tracking-active-list .dr-action-buttons {
+            transform: scale(0.85);
+            transform-origin: bottom right;
+            right: 8px !important;
+            bottom: 6px !important;
         }
     `;
     document.head.appendChild(style);

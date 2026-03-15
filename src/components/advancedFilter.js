@@ -40,7 +40,8 @@ function setupAdvancedFilter(topBar, onApply) {
     filterBtn.id = 'dr-advanced-filter-btn';
     filterBtn.title = 'Lọc nâng cao theo Y lệnh, Phẫu thuật...';
     filterBtn.style.cssText = `
-        padding: 8px 12px;
+        height: 38px;
+        padding: 0 12px;
         border: 1px solid #cbd5e1;
         border-radius: 8px;
         background: #f8fafc;
@@ -51,6 +52,7 @@ function setupAdvancedFilter(topBar, onApply) {
         font-weight: 600;
         color: #475569;
         transition: all 0.2s;
+        white-space: nowrap;
     `;
     filterBtn.innerHTML = '<i class="fas fa-filter"></i> Lọc nâng cao <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span>';
     

@@ -43,6 +43,11 @@ class ContextMenu {
             <div class="dr-context-menu-item" id="ctx-hsba">
                 <span>🏥</span> Mở HSBAv2
             </div>
+            ${patient.theodoi ? `
+            <div class="dr-context-menu-item" id="ctx-remove-tracking" style="color:#d32f2f; border-top:1px solid #eee;">
+                <span>❌</span> Xóa khỏi DS theo dõi
+            </div>
+            ` : ''}
         `;
 
         menu.style.left = `${e.clientX}px`;
@@ -100,6 +105,19 @@ class ContextMenu {
                 }
             }
         };
+        
+        if (patient.theodoi) {
+            const rmItem = menu.querySelector('#ctx-remove-tracking');
+            if (rmItem) {
+                rmItem.onclick = async (evt) => {
+                    evt.stopPropagation();
+                    this.hide();
+                    if (typeof window.dr_removeTrackedPatient === 'function') {
+                        await window.dr_removeTrackedPatient(patient.mabn);
+                    }
+                };
+            }
+        }
     }
     
     attachToCard(card, patient) {

@@ -18,6 +18,7 @@ const LoginHandler = require('../components/loginHandler');
 // Import newly refactored components
 const { removeAccents, hasAccents } = require('../utils/textUtils');
 const { createPatientInfoSection } = require('../components/patientInfoSection');
+const cardTooltip = require('../components/cardTooltip');
 const SidebarSession = require('../components/sidebarSession');
 const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneBadge } = require('../utils/tagUtils');
 const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
@@ -771,8 +772,15 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         topBar.innerHTML = `
             <div class="dr-topbar-left" style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
+                <div style="position:relative;">
+                    <button id="dr-tracking-btn" title="Danh sách bệnh nhân theo dõi khác khoa" style="height:38px; padding: 0 14px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; cursor:pointer; font-weight:700; color:#1976d2; display:flex; align-items:center; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.05); white-space:nowrap;">
+                        <i class="fas fa-user-clock"></i> Theo dõi
+                    </button>
+                    <span id="dr-tracking-badge" style="position:absolute; top:-6px; right:-6px; background:#d32f2f; color:#fff; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.2);">0</span>
+                </div>
                 <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh" 
-                    style="flex:1; min-width: 220px; padding: 8px 10px; border:1px solid #ddd; border-radius:6px;">
+                    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                    style="flex:1; min-width: 220px; height:38px; padding: 0 10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
             </div>
             <div class="dr-topbar-center" style="flex:0 0 auto; display:flex; justify-content:center; min-width:140px;">
                 <span id="dr-total-compact" style="display:inline-block; text-align:center; color:#0f172a; font-weight:700; white-space:nowrap; background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 10px; border-radius:9999px; min-width:110px;">0/0</span>
@@ -787,9 +795,9 @@ function showDashboardBenhNhanIfNeeded() {
                 
                 <!-- Premium View Dropdown -->
                 <div class="dr-view-dropdown" id="dr-view-dropdown-container">
-                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium">
-                        <span><i class="fas fa-eye" style="margin-right:8px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
-                        <i class="fas fa-chevron-down"></i>
+                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium" style="height:38px; display:flex; align-items:center; box-sizing:border-box; padding: 0 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-weight:600; color:#475569; gap:8px; cursor:pointer;">
+                        <span><i class="fas fa-eye" style="margin-right:0px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
+                        <i class="fas fa-chevron-down" style="font-size:0.8em; opacity:0.7;"></i>
                     </div>
                     <div class="dr-dropdown-menu">
                         <div class="dr-dropdown-item" data-view="grid">
@@ -927,9 +935,15 @@ function showDashboardBenhNhanIfNeeded() {
             container.appendChild(card);
         });
 
-        // Append top bar then container
+        // Introduce a generalized wrapper for ALL views so layout padding/margins apply consistently
+        const wrapper = document.createElement('div');
+        wrapper.id = 'dr-main-wrapper';
+        wrapper.style.cssText = 'transition: margin-left 0.2s ease; width: 100%; box-sizing: border-box;';
+        wrapper.appendChild(container);
+
+        // Append top bar then wrapper
         document.body.appendChild(topBar);
-        document.body.appendChild(container);
+        document.body.appendChild(wrapper);
 
         // Add bottom bar
         createBottomBar();
@@ -941,6 +955,14 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Setup Advanced Filter
         setupAdvancedFilter(topBar, () => applyFilter());
+
+        // Setup Tracking UI
+        try {
+            const { setupTrackingUI } = require('../components/trackingUI');
+            setupTrackingUI(topBar, wrapper, createPatientCard);
+        } catch (e) {
+            console.error('Lỗi khi setup Tracking UI:', e);
+        }
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
@@ -1267,6 +1289,9 @@ function showDashboardBenhNhanIfNeeded() {
         setTimeout(() => {
             preloadHXTForPatient(item);
         }, 0);
+
+        // Global hover tooltip
+        cardTooltip.attach(card, card);
 
         return card;
     }

@@ -84,6 +84,47 @@ const ApiService = {
     },
 
     /**
+     * Fetch a specific patient's data by PID
+     */
+    async fetchPatientByPID(pid) {
+        try {
+            const formData = new FormData();
+            formData.append('loaibn', '');
+            formData.append('mabn', pid);
+            formData.append('tk', '0');
+            formData.append('cbAll', '1');
+
+            const response = await fetch('/ToDieuTri/Search', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': '*/*'
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            let data;
+            const contentType = response.headers.get('content-type');
+            
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+
+            return data;
+        } catch (error) {
+            console.error(`Lỗi khi lấy dữ liệu patient PID ${pid}:`, error);
+            throw error;
+        }
+    },
+
+    /**
      * Update checklist data
      */
     async updateChecklistData(oldData, checklistState, { signal } = {}) {

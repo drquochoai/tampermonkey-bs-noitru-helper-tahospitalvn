@@ -38,7 +38,19 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
 (function () {
     'use strict';
 
+    // Auto-redirect to dashboard if login was just successful and auto-login is enabled
+    const isRootPage = window.location.pathname === '/' || window.location.pathname === '';
+    const isAutoLoginEnabled = window.localStorage && window.localStorage.getItem('dr_acc_autologin') === '1';
+    const loginFlag = window.sessionStorage && window.sessionStorage.getItem('bsnt_login_clicked');
+
+    if (isRootPage && isAutoLoginEnabled && loginFlag) {
+        window.sessionStorage.removeItem('bsnt_login_clicked');
+        window.location.href = '/?nln';
+        return;
+    }
+
     const Utils = require('./utils');
+
     // Ensure HSBA background worker runs on hsba.tahospital.vn when this bundle is injected there
     try { require('./components/hsbaDataFetcher'); } catch(_) {}
     // Ensure OTM entry runs on otm.tahospital.vn when this bundle is injected there
@@ -132,10 +144,12 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
             }
             if (acc && localStorage.getItem(AUTO_KEY) === '1' && userInput && passInput && submitBtn) {
                 setTimeout(() => {
+                    window.sessionStorage.setItem('bsnt_login_clicked', '1');
                     submitBtn.click();
                     setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
                 }, 200);
             } else if (localStorage.getItem(AUTO_KEY) !== '1') {
+
                 // Render account picker panel to the right of login card
                 try {
                     const ensurePanel = () => {
@@ -171,10 +185,12 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
                                 if (userInput && passInput && submitBtn) {
                                     userInput.value = a.username || '';
                                     passInput.value = a.password || '';
+                                    window.sessionStorage.setItem('bsnt_login_clicked', '1');
                                     submitBtn.click();
                                     setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
                                 }
                             });
+
                             panel.appendChild(btn);
                         });
 

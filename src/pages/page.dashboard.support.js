@@ -842,8 +842,20 @@ function addGlobalStyles() {
         }
         
         @media print {
-            .no-print { 
+            .no-print,
+            .dr-action-buttons,
+            #dr-global-card-tooltip { 
                 display: none !important; 
+            }
+
+            /* Layout for side-by-side columns */
+            body {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                align-items: flex-start !important;
+                padding: 0 !important;
+                margin: 0 !important;
             }
 
             /* White cards (214, 215, 216) - giữ màu trắng khi in */
@@ -861,9 +873,42 @@ function addGlobalStyles() {
             .dr-card h2 {
                 color: #000 !important;
             }
-            .dr-bottom-bar, .dr-top-filter-bar {
+            
+            /* Hide dashboard controls but keep layout structure for children */
+            .dr-bottom-bar, .dr-topbar-center, .dr-topbar-right, 
+            #dr-search-input, #dr-tracking-btn, #dr-tracking-badge,
+            .dr-view-dropdown, .dr-view-toggle {
                 display: none !important;
             }
+            
+            /* Allow tracking container to be visible during print if it's actually open */
+            .dr-top-filter-bar, .dr-topbar-left {
+                display: block !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                height: auto !important;
+                background: transparent !important;
+                flex: 0 0 100% !important; /* Default to full width for top elements */
+            }
+
+            /* When tracking is open, it acts as a sidebar */
+            body:has(#dr-tracking-container.dr-tracking-open:not(.dr-tracking-empty)) .dr-top-filter-bar {
+                flex: 0 0 300px !important;
+                width: 300px !important;
+                margin-right: 20px !important;
+            }
+            body:has(#dr-tracking-container.dr-tracking-open:not(.dr-tracking-empty)) #dr-main-wrapper {
+                flex: 1 !important;
+                width: calc(100% - 320px) !important;
+            }
+
+            #dr-main-wrapper {
+                flex: 0 0 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+            }
+
             /* Tắt animation khi in */
             .dr-card.xuatvienanimation,
             .dr-card.xuatvienanimation.dr-blue {
@@ -876,22 +921,26 @@ function addGlobalStyles() {
                 display: none !important;
             }
 
-            /* Hỗ trợ in danh sách theo dõi */
-            #dr-tracking-container {
+            /* Hỗ trợ in danh sách theo dõi - Chỉ in nếu có class dr-tracking-open và không empty */
+            #dr-tracking-container:not(.dr-tracking-open),
+            #dr-tracking-container.dr-tracking-empty {
+                display: none !important;
+            }
+
+            #dr-tracking-container.dr-tracking-open {
                 display: flex !important;
-                position: relative !important;
-                top: 0 !important;
-                left: 0 !important;
+                position: static !important;
                 width: 100% !important;
                 height: auto !important;
                 max-height: none !important;
-                border: none !important;
-                border-top: 2px solid #333 !important;
+                border: 1px solid #ddd !important;
+                border-radius: 8px !important;
                 box-shadow: none !important;
-                padding: 20px 0 !important;
-                margin-top: 40px !important;
-                page-break-before: always;
+                padding: 12px !important;
+                margin: 0 !important;
+                page-break-before: auto !important;
                 background: #fff !important;
+                flex-direction: column !important;
             }
             #dr-tracking-scroll-area {
                 overflow: visible !important;
@@ -900,8 +949,8 @@ function addGlobalStyles() {
             }
             #dr-tracking-active-list {
                 display: grid !important;
-                grid-template-columns: repeat(2, 1fr) !important;
-                gap: 15px !important;
+                grid-template-columns: 1fr !important; /* Multi-column in small sidebar is too cramped, stick to 1 */
+                gap: 10px !important;
                 width: 100% !important;
             }
             .dr-card.dr-tracking-card {
@@ -913,12 +962,13 @@ function addGlobalStyles() {
             #dr-tracking-container > div:nth-child(2),
             #dr-tracking-toggle-mode,
             #dr-tracking-copy-wrapper,
-            .dr-tracking-remove {
+            .dr-tracking-remove,
+            .dr-tracking-bulk-remove {
                 display: none !important;
             }
             #dr-tracking-container h4 {
-                font-size: 18px !important;
-                margin-bottom: 15px !important;
+                font-size: 16px !important;
+                margin-bottom: 10px !important;
             }
         }
 

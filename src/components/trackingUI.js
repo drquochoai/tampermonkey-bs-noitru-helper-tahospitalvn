@@ -37,6 +37,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
     let isTrackingOpen = localStorage.getItem('dr_tracking_is_open') === 'true';
     if (isTrackingOpen) {
         trackingContainer.style.display = 'flex';
+        trackingContainer.classList.add('dr-tracking-open');
         // Need to wait for DOM insertion and layout init
         requestAnimationFrame(() => updateLayoutStyle());
     }
@@ -89,6 +90,12 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
         const isVisible = trackingContainer.style.display === 'flex';
         trackingContainer.style.display = isVisible ? 'none' : 'flex';
         
+        if (trackingContainer.style.display === 'flex') {
+            trackingContainer.classList.add('dr-tracking-open');
+        } else {
+            trackingContainer.classList.remove('dr-tracking-open');
+        }
+
         // 1. State Persistence
         localStorage.setItem('dr_tracking_is_open', trackingContainer.style.display === 'flex');
 
@@ -102,6 +109,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
     document.addEventListener('click', (e) => {
         if (!isSidebarMode && trackingContainer.style.display === 'flex' && !btn.parentElement.contains(e.target) && !trackingContainer.contains(e.target)) {
             trackingContainer.style.display = 'none';
+            trackingContainer.classList.remove('dr-tracking-open');
             localStorage.setItem('dr_tracking_is_open', false);
         }
     });
@@ -202,6 +210,19 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
     }
 
     function renderUI() {
+        const isEmpty = activePatients.length === 0;
+        if (isEmpty) {
+            trackingContainer.classList.add('dr-tracking-empty');
+            // If empty, force back to popup mode if currently in sidebar
+            if (isSidebarMode) {
+                isSidebarMode = false;
+                localStorage.setItem('dr_tracking_sidebar', false);
+                updateLayoutStyle();
+            }
+        } else {
+            trackingContainer.classList.remove('dr-tracking-empty');
+        }
+
         trackingContainer.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:8px; flex-shrink:0;">
                 <h4 style="margin:0; color:#1976d2; font-size:15px;"><i class="fas fa-user-clock"></i> Bệnh nhân đang theo dõi</h4>
@@ -246,6 +267,10 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
         `;
 
         trackingContainer.querySelector('#dr-tracking-toggle-mode').addEventListener('click', () => {
+            if (activePatients.length === 0 && !isSidebarMode) {
+                DialogManager.showToast('Danh sách trống, chỉ có thể hiển thị dạng popup!', { background: '#ff9800' });
+                return;
+            }
             isSidebarMode = !isSidebarMode;
             localStorage.setItem('dr_tracking_sidebar', isSidebarMode);
             updateLayoutStyle();

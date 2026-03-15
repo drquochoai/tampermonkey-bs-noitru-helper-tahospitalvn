@@ -89,6 +89,7 @@ class ContextMenu {
 
         menu.querySelector('#ctx-tdt').onclick = (evt) => {
             evt.stopPropagation();
+            this.hide();
             if (patient.mabn) {
                 window.open(`/to-dieu-tri?mabn=${encodeURIComponent(patient.mabn)}`, '_blank');
             }
@@ -96,6 +97,7 @@ class ContextMenu {
 
         menu.querySelector('#ctx-hsba').onclick = (evt) => {
             evt.stopPropagation();
+            this.hide();
             if (patient.mabn) {
                 try {
                     const { openHSBAV2Link } = require('./actionButtons');

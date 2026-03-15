@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      1.9.9
+// @version      2.0.001
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -438,7 +438,19 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
 (function () {
     'use strict';
 
+    // Auto-redirect to dashboard if login was just successful and auto-login is enabled
+    const isRootPage = window.location.pathname === '/' || window.location.pathname === '';
+    const isAutoLoginEnabled = window.localStorage && window.localStorage.getItem('dr_acc_autologin') === '1';
+    const loginFlag = window.sessionStorage && window.sessionStorage.getItem('bsnt_login_clicked');
+
+    if (isRootPage && isAutoLoginEnabled && loginFlag) {
+        window.sessionStorage.removeItem('bsnt_login_clicked');
+        window.location.href = '/?nln';
+        return;
+    }
+
     const Utils = require('./utils');
+
     // Ensure HSBA background worker runs on hsba.tahospital.vn when this bundle is injected there
     try { require('./components/hsbaDataFetcher'); } catch(_) {}
     // Ensure OTM entry runs on otm.tahospital.vn when this bundle is injected there
@@ -532,10 +544,12 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
             }
             if (acc && localStorage.getItem(AUTO_KEY) === '1' && userInput && passInput && submitBtn) {
                 setTimeout(() => {
+                    window.sessionStorage.setItem('bsnt_login_clicked', '1');
                     submitBtn.click();
                     setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
                 }, 200);
             } else if (localStorage.getItem(AUTO_KEY) !== '1') {
+
                 // Render account picker panel to the right of login card
                 try {
                     const ensurePanel = () => {
@@ -571,10 +585,12 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
                                 if (userInput && passInput && submitBtn) {
                                     userInput.value = a.username || '';
                                     passInput.value = a.password || '';
+                                    window.sessionStorage.setItem('bsnt_login_clicked', '1');
                                     submitBtn.click();
                                     setTimeout(() => { try { window.location.href = '/?nln'; } catch(_) {} }, 1500);
                                 }
                             });
+
                             panel.appendChild(btn);
                         });
 
@@ -1699,6 +1715,7 @@ class ContextMenu {
 
         menu.querySelector('#ctx-tdt').onclick = (evt) => {
             evt.stopPropagation();
+            this.hide();
             if (patient.mabn) {
                 window.open(`/to-dieu-tri?mabn=${encodeURIComponent(patient.mabn)}`, '_blank');
             }
@@ -1706,6 +1723,7 @@ class ContextMenu {
 
         menu.querySelector('#ctx-hsba').onclick = (evt) => {
             evt.stopPropagation();
+            this.hide();
             if (patient.mabn) {
                 try {
                     const { openHSBAV2Link } = require('./actionButtons');
@@ -4461,6 +4479,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
     let isTrackingOpen = localStorage.getItem('dr_tracking_is_open') === 'true';
     if (isTrackingOpen) {
         trackingContainer.style.display = 'flex';
+        trackingContainer.classList.add('dr-tracking-open');
         // Need to wait for DOM insertion and layout init
         requestAnimationFrame(() => updateLayoutStyle());
     }
@@ -4513,6 +4532,12 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
         const isVisible = trackingContainer.style.display === 'flex';
         trackingContainer.style.display = isVisible ? 'none' : 'flex';
         
+        if (trackingContainer.style.display === 'flex') {
+            trackingContainer.classList.add('dr-tracking-open');
+        } else {
+            trackingContainer.classList.remove('dr-tracking-open');
+        }
+
         // 1. State Persistence
         localStorage.setItem('dr_tracking_is_open', trackingContainer.style.display === 'flex');
 
@@ -4526,6 +4551,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
     document.addEventListener('click', (e) => {
         if (!isSidebarMode && trackingContainer.style.display === 'flex' && !btn.parentElement.contains(e.target) && !trackingContainer.contains(e.target)) {
             trackingContainer.style.display = 'none';
+            trackingContainer.classList.remove('dr-tracking-open');
             localStorage.setItem('dr_tracking_is_open', false);
         }
     });
@@ -4626,6 +4652,19 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
     }
 
     function renderUI() {
+        const isEmpty = activePatients.length === 0;
+        if (isEmpty) {
+            trackingContainer.classList.add('dr-tracking-empty');
+            // If empty, force back to popup mode if currently in sidebar
+            if (isSidebarMode) {
+                isSidebarMode = false;
+                localStorage.setItem('dr_tracking_sidebar', false);
+                updateLayoutStyle();
+            }
+        } else {
+            trackingContainer.classList.remove('dr-tracking-empty');
+        }
+
         trackingContainer.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #eee; padding-bottom:8px; flex-shrink:0;">
                 <h4 style="margin:0; color:#1976d2; font-size:15px;"><i class="fas fa-user-clock"></i> Bệnh nhân đang theo dõi</h4>
@@ -4670,6 +4709,10 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
         `;
 
         trackingContainer.querySelector('#dr-tracking-toggle-mode').addEventListener('click', () => {
+            if (activePatients.length === 0 && !isSidebarMode) {
+                DialogManager.showToast('Danh sách trống, chỉ có thể hiển thị dạng popup!', { background: '#ff9800' });
+                return;
+            }
             isSidebarMode = !isSidebarMode;
             localStorage.setItem('dr_tracking_sidebar', isSidebarMode);
             updateLayoutStyle();
@@ -9501,8 +9544,20 @@ function addGlobalStyles() {
         }
         
         @media print {
-            .no-print { 
+            .no-print,
+            .dr-action-buttons,
+            #dr-global-card-tooltip { 
                 display: none !important; 
+            }
+
+            /* Layout for side-by-side columns */
+            body {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: wrap !important;
+                align-items: flex-start !important;
+                padding: 0 !important;
+                margin: 0 !important;
             }
 
             /* White cards (214, 215, 216) - giữ màu trắng khi in */
@@ -9520,9 +9575,42 @@ function addGlobalStyles() {
             .dr-card h2 {
                 color: #000 !important;
             }
-            .dr-bottom-bar, .dr-top-filter-bar {
+            
+            /* Hide dashboard controls but keep layout structure for children */
+            .dr-bottom-bar, .dr-topbar-center, .dr-topbar-right, 
+            #dr-search-input, #dr-tracking-btn, #dr-tracking-badge,
+            .dr-view-dropdown, .dr-view-toggle {
                 display: none !important;
             }
+            
+            /* Allow tracking container to be visible during print if it's actually open */
+            .dr-top-filter-bar, .dr-topbar-left {
+                display: block !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                height: auto !important;
+                background: transparent !important;
+                flex: 0 0 100% !important; /* Default to full width for top elements */
+            }
+
+            /* When tracking is open, it acts as a sidebar */
+            body:has(#dr-tracking-container.dr-tracking-open:not(.dr-tracking-empty)) .dr-top-filter-bar {
+                flex: 0 0 300px !important;
+                width: 300px !important;
+                margin-right: 20px !important;
+            }
+            body:has(#dr-tracking-container.dr-tracking-open:not(.dr-tracking-empty)) #dr-main-wrapper {
+                flex: 1 !important;
+                width: calc(100% - 320px) !important;
+            }
+
+            #dr-main-wrapper {
+                flex: 0 0 100% !important;
+                width: 100% !important;
+                margin: 0 !important;
+            }
+
             /* Tắt animation khi in */
             .dr-card.xuatvienanimation,
             .dr-card.xuatvienanimation.dr-blue {
@@ -9535,22 +9623,26 @@ function addGlobalStyles() {
                 display: none !important;
             }
 
-            /* Hỗ trợ in danh sách theo dõi */
-            #dr-tracking-container {
+            /* Hỗ trợ in danh sách theo dõi - Chỉ in nếu có class dr-tracking-open và không empty */
+            #dr-tracking-container:not(.dr-tracking-open),
+            #dr-tracking-container.dr-tracking-empty {
+                display: none !important;
+            }
+
+            #dr-tracking-container.dr-tracking-open {
                 display: flex !important;
-                position: relative !important;
-                top: 0 !important;
-                left: 0 !important;
+                position: static !important;
                 width: 100% !important;
                 height: auto !important;
                 max-height: none !important;
-                border: none !important;
-                border-top: 2px solid #333 !important;
+                border: 1px solid #ddd !important;
+                border-radius: 8px !important;
                 box-shadow: none !important;
-                padding: 20px 0 !important;
-                margin-top: 40px !important;
-                page-break-before: always;
+                padding: 12px !important;
+                margin: 0 !important;
+                page-break-before: auto !important;
                 background: #fff !important;
+                flex-direction: column !important;
             }
             #dr-tracking-scroll-area {
                 overflow: visible !important;
@@ -9559,8 +9651,8 @@ function addGlobalStyles() {
             }
             #dr-tracking-active-list {
                 display: grid !important;
-                grid-template-columns: repeat(2, 1fr) !important;
-                gap: 15px !important;
+                grid-template-columns: 1fr !important; /* Multi-column in small sidebar is too cramped, stick to 1 */
+                gap: 10px !important;
                 width: 100% !important;
             }
             .dr-card.dr-tracking-card {
@@ -9572,12 +9664,13 @@ function addGlobalStyles() {
             #dr-tracking-container > div:nth-child(2),
             #dr-tracking-toggle-mode,
             #dr-tracking-copy-wrapper,
-            .dr-tracking-remove {
+            .dr-tracking-remove,
+            .dr-tracking-bulk-remove {
                 display: none !important;
             }
             #dr-tracking-container h4 {
-                font-size: 18px !important;
-                margin-bottom: 15px !important;
+                font-size: 16px !important;
+                margin-bottom: 10px !important;
             }
         }
 

@@ -6,10 +6,21 @@ const { getSelectedKhoa } = require('../utils/khoaUtils');
 const DialogManager = require('./dialogManager');
 const cardTooltip = require('./cardTooltip');
 
-function setupTrackingUI(topBar, mainContainer, createPatientCard) {
+function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
     const btn = topBar.querySelector('#dr-tracking-btn');
     const badge = topBar.querySelector('#dr-tracking-badge');
     if (!btn || !badge) return;
+
+    function notifyRender() {
+        if (typeof onRender !== 'function') return;
+        requestAnimationFrame(() => {
+            try {
+                onRender();
+            } catch (e) {
+                console.warn('Tracking filter callback failed', e);
+            }
+        });
+    }
 
     // Build the outer tracking container
     const trackingContainer = document.createElement('div');
@@ -370,6 +381,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
             activePatients.forEach(pt => {
                 // Wrapper to handle layout and removal within sidebar
                 const wrap = document.createElement('div');
+                wrap.className = 'dr-tracking-card-wrap';
                 wrap.style.cssText = 'position:relative; width:100%; min-width:0; box-sizing:border-box;';
 
                 // create normal dr-card
@@ -577,6 +589,8 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard) {
             input.disabled = false;
             btnAdd.textContent = 'Thêm';
         });
+
+        notifyRender();
     }
 
     async function removePatient(pid) {

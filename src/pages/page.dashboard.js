@@ -756,6 +756,119 @@ function showDashboardBenhNhanIfNeeded() {
 
 
 
+    function normalizePatientFilterText(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function parseDashboardDate(dateStr) {
+        if (!dateStr) return null;
+        try {
+            const raw = String(dateStr).trim();
+            if (!raw) return null;
+
+            let normalized = raw;
+            if (/^\d{4}-\d{1,2}-\d{1,2}/.test(raw)) {
+                normalized = raw.replace(' ', 'T');
+            } else if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(raw)) {
+                const [part1, part2, part3] = raw.split('/');
+                const [year, time = '00:00'] = part3.split(' ');
+                const num1 = parseInt(part1, 10);
+                const num2 = parseInt(part2, 10);
+
+                let day = part1;
+                let month = part2;
+
+                if (num1 <= 12 && num2 > 12) {
+                    month = part1;
+                    day = part2;
+                }
+
+                normalized = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${time || '00:00'}`;
+            }
+
+            const date = new Date(normalized);
+            if (isNaN(date.getTime())) return null;
+            date.setHours(0, 0, 0, 0);
+            return date;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function getPatientAdmissionTimestamp(item) {
+        const admitDate = parseDashboardDate(item && (item.ngayvv || item.tungay));
+        return admitDate ? admitDate.getTime() : null;
+    }
+
+    function getPatientStayDays(item) {
+        const admitTs = getPatientAdmissionTimestamp(item);
+        if (admitTs == null) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return Math.floor((today.getTime() - admitTs) / (24 * 60 * 60 * 1000));
+    }
+
+    function decoratePatientFilterTarget(element, item, defaultOrder) {
+        if (!element || !item) return element;
+
+        element.__drPatientData = item;
+
+        if (item.mabn) element.setAttribute('data-mabn', item.mabn);
+        element.setAttribute('data-name', normalizePatientFilterText(item.hoten));
+        element.setAttribute('data-cd', normalizePatientFilterText(item.chandoanvk));
+
+        const loc = PatientDataMapper.formatRoomLocation(
+            item.teN_PHONG,
+            item.teN_GIUONG,
+            item.teN_TANG,
+            item.teN_TOANHA
+        );
+        element.setAttribute('data-loc', normalizePatientFilterText(loc));
+
+        if (defaultOrder !== undefined && defaultOrder !== null) {
+            element.dataset.defaultOrder = String(defaultOrder);
+        }
+
+        const admitTs = getPatientAdmissionTimestamp(item);
+        if (admitTs != null) element.dataset.admitTs = String(admitTs);
+        else delete element.dataset.admitTs;
+
+        const stayDays = getPatientStayDays(item);
+        if (stayDays != null) element.dataset.stayDays = String(stayDays);
+        else delete element.dataset.stayDays;
+
+        try {
+            const today = new Date();
+            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
+            let hasXV = false;
+            let hasCLS = false;
+
+            for (const entry of log) {
+                if (!entry.timestamp || !entry.content) continue;
+                if (!entry.timestamp.startsWith(todayStr)) continue;
+
+                const content = entry.content.toLowerCase();
+                if (content.includes('xuất viện')) {
+                    if (entry.q === true && entry.action === 'Xuất viện') {
+                        if (entry.status === 'active' || entry.status === 'done') hasXV = true;
+                    } else {
+                        hasXV = true;
+                    }
+                }
+                if (content.includes('cận lâm sàng')) hasCLS = true;
+            }
+
+            element.dataset.hasxv = hasXV ? '1' : '0';
+            element.dataset.hascls = hasCLS ? '1' : '0';
+        } catch (_) {
+            element.dataset.hasxv = '0';
+            element.dataset.hascls = '0';
+        }
+
+        return element;
+    }
+
     function renderCards(data) {
         const sortedData = PatientDataMapper.sortPatients([...data]);
 
@@ -772,9 +885,10 @@ function showDashboardBenhNhanIfNeeded() {
         `;
         topBar.innerHTML = `
             <div class="dr-topbar-left" style="display:flex; align-items:center; gap:12px; flex:1; min-width:0;">
-                <div style="position:relative;">
-                    <button id="dr-tracking-btn" title="Danh sách bệnh nhân theo dõi khác khoa" style="height:38px; padding: 0 14px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; cursor:pointer; font-weight:700; color:#1976d2; display:flex; align-items:center; gap:8px; box-shadow:0 1px 2px rgba(0,0,0,0.05); white-space:nowrap;">
-                        <i class="fas fa-user-clock"></i> Theo dõi
+                <div class="dr-topbar-btn-wrap" style="position:relative;">
+                    <button id="dr-tracking-btn" class="dr-topbar-control-btn" title="Danh sách bệnh nhân theo dõi khác khoa">
+                        <i class="fas fa-user-clock"></i>
+                        <span class="dr-topbar-btn-text">Theo dõi</span>
                     </button>
                     <span id="dr-tracking-badge" style="position:absolute; top:-6px; right:-6px; background:#d32f2f; color:#fff; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.2);">0</span>
                 </div>
@@ -786,16 +900,36 @@ function showDashboardBenhNhanIfNeeded() {
                 <span id="dr-total-compact" style="display:inline-block; text-align:center; color:#0f172a; font-weight:700; white-space:nowrap; background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 10px; border-radius:9999px; min-width:110px;">0/0</span>
             </div>
             <div class="dr-topbar-right" style="flex:1; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
-                <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <label class="dr-topbar-checkbox" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
                     <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
                 </label>
-                <label style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
+                <label class="dr-topbar-checkbox" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
                     <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
                 </label>
+                <div class="dr-view-dropdown dr-topbar-dropdown dr-sort-dropdown" id="dr-sort-dropdown-container">
+                    <div class="dr-dropdown-toggle dr-topbar-control-btn" id="dr-sort-toggle" title="Sắp xếp danh sách bệnh nhân">
+                        <span><i class="fas fa-sort-amount-down-alt" style="margin-right:0px; color:#1e88e5;"></i> <span class="dr-topbar-btn-text">Sắp xếp</span></span>
+                        <i class="fas fa-chevron-down" style="font-size:0.8em; opacity:0.7;"></i>
+                    </div>
+                    <div class="dr-dropdown-menu">
+                        <div class="dr-dropdown-item" data-sort="admit-asc">
+                            <i class="fas fa-calendar-plus"></i> Sắp xếp theo ngày nhập viện (tăng dần)
+                        </div>
+                        <div class="dr-dropdown-item" data-sort="admit-desc">
+                            <i class="fas fa-calendar-minus"></i> Sắp xếp theo ngày nhập viện (giảm dần)
+                        </div>
+                        <div class="dr-dropdown-item" data-sort="stay-asc">
+                            <i class="fas fa-hourglass-start"></i> Sắp xếp theo tổng số ngày nằm viện (tăng dần)
+                        </div>
+                        <div class="dr-dropdown-item" data-sort="stay-desc">
+                            <i class="fas fa-hourglass-end"></i> Sắp xếp theo tổng số ngày nằm viện (giảm dần)
+                        </div>
+                    </div>
+                </div>
                 
                 <!-- Premium View Dropdown -->
-                <div class="dr-view-dropdown" id="dr-view-dropdown-container">
-                    <div class="dr-dropdown-toggle" id="dr-view-toggle-premium" style="height:38px; display:flex; align-items:center; box-sizing:border-box; padding: 0 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-weight:600; color:#475569; gap:8px; cursor:pointer;">
+                <div class="dr-view-dropdown dr-topbar-dropdown" id="dr-view-dropdown-container">
+                    <div class="dr-dropdown-toggle dr-topbar-control-btn" id="dr-view-toggle-premium" style="height:38px; display:flex; align-items:center; box-sizing:border-box; padding: 0 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-weight:600; color:#475569; gap:8px; cursor:pointer;">
                         <span><i class="fas fa-eye" style="margin-right:0px; color:#1e88e5;"></i> <span id="dr-view-label-text">Kiểu hiển thị</span></span>
                         <i class="fas fa-chevron-down" style="font-size:0.8em; opacity:0.7;"></i>
                     </div>
@@ -824,7 +958,15 @@ function showDashboardBenhNhanIfNeeded() {
 
         const dropdownContainer = topBar.querySelector('#dr-view-dropdown-container');
         const viewLabelText = topBar.querySelector('#dr-view-label-text');
-        const dropdownItems = topBar.querySelectorAll('.dr-dropdown-item');
+        const dropdownItems = topBar.querySelectorAll('#dr-view-dropdown-container .dr-dropdown-item');
+        const sortDropdownContainer = topBar.querySelector('#dr-sort-dropdown-container');
+        const sortToggle = topBar.querySelector('#dr-sort-toggle');
+        const sortItems = topBar.querySelectorAll('#dr-sort-dropdown-container .dr-dropdown-item');
+        const SORT_KEY = 'dr-card-sort';
+        const validSortKeys = new Set(['default', 'admit-asc', 'admit-desc', 'stay-asc', 'stay-desc']);
+        let currentSort = localStorage.getItem(SORT_KEY) || 'default';
+
+        if (!validSortKeys.has(currentSort)) currentSort = 'default';
 
         const updateViewUI = (newView) => {
             const labels = { 'grid': 'Lưới', 'list': 'Danh sách', 'fit': 'Vừa màn hình' };
@@ -838,8 +980,93 @@ function showDashboardBenhNhanIfNeeded() {
             });
         };
 
+        const getDefaultOrder = (element) => Number(element && element.dataset ? element.dataset.defaultOrder || '0' : '0');
+        const getNumericSortValue = (element, sortKey) => {
+            if (!element) return null;
+
+            if (sortKey === 'admit-asc' || sortKey === 'admit-desc') {
+                const value = Number(element.dataset.admitTs);
+                return Number.isFinite(value) ? value : null;
+            }
+
+            if (sortKey === 'stay-asc' || sortKey === 'stay-desc') {
+                const value = Number(element.dataset.stayDays);
+                return Number.isFinite(value) ? value : null;
+            }
+
+            return null;
+        };
+
+        const compareNullableNumbers = (aValue, bValue, direction, aFallback, bFallback) => {
+            const aMissing = !Number.isFinite(aValue);
+            const bMissing = !Number.isFinite(bValue);
+
+            if (aMissing && bMissing) return aFallback - bFallback;
+            if (aMissing) return 1;
+            if (bMissing) return -1;
+            if (aValue !== bValue) return direction === 'asc' ? aValue - bValue : bValue - aValue;
+            return aFallback - bFallback;
+        };
+
+        const updateSortUI = (sortKey) => {
+            sortItems.forEach(item => {
+                if (item.getAttribute('data-sort') === sortKey) item.classList.add('active');
+                else item.classList.remove('active');
+            });
+
+            if (sortDropdownContainer) {
+                sortDropdownContainer.classList.toggle('dr-sort-active', sortKey !== 'default');
+            }
+
+            if (sortToggle) {
+                const titleMap = {
+                    'admit-asc': 'Sắp xếp theo ngày nhập viện (tăng dần)',
+                    'admit-desc': 'Sắp xếp theo ngày nhập viện (giảm dần)',
+                    'stay-asc': 'Sắp xếp theo tổng số ngày nằm viện (tăng dần)',
+                    'stay-desc': 'Sắp xếp theo tổng số ngày nằm viện (giảm dần)'
+                };
+                sortToggle.title = sortKey === 'default'
+                    ? 'Sắp xếp danh sách bệnh nhân'
+                    : `Đang ${titleMap[sortKey]}. Click lại lựa chọn đang bật để về mặc định.`;
+            }
+        };
+
+        const applySelectedSort = () => {
+            const elements = Array.from(container.children);
+            if (elements.length === 0) return;
+
+            elements.sort((a, b) => {
+                const aFallback = getDefaultOrder(a);
+                const bFallback = getDefaultOrder(b);
+
+                if (currentSort === 'default') return aFallback - bFallback;
+
+                const direction = currentSort.endsWith('desc') ? 'desc' : 'asc';
+                return compareNullableNumbers(
+                    getNumericSortValue(a, currentSort),
+                    getNumericSortValue(b, currentSort),
+                    direction,
+                    aFallback,
+                    bFallback
+                );
+            });
+
+            elements.forEach(element => container.appendChild(element));
+            updateSortUI(currentSort);
+        };
+
+        const setCurrentSort = (sortKey) => {
+            currentSort = validSortKeys.has(sortKey) ? sortKey : 'default';
+
+            if (currentSort === 'default') localStorage.removeItem(SORT_KEY);
+            else localStorage.setItem(SORT_KEY, currentSort);
+
+            applySelectedSort();
+        };
+
         // Initialize UI
         updateViewUI(view);
+        updateSortUI(currentSort);
 
         // Toggle dropdown
         const toggleBtn = topBar.querySelector('#dr-view-toggle-premium');
@@ -850,9 +1077,17 @@ function showDashboardBenhNhanIfNeeded() {
             };
         }
 
+        if (sortToggle) {
+            sortToggle.onclick = (e) => {
+                e.stopPropagation();
+                sortDropdownContainer.classList.toggle('open');
+            };
+        }
+
         // Close dropdown when clicking outside
         document.addEventListener('click', () => {
             if (dropdownContainer) dropdownContainer.classList.remove('open');
+            if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
         });
 
         // Handle item selection
@@ -878,6 +1113,17 @@ function showDashboardBenhNhanIfNeeded() {
             };
         });
 
+        sortItems.forEach(item => {
+            item.onclick = (e) => {
+                e.stopPropagation();
+                const targetSort = item.getAttribute('data-sort') || 'default';
+                const nextSort = targetSort === currentSort ? 'default' : targetSort;
+                setCurrentSort(nextSort);
+                if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
+                applyFilter();
+            };
+        });
+
         if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
         
         if (view === 'fit') {
@@ -894,44 +1140,9 @@ function showDashboardBenhNhanIfNeeded() {
         const { createListRow } = require('../components/listView');
         const renderItemList = (item) => createListRow(item, { onOpen: () => showSidebar(item) });
         const renderer = view === 'list' ? renderItemList : renderItemGrid;
-        sortedData.forEach(item => {
+        sortedData.forEach((item, index) => {
             const card = renderer(item);
-            // mark useful attributes for filtering
-            if (item && item.mabn) card.setAttribute('data-mabn', item.mabn);
-            if (item && item.hoten) card.setAttribute('data-name', (item.hoten || '').toLowerCase());
-            if (item && item.chandoanvk) card.setAttribute('data-cd', (item.chandoanvk || '').toLowerCase());
-            if (item && (item.teN_PHONG || item.teN_GIUONG)) {
-                const loc = PatientDataMapper.formatRoomLocation(
-                    item.teN_PHONG,
-                    item.teN_GIUONG,
-                    item.teN_TANG,
-                    item.teN_TOANHA
-                );
-                card.setAttribute('data-loc', (loc || '').toLowerCase());
-            }
-            // compute dataset flags from today's yLenhLog
-            try {
-                const today = new Date();
-                const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-                const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
-                let hasXV = false, hasCLS = false;
-                for (const e of log) {
-                    if (!e.timestamp || !e.content) continue;
-                    if (!e.timestamp.startsWith(todayStr)) continue;
-                    const c = e.content.toLowerCase();
-                    if (c.includes('xuất viện')) {
-                        // if quick and has status, use done/active as presence
-                        if (e.q === true && e.action === 'Xuất viện') {
-                            if (e.status === 'active' || e.status === 'done') hasXV = true;
-                        } else {
-                            hasXV = true;
-                        }
-                    }
-                    if (c.includes('cận lâm sàng')) hasCLS = true;
-                }
-                card.dataset.hasxv = hasXV ? '1' : '0';
-                card.dataset.hascls = hasCLS ? '1' : '0';
-            } catch (_) { }
+            decoratePatientFilterTarget(card, item, index);
             container.appendChild(card);
         });
 
@@ -959,7 +1170,7 @@ function showDashboardBenhNhanIfNeeded() {
         // Setup Tracking UI
         try {
             const { setupTrackingUI } = require('../components/trackingUI');
-            setupTrackingUI(topBar, wrapper, createPatientCard);
+            setupTrackingUI(topBar, wrapper, createPatientCard, applyFilter);
         } catch (e) {
             console.error('Lỗi khi setup Tracking UI:', e);
         }
@@ -969,6 +1180,52 @@ function showDashboardBenhNhanIfNeeded() {
         const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
         const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
         const totalCompact = topBar.querySelector('#dr-total-compact');
+
+        function getCardVisibilityState(card, keywords, onlyXV, onlyCLS) {
+            const nameAttr = card.getAttribute('data-name') || '';
+            const mabnAttr = card.getAttribute('data-mabn') || '';
+            const cdAttr = card.getAttribute('data-cd') || '';
+            const locAttr = card.getAttribute('data-loc') || '';
+            const fullTxt = card.textContent || '';
+
+            const matchesText = keywords.length === 0 || keywords.every(k => {
+                const searchKey = k.toLowerCase();
+                const useExactMatch = hasAccents(k);
+
+                if (useExactMatch) {
+                    return nameAttr.toLowerCase().includes(searchKey) ||
+                        mabnAttr.toLowerCase().includes(searchKey) ||
+                        cdAttr.toLowerCase().includes(searchKey) ||
+                        locAttr.toLowerCase().includes(searchKey) ||
+                        fullTxt.toLowerCase().includes(searchKey);
+                }
+
+                const normKey = removeAccents(searchKey);
+                return removeAccents(nameAttr).includes(normKey) ||
+                    removeAccents(mabnAttr).includes(normKey) ||
+                    removeAccents(cdAttr).includes(normKey) ||
+                    removeAccents(locAttr).includes(normKey) ||
+                    removeAccents(fullTxt).includes(normKey);
+            });
+
+            const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
+            const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
+            const item = card.__drPatientData || sortedData.find(p => p.mabn === card.getAttribute('data-mabn'));
+            const matchesAdvanced = !advancedFilterState.active || (item && matchesAdvancedFilter(item));
+
+            return matchesText && matchesXV && matchesCLS && matchesAdvanced;
+        }
+
+        function updateCardDisplay(card, show) {
+            const trackingWrapper = card.closest('.dr-tracking-card-wrap');
+            if (trackingWrapper) {
+                trackingWrapper.style.display = show ? '' : 'none';
+                card.style.display = '';
+                return;
+            }
+
+            card.style.display = show ? '' : 'none';
+        }
 
         function applyFilter() {
             const rawQ = (searchInput.value || '').trim();
@@ -981,48 +1238,17 @@ function showDashboardBenhNhanIfNeeded() {
                 .map(k => k.trim())
                 .filter(k => k !== '');
 
-            const cards = container.querySelectorAll('.dr-card, .dr-list-row');
-            cards.forEach(card => {
-                const nameAttr = card.getAttribute('data-name') || '';
-                const mabnAttr = card.getAttribute('data-mabn') || '';
-                const cdAttr = card.getAttribute('data-cd') || '';
-                const locAttr = card.getAttribute('data-loc') || '';
-                const fullTxt = card.textContent || '';
-
-                // AND logic: all keywords must match at least one field
-                const matchesText = keywords.length === 0 || keywords.every(k => {
-                    const searchKey = k.toLowerCase();
-                    const useExactMatch = hasAccents(k);
-
-                    if (useExactMatch) {
-                        // Smart search: if user typed accents, search exactly (case-insensitive)
-                        return nameAttr.toLowerCase().includes(searchKey) || 
-                               mabnAttr.toLowerCase().includes(searchKey) || 
-                               cdAttr.toLowerCase().includes(searchKey) || 
-                               locAttr.toLowerCase().includes(searchKey) || 
-                               fullTxt.toLowerCase().includes(searchKey);
-                    } else {
-                        // Fallback: accent-insensitive search if no accents in keyword
-                        const normKey = removeAccents(searchKey);
-                        return removeAccents(nameAttr).includes(normKey) || 
-                               removeAccents(mabnAttr).includes(normKey) || 
-                               removeAccents(cdAttr).includes(normKey) || 
-                               removeAccents(locAttr).includes(normKey) || 
-                               removeAccents(fullTxt).includes(normKey);
-                    }
-                });
-
-                // dataset flags prepared on card creation
-                const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
-                const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
-                
-                // Advanced filters
-                const item = sortedData.find(p => p.mabn === card.getAttribute('data-mabn'));
-                const matchesAdvanced = !advancedFilterState.active || (item && matchesAdvancedFilter(item));
-
-                const show = matchesText && matchesXV && matchesCLS && matchesAdvanced;
-                card.style.display = show ? '' : 'none';
+            const mainCards = container.querySelectorAll('.dr-card, .dr-list-row');
+            mainCards.forEach(card => {
+                const show = getCardVisibilityState(card, keywords, onlyXV, onlyCLS);
+                updateCardDisplay(card, show);
                 if (show) visible++;
+            });
+
+            const trackingCards = document.querySelectorAll('#dr-tracking-active-list .dr-card');
+            trackingCards.forEach(card => {
+                const show = getCardVisibilityState(card, keywords, onlyXV, onlyCLS);
+                updateCardDisplay(card, show);
             });
 
             // Update centered compact total, integrating the filter count
@@ -1040,6 +1266,8 @@ function showDashboardBenhNhanIfNeeded() {
                     totalCompact.style.color = '#0f172a';
                 }
             }
+
+            if (typeof dr_updateFitLayout === 'function') dr_updateFitLayout();
         }
 
         searchInput.addEventListener('input', applyFilter);
@@ -1074,7 +1302,7 @@ function showDashboardBenhNhanIfNeeded() {
         function updateFitLayout() {
             if (view !== 'fit') return;
             
-            const cards = container.querySelectorAll('.dr-card');
+            const cards = Array.from(container.querySelectorAll('.dr-card')).filter(card => card.style.display !== 'none');
             if (cards.length === 0) return;
             
             const count = cards.length;
@@ -1134,6 +1362,7 @@ function showDashboardBenhNhanIfNeeded() {
             totalCompactInit.style.borderColor = '#e2e8f0';
             totalCompactInit.style.color = '#0f172a';
         }
+        applySelectedSort();
         applyFilter();
 
         // Prefill from query param ?q=
@@ -1147,12 +1376,17 @@ function showDashboardBenhNhanIfNeeded() {
         } catch (_) { }
 
         const refreshPatientCards = function (newData) {
-            const sortedNewData = PatientDataMapper.sortPatients([...newData]);
+            const cardsByPid = new Map();
+            container.querySelectorAll('.dr-card, .dr-list-row').forEach(card => {
+                const mabn = card.getAttribute('data-mabn');
+                if (mabn) cardsByPid.set(mabn, card);
+            });
 
             // Update existing cards instead of full re-render to avoid interrupting user
-            sortedNewData.forEach((item, index) => {
-                const card = container.children[index];
+            newData.forEach(item => {
+                const card = item && item.mabn ? cardsByPid.get(item.mabn) : null;
                 if (card) {
+                    decoratePatientFilterTarget(card, item, card.dataset.defaultOrder);
                     // Update merged diagnosis line (Chẩn đoán + CD kèm theo)
                     try {
                         const diagnosisEl = card.querySelector('.dr-diagnosis-line');
@@ -1184,6 +1418,7 @@ function showDashboardBenhNhanIfNeeded() {
                     // Re-evaluate filter visibility and layout after updates
                     // Delay to allow DOM/class updates done elsewhere
                     setTimeout(() => {
+                        applySelectedSort();
                         applyFilter();
                         if (typeof dr_updateFitLayout === 'function') dr_updateFitLayout();
                     }, 0);
@@ -1213,6 +1448,7 @@ function showDashboardBenhNhanIfNeeded() {
         const isWhite = PatientDataMapper.isWhiteCard(room);
         const card = document.createElement('div');
         card.className = 'dr-card' + (isWhite ? '' : ' dr-blue');
+        decoratePatientFilterTarget(card, item);
 
         // Format location using the new utility function
         const formattedLocation = PatientDataMapper.formatRoomLocation(

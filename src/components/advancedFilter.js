@@ -35,9 +35,10 @@ function setupAdvancedFilter(topBar, onApply) {
     const topbarRight = topBar.querySelector('.dr-topbar-right');
     if (!topbarRight) return;
 
-    // Add "Lọc nâng cao" button
+    // Add "Lọc" button
     const filterBtn = document.createElement('button');
     filterBtn.id = 'dr-advanced-filter-btn';
+    filterBtn.className = 'dr-topbar-control-btn';
     filterBtn.title = 'Lọc nâng cao theo Y lệnh, Phẫu thuật...';
     filterBtn.style.cssText = `
         height: 38px;
@@ -54,12 +55,15 @@ function setupAdvancedFilter(topBar, onApply) {
         transition: all 0.2s;
         white-space: nowrap;
     `;
-    filterBtn.innerHTML = '<i class="fas fa-filter"></i> Lọc nâng cao <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span>';
+    filterBtn.innerHTML = '<i class="fas fa-filter"></i> <span class="dr-topbar-btn-text">Lọc</span> <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span>';
     
-    // Insert before view toggle
-    const viewToggle = topBar.querySelector('#dr-view-toggle');
-    if (viewToggle) {
-        topbarRight.insertBefore(filterBtn, viewToggle);
+    // Insert before sort/view controls when present
+    const insertBeforeEl = topBar.querySelector('#dr-sort-dropdown-container')
+        || topBar.querySelector('#dr-view-dropdown-container')
+        || topBar.querySelector('#dr-view-toggle-premium')
+        || topBar.querySelector('#dr-view-toggle');
+    if (insertBeforeEl) {
+        topbarRight.insertBefore(filterBtn, insertBeforeEl);
     } else {
         topbarRight.appendChild(filterBtn);
     }

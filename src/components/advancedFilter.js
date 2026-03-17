@@ -20,6 +20,8 @@ function getBaseName(name) {
 
 let advancedFilterState = {
     active: false,
+    onlyXuatVien: false,  // Lọc BN xuất viện
+    onlyCanLamSang: false, // Lọc BN cần cận lâm sàng
     yLenhTags: [],      // Array of strings
     yLenhTagsLogic: 'OR', // 'OR' | 'AND'
     surgeryName: '',     // %like% search
@@ -35,11 +37,16 @@ function setupAdvancedFilter(topBar, onApply) {
     const topbarRight = topBar.querySelector('.dr-topbar-right');
     if (!topbarRight) return;
 
-    // Add "Lọc" button
+    const filterDropdown = document.createElement('div');
+    filterDropdown.id = 'dr-advanced-filter-container';
+    filterDropdown.className = 'dr-filter-dropdown dr-topbar-dropdown';
+    filterDropdown.style.cssText = 'position:relative; display:inline-block;';
+
     const filterBtn = document.createElement('button');
+    filterBtn.type = 'button';
     filterBtn.id = 'dr-advanced-filter-btn';
-    filterBtn.className = 'dr-topbar-control-btn';
-    filterBtn.title = 'Lọc nâng cao theo Y lệnh, Phẫu thuật...';
+    filterBtn.className = 'dr-topbar-control-btn dr-dropdown-toggle';
+    filterBtn.title = 'Click để mở bộ lọc nâng cao. Hover để dùng lọc nhanh.';
     filterBtn.style.cssText = `
         height: 38px;
         padding: 0 12px;
@@ -55,7 +62,61 @@ function setupAdvancedFilter(topBar, onApply) {
         transition: all 0.2s;
         white-space: nowrap;
     `;
-    filterBtn.innerHTML = '<i class="fas fa-filter"></i> <span class="dr-topbar-btn-text">Lọc</span> <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span>';
+    filterBtn.innerHTML = '<i class="fas fa-filter"></i> <span class="dr-topbar-btn-text">Lọc</span> <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span> <i class="fas fa-chevron-down" style="font-size:0.8em; opacity:0.7;"></i>';
+
+    const quickMenu = document.createElement('div');
+    quickMenu.className = 'dr-dropdown-menu dr-filter-quick-menu';
+    quickMenu.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px 10px; border-bottom:1px solid #e2e8f0; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:#475569;">Lọc nhanh</span>
+            <span style="font-size:11px; color:#94a3b8;">Hover menu</span>
+        </div>
+        <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="xuatvien" role="button" aria-pressed="false">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Xuất viện</span>
+            </span>
+            <i class="fas fa-check dr-filter-quick-indicator"></i>
+        </div>
+        <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="canlamsang" role="button" aria-pressed="false">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-microscope"></i>
+                <span>Cận lâm sàng</span>
+            </span>
+            <i class="fas fa-check dr-filter-quick-indicator"></i>
+        </div>
+        <div class="dr-filter-submenu">
+            <div class="dr-dropdown-item dr-filter-submenu-trigger" role="button">
+                <span style="display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Ngày phẫu thuật</span>
+                </span>
+                <span style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+                    <span id="dr-filter-quick-date-value" class="dr-filter-quick-date-value">Tất cả</span>
+                    <i class="fas fa-chevron-right" style="font-size:11px; opacity:0.7;"></i>
+                </span>
+            </div>
+            <div class="dr-filter-submenu-menu">
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="" role="button">Tất cả</div>
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="yesterday" role="button">Hôm qua</div>
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="today" role="button">Hôm nay</div>
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="tomorrow" role="button">Ngày mai</div>
+            </div>
+        </div>
+        <div style="border-top:1px solid #e2e8f0; margin-top:6px; padding-top:6px;">
+            <div class="dr-dropdown-item dr-filter-quick-clear" data-quick-filter-action="clear" role="button">
+                <span style="display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-eraser"></i>
+                    <span>Bỏ lọc nhanh</span>
+                </span>
+            </div>
+            <div style="padding:8px 12px 4px; font-size:11px; color:#94a3b8; line-height:1.45;">
+                Click nút Lọc để mở bộ lọc nâng cao đầy đủ.
+            </div>
+        </div>
+    `;
+    filterDropdown.appendChild(filterBtn);
+    filterDropdown.appendChild(quickMenu);
     
     // Insert before sort/view controls when present
     const insertBeforeEl = topBar.querySelector('#dr-sort-dropdown-container')
@@ -63,15 +124,57 @@ function setupAdvancedFilter(topBar, onApply) {
         || topBar.querySelector('#dr-view-toggle-premium')
         || topBar.querySelector('#dr-view-toggle');
     if (insertBeforeEl) {
-        topbarRight.insertBefore(filterBtn, insertBeforeEl);
+        topbarRight.insertBefore(filterDropdown, insertBeforeEl);
     } else {
-        topbarRight.appendChild(filterBtn);
+        topbarRight.appendChild(filterDropdown);
     }
 
-    filterBtn.onclick = () => openFilterDialog(onApply);
+    filterBtn.onclick = (e) => {
+        e.stopPropagation();
+        openFilterDialog(onApply);
+    };
+
+    filterDropdown.addEventListener('mouseenter', () => filterDropdown.classList.add('open'));
+    filterDropdown.addEventListener('mouseleave', () => filterDropdown.classList.remove('open'));
+
+    quickMenu.querySelectorAll('[data-quick-filter]').forEach(item => {
+        item.onclick = (e) => {
+            e.stopPropagation();
+            const filterType = item.getAttribute('data-quick-filter');
+            if (filterType === 'xuatvien') {
+                advancedFilterState.onlyXuatVien = !advancedFilterState.onlyXuatVien;
+            } else if (filterType === 'canlamsang') {
+                advancedFilterState.onlyCanLamSang = !advancedFilterState.onlyCanLamSang;
+            }
+            refreshAdvancedFilterUI();
+            if (onApply) onApply();
+        };
+    });
+
+    quickMenu.querySelectorAll('[data-surgery-date]').forEach(item => {
+        item.onclick = (e) => {
+            e.stopPropagation();
+            const nextValue = item.getAttribute('data-surgery-date') || null;
+            advancedFilterState.surgeryDate = nextValue;
+            refreshAdvancedFilterUI();
+            if (onApply) onApply();
+        };
+    });
+
+    const clearQuickBtn = quickMenu.querySelector('[data-quick-filter-action="clear"]');
+    if (clearQuickBtn) {
+        clearQuickBtn.onclick = (e) => {
+            e.stopPropagation();
+            advancedFilterState.onlyXuatVien = false;
+            advancedFilterState.onlyCanLamSang = false;
+            advancedFilterState.surgeryDate = null;
+            refreshAdvancedFilterUI();
+            if (onApply) onApply();
+        };
+    }
 
     // Initial badge update
-    updateFilterBadge(filterBtn);
+    refreshAdvancedFilterUI();
 }
 
 /**
@@ -82,6 +185,8 @@ function updateFilterBadge(btn) {
     if (!badge) return;
 
     let count = 0;
+    if (advancedFilterState.onlyXuatVien) count++;
+    if (advancedFilterState.onlyCanLamSang) count++;
     if (advancedFilterState.yLenhTags.length > 0) count++;
     if (advancedFilterState.surgeryName.trim()) count++;
     if (advancedFilterState.surgeons.length > 0) count++;
@@ -100,6 +205,53 @@ function updateFilterBadge(btn) {
         btn.style.color = '#475569';
         btn.style.background = '#f8fafc';
         advancedFilterState.active = false;
+    }
+}
+
+function getQuickFilterDateLabel() {
+    if (advancedFilterState.surgeryDate === 'yesterday') return 'Hôm qua';
+    if (advancedFilterState.surgeryDate === 'today') return 'Hôm nay';
+    if (advancedFilterState.surgeryDate === 'tomorrow') return 'Ngày mai';
+    return 'Tất cả';
+}
+
+function refreshAdvancedFilterUI() {
+    const filterBtn = document.getElementById('dr-advanced-filter-btn');
+    if (filterBtn) updateFilterBadge(filterBtn);
+
+    const filterDropdown = document.getElementById('dr-advanced-filter-container');
+    if (!filterDropdown) return;
+
+    filterDropdown.querySelectorAll('[data-quick-filter]').forEach(item => {
+        const filterType = item.getAttribute('data-quick-filter');
+        const isActive = filterType === 'xuatvien'
+            ? !!advancedFilterState.onlyXuatVien
+            : !!advancedFilterState.onlyCanLamSang;
+
+        item.classList.toggle('active', isActive);
+        item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        const indicator = item.querySelector('.dr-filter-quick-indicator');
+        if (indicator) indicator.style.opacity = isActive ? '1' : '0';
+    });
+
+    filterDropdown.querySelectorAll('[data-surgery-date]').forEach(item => {
+        const dateValue = item.getAttribute('data-surgery-date') || null;
+        const isActive = (advancedFilterState.surgeryDate || null) === dateValue;
+        item.classList.toggle('active', isActive);
+    });
+
+    const dateValueEl = filterDropdown.querySelector('#dr-filter-quick-date-value');
+    if (dateValueEl) {
+        dateValueEl.textContent = getQuickFilterDateLabel();
+        dateValueEl.style.color = advancedFilterState.surgeryDate ? '#1976d2' : '#94a3b8';
+        dateValueEl.style.fontWeight = advancedFilterState.surgeryDate ? '700' : '500';
+    }
+
+    const clearQuickBtn = filterDropdown.querySelector('[data-quick-filter-action="clear"]');
+    if (clearQuickBtn) {
+        const hasQuickFilter = !!(advancedFilterState.onlyXuatVien || advancedFilterState.onlyCanLamSang || advancedFilterState.surgeryDate);
+        clearQuickBtn.style.opacity = hasQuickFilter ? '1' : '0.5';
+        clearQuickBtn.style.pointerEvents = hasQuickFilter ? 'auto' : 'none';
     }
 }
 
@@ -138,6 +290,22 @@ function openFilterDialog(onApply) {
         </div>
 
         <div style="display:flex; flex-direction:column; gap:20px;">
+            <!-- Quick filters: Xuất viện + Cận lâm sàng -->
+            <section>
+                <h3 style="font-size:1em; margin-bottom:10px; color:#334155; display:flex; align-items:center; gap:6px;">
+                    <i class="fas fa-bolt" style="color:#f59e0b;"></i> Lọc nhanh
+                </h3>
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyXuatVien?'#dcfce7':'#fff'};color:${advancedFilterState.onlyXuatVien?'#16a34a':'#374151'};transition:all 0.15s;">
+                        <input type="checkbox" id="filter-xuatvien" ${advancedFilterState.onlyXuatVien ? 'checked' : ''}>
+                        <i class="fas fa-sign-out-alt"></i> Xuất viện
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyCanLamSang?'#eff6ff':'#fff'};color:${advancedFilterState.onlyCanLamSang?'#1d4ed8':'#374151'};transition:all 0.15s;">
+                        <input type="checkbox" id="filter-canlamsang" ${advancedFilterState.onlyCanLamSang ? 'checked' : ''}>
+                        <i class="fas fa-microscope"></i> Cận lâm sàng
+                    </label>
+                </div>
+            </section>
                 <h3 style="font-size:1em; margin-bottom:8px; color:#334155; display:flex; align-items:center; gap:6px;">
                     <i class="fas fa-hand-holding-medical" style="color:#1976d2;"></i> Tên phẫu thuật
                 </h3>
@@ -255,7 +423,7 @@ function openFilterDialog(onApply) {
                 resetFilter();
                 dialog.remove();
                 if (onApply) onApply();
-                updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
+                refreshAdvancedFilterUI();
             }
         }
     ]);
@@ -268,7 +436,7 @@ function openFilterDialog(onApply) {
     function triggerUpdate() {
         applyInputs();
         if (onApply) onApply();
-        updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
+        refreshAdvancedFilterUI();
     }
 
     // Event listeners for date chips
@@ -314,6 +482,12 @@ function openFilterDialog(onApply) {
         el.onchange = triggerUpdate;
     });
 
+    // Quick filter checkbox listeners
+    const xuatVienCb = inner.querySelector('#filter-xuatvien');
+    const canLamSangCb = inner.querySelector('#filter-canlamsang');
+    if (xuatVienCb) xuatVienCb.onchange = triggerUpdate;
+    if (canLamSangCb) canLamSangCb.onchange = triggerUpdate;
+
     // Clear icon logic
     const surgeryInput = inner.querySelector('#filter-surgery-name');
     const clearBtn = inner.querySelector('#clear-surgery-name');
@@ -331,6 +505,12 @@ function openFilterDialog(onApply) {
     }
 
     function applyInputs() {
+        // Quick filters
+        const xuatVienCb = inner.querySelector('#filter-xuatvien');
+        const canLamSangCb = inner.querySelector('#filter-canlamsang');
+        if (xuatVienCb) advancedFilterState.onlyXuatVien = xuatVienCb.checked;
+        if (canLamSangCb) advancedFilterState.onlyCanLamSang = canLamSangCb.checked;
+
         advancedFilterState.surgeryName = (inner.querySelector('#filter-surgery-name').value || '').trim();
         
         advancedFilterState.surgeons = [];
@@ -352,6 +532,8 @@ function openFilterDialog(onApply) {
 
         // CRITICAL FIX: Update active state immediately
         advancedFilterState.active = !!(
+            advancedFilterState.onlyXuatVien ||
+            advancedFilterState.onlyCanLamSang ||
             advancedFilterState.surgeryName || 
             advancedFilterState.surgeons.length > 0 || 
             advancedFilterState.surgeryDate || 
@@ -361,6 +543,8 @@ function openFilterDialog(onApply) {
 
     function resetFilter() {
         advancedFilterState.active = false;
+        advancedFilterState.onlyXuatVien = false;
+        advancedFilterState.onlyCanLamSang = false;
         advancedFilterState.yLenhTags = [];
         advancedFilterState.yLenhTagsLogic = 'OR';
         advancedFilterState.surgeryName = '';
@@ -505,9 +689,6 @@ function matchesAdvancedFilter(item) {
         }
     }
 
-    // Update active flag for the badge
-    advancedFilterState.active = hasCondition;
-    
     return true;
 }
 

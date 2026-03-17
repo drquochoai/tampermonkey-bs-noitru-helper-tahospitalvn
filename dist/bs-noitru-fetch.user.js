@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.0.001
+// @version      2.0.002
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -397,7 +397,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":49}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":50}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -435,7 +435,7 @@ if (typeof window !== 'undefined') {
 this.openHSBAV2 = openHSBAV2;
 unsafeWindow.openHSBAV2 = openHSBAV2;
 
-(function () {
+(async function () {
     'use strict';
 
     // Auto-redirect to dashboard if login was just successful and auto-login is enabled
@@ -528,6 +528,49 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     try {
         const isLoginPage = /\/Home\/Login(\?.*)?$/.test(window.location.pathname);
         if (isLoginPage && window.localStorage) {
+            const params = new URLSearchParams(window.location.search);
+            const quickLoginUser = params.get('quicklogin');
+            
+            if (quickLoginUser) {
+                const loginKey = `dr_quick_login_${quickLoginUser}`;
+                const credsStr = await GM.getValue(loginKey);
+                if (credsStr) {
+                    try {
+                        const creds = JSON.parse(credsStr);
+                        if (creds && creds.username === quickLoginUser && (Date.now() - creds.ts < 60000)) {
+                            // Clear it after pick up
+                            await GM.deleteValue(loginKey);
+
+                            // Robust filling: poll for inputs
+                            let tries = 0;
+                            const fillIv = setInterval(() => {
+                                tries++;
+                                const uInput = document.querySelector('input[name="username"]');
+                                const pInput = document.querySelector('input[name="password"]');
+                                const btn = document.querySelector('button[type="submit"]');
+
+                                if (uInput && pInput && btn) {
+                                    clearInterval(fillIv);
+                                    uInput.value = creds.username;
+                                    pInput.value = creds.password;
+                                    
+                                    // Trigger input events for potential framework listeners
+                                    uInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                    pInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                    setTimeout(() => {
+                                        window.sessionStorage.setItem('bsnt_login_clicked', '1');
+                                        btn.click();
+                                    }, 200);
+                                }
+                                if (tries > 50) clearInterval(fillIv);
+                            }, 100);
+                            return; // Stop and let this one finish
+                        }
+                    } catch (e) { console.error('Quick login failed', e); }
+                }
+            }
+
             const ACC_KEY = 'dr_accounts_json';
             const DEF_KEY = 'dr_acc_default';
             const AUTO_KEY = 'dr_acc_autologin';
@@ -856,7 +899,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":9,"./components/hsbaDataFetcher":13,"./googleAppsScript":23,"./pages/otm-entry":24,"./pages/page.dashboard":26,"./pages/page.lichmo.homnay":28,"./pages/page.settings":30,"./services/checklistService":33,"./utils":42,"./utils/hsbaV2Download":47}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":9,"./components/hsbaDataFetcher":13,"./googleAppsScript":24,"./pages/otm-entry":25,"./pages/page.dashboard":27,"./pages/page.lichmo.homnay":29,"./pages/page.settings":31,"./services/checklistService":34,"./utils":43,"./utils/hsbaV2Download":48}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -979,7 +1022,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":27,"../services/checklistService":33,"../services/reportService":36}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":28,"../services/checklistService":34,"../services/reportService":37}],5:[function(require,module,exports){
 // advancedFilter.js - Logic for advanced dashboard filtering
 const DialogManager = require('./dialogManager');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1002,6 +1045,8 @@ function getBaseName(name) {
 
 let advancedFilterState = {
     active: false,
+    onlyXuatVien: false,  // Lọc BN xuất viện
+    onlyCanLamSang: false, // Lọc BN cần cận lâm sàng
     yLenhTags: [],      // Array of strings
     yLenhTagsLogic: 'OR', // 'OR' | 'AND'
     surgeryName: '',     // %like% search
@@ -1017,11 +1062,16 @@ function setupAdvancedFilter(topBar, onApply) {
     const topbarRight = topBar.querySelector('.dr-topbar-right');
     if (!topbarRight) return;
 
-    // Add "Lọc" button
+    const filterDropdown = document.createElement('div');
+    filterDropdown.id = 'dr-advanced-filter-container';
+    filterDropdown.className = 'dr-filter-dropdown dr-topbar-dropdown';
+    filterDropdown.style.cssText = 'position:relative; display:inline-block;';
+
     const filterBtn = document.createElement('button');
+    filterBtn.type = 'button';
     filterBtn.id = 'dr-advanced-filter-btn';
-    filterBtn.className = 'dr-topbar-control-btn';
-    filterBtn.title = 'Lọc nâng cao theo Y lệnh, Phẫu thuật...';
+    filterBtn.className = 'dr-topbar-control-btn dr-dropdown-toggle';
+    filterBtn.title = 'Click để mở bộ lọc nâng cao. Hover để dùng lọc nhanh.';
     filterBtn.style.cssText = `
         height: 38px;
         padding: 0 12px;
@@ -1037,7 +1087,61 @@ function setupAdvancedFilter(topBar, onApply) {
         transition: all 0.2s;
         white-space: nowrap;
     `;
-    filterBtn.innerHTML = '<i class="fas fa-filter"></i> <span class="dr-topbar-btn-text">Lọc</span> <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span>';
+    filterBtn.innerHTML = '<i class="fas fa-filter"></i> <span class="dr-topbar-btn-text">Lọc</span> <span id="dr-filter-badge" style="display:none; background:#1976d2; color:#fff; font-size:10px; padding:2px 6px; border-radius:10px;">0</span> <i class="fas fa-chevron-down" style="font-size:0.8em; opacity:0.7;"></i>';
+
+    const quickMenu = document.createElement('div');
+    quickMenu.className = 'dr-dropdown-menu dr-filter-quick-menu';
+    quickMenu.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px 10px; border-bottom:1px solid #e2e8f0; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:#475569;">Lọc nhanh</span>
+            <span style="font-size:11px; color:#94a3b8;">Hover menu</span>
+        </div>
+        <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="xuatvien" role="button" aria-pressed="false">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Xuất viện</span>
+            </span>
+            <i class="fas fa-check dr-filter-quick-indicator"></i>
+        </div>
+        <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="canlamsang" role="button" aria-pressed="false">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-microscope"></i>
+                <span>Cận lâm sàng</span>
+            </span>
+            <i class="fas fa-check dr-filter-quick-indicator"></i>
+        </div>
+        <div class="dr-filter-submenu">
+            <div class="dr-dropdown-item dr-filter-submenu-trigger" role="button">
+                <span style="display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Ngày phẫu thuật</span>
+                </span>
+                <span style="display:flex; align-items:center; gap:8px; margin-left:auto;">
+                    <span id="dr-filter-quick-date-value" class="dr-filter-quick-date-value">Tất cả</span>
+                    <i class="fas fa-chevron-right" style="font-size:11px; opacity:0.7;"></i>
+                </span>
+            </div>
+            <div class="dr-filter-submenu-menu">
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="" role="button">Tất cả</div>
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="yesterday" role="button">Hôm qua</div>
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="today" role="button">Hôm nay</div>
+                <div class="dr-dropdown-item dr-filter-submenu-item" data-surgery-date="tomorrow" role="button">Ngày mai</div>
+            </div>
+        </div>
+        <div style="border-top:1px solid #e2e8f0; margin-top:6px; padding-top:6px;">
+            <div class="dr-dropdown-item dr-filter-quick-clear" data-quick-filter-action="clear" role="button">
+                <span style="display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-eraser"></i>
+                    <span>Bỏ lọc nhanh</span>
+                </span>
+            </div>
+            <div style="padding:8px 12px 4px; font-size:11px; color:#94a3b8; line-height:1.45;">
+                Click nút Lọc để mở bộ lọc nâng cao đầy đủ.
+            </div>
+        </div>
+    `;
+    filterDropdown.appendChild(filterBtn);
+    filterDropdown.appendChild(quickMenu);
     
     // Insert before sort/view controls when present
     const insertBeforeEl = topBar.querySelector('#dr-sort-dropdown-container')
@@ -1045,15 +1149,57 @@ function setupAdvancedFilter(topBar, onApply) {
         || topBar.querySelector('#dr-view-toggle-premium')
         || topBar.querySelector('#dr-view-toggle');
     if (insertBeforeEl) {
-        topbarRight.insertBefore(filterBtn, insertBeforeEl);
+        topbarRight.insertBefore(filterDropdown, insertBeforeEl);
     } else {
-        topbarRight.appendChild(filterBtn);
+        topbarRight.appendChild(filterDropdown);
     }
 
-    filterBtn.onclick = () => openFilterDialog(onApply);
+    filterBtn.onclick = (e) => {
+        e.stopPropagation();
+        openFilterDialog(onApply);
+    };
+
+    filterDropdown.addEventListener('mouseenter', () => filterDropdown.classList.add('open'));
+    filterDropdown.addEventListener('mouseleave', () => filterDropdown.classList.remove('open'));
+
+    quickMenu.querySelectorAll('[data-quick-filter]').forEach(item => {
+        item.onclick = (e) => {
+            e.stopPropagation();
+            const filterType = item.getAttribute('data-quick-filter');
+            if (filterType === 'xuatvien') {
+                advancedFilterState.onlyXuatVien = !advancedFilterState.onlyXuatVien;
+            } else if (filterType === 'canlamsang') {
+                advancedFilterState.onlyCanLamSang = !advancedFilterState.onlyCanLamSang;
+            }
+            refreshAdvancedFilterUI();
+            if (onApply) onApply();
+        };
+    });
+
+    quickMenu.querySelectorAll('[data-surgery-date]').forEach(item => {
+        item.onclick = (e) => {
+            e.stopPropagation();
+            const nextValue = item.getAttribute('data-surgery-date') || null;
+            advancedFilterState.surgeryDate = nextValue;
+            refreshAdvancedFilterUI();
+            if (onApply) onApply();
+        };
+    });
+
+    const clearQuickBtn = quickMenu.querySelector('[data-quick-filter-action="clear"]');
+    if (clearQuickBtn) {
+        clearQuickBtn.onclick = (e) => {
+            e.stopPropagation();
+            advancedFilterState.onlyXuatVien = false;
+            advancedFilterState.onlyCanLamSang = false;
+            advancedFilterState.surgeryDate = null;
+            refreshAdvancedFilterUI();
+            if (onApply) onApply();
+        };
+    }
 
     // Initial badge update
-    updateFilterBadge(filterBtn);
+    refreshAdvancedFilterUI();
 }
 
 /**
@@ -1064,6 +1210,8 @@ function updateFilterBadge(btn) {
     if (!badge) return;
 
     let count = 0;
+    if (advancedFilterState.onlyXuatVien) count++;
+    if (advancedFilterState.onlyCanLamSang) count++;
     if (advancedFilterState.yLenhTags.length > 0) count++;
     if (advancedFilterState.surgeryName.trim()) count++;
     if (advancedFilterState.surgeons.length > 0) count++;
@@ -1082,6 +1230,53 @@ function updateFilterBadge(btn) {
         btn.style.color = '#475569';
         btn.style.background = '#f8fafc';
         advancedFilterState.active = false;
+    }
+}
+
+function getQuickFilterDateLabel() {
+    if (advancedFilterState.surgeryDate === 'yesterday') return 'Hôm qua';
+    if (advancedFilterState.surgeryDate === 'today') return 'Hôm nay';
+    if (advancedFilterState.surgeryDate === 'tomorrow') return 'Ngày mai';
+    return 'Tất cả';
+}
+
+function refreshAdvancedFilterUI() {
+    const filterBtn = document.getElementById('dr-advanced-filter-btn');
+    if (filterBtn) updateFilterBadge(filterBtn);
+
+    const filterDropdown = document.getElementById('dr-advanced-filter-container');
+    if (!filterDropdown) return;
+
+    filterDropdown.querySelectorAll('[data-quick-filter]').forEach(item => {
+        const filterType = item.getAttribute('data-quick-filter');
+        const isActive = filterType === 'xuatvien'
+            ? !!advancedFilterState.onlyXuatVien
+            : !!advancedFilterState.onlyCanLamSang;
+
+        item.classList.toggle('active', isActive);
+        item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        const indicator = item.querySelector('.dr-filter-quick-indicator');
+        if (indicator) indicator.style.opacity = isActive ? '1' : '0';
+    });
+
+    filterDropdown.querySelectorAll('[data-surgery-date]').forEach(item => {
+        const dateValue = item.getAttribute('data-surgery-date') || null;
+        const isActive = (advancedFilterState.surgeryDate || null) === dateValue;
+        item.classList.toggle('active', isActive);
+    });
+
+    const dateValueEl = filterDropdown.querySelector('#dr-filter-quick-date-value');
+    if (dateValueEl) {
+        dateValueEl.textContent = getQuickFilterDateLabel();
+        dateValueEl.style.color = advancedFilterState.surgeryDate ? '#1976d2' : '#94a3b8';
+        dateValueEl.style.fontWeight = advancedFilterState.surgeryDate ? '700' : '500';
+    }
+
+    const clearQuickBtn = filterDropdown.querySelector('[data-quick-filter-action="clear"]');
+    if (clearQuickBtn) {
+        const hasQuickFilter = !!(advancedFilterState.onlyXuatVien || advancedFilterState.onlyCanLamSang || advancedFilterState.surgeryDate);
+        clearQuickBtn.style.opacity = hasQuickFilter ? '1' : '0.5';
+        clearQuickBtn.style.pointerEvents = hasQuickFilter ? 'auto' : 'none';
     }
 }
 
@@ -1120,6 +1315,22 @@ function openFilterDialog(onApply) {
         </div>
 
         <div style="display:flex; flex-direction:column; gap:20px;">
+            <!-- Quick filters: Xuất viện + Cận lâm sàng -->
+            <section>
+                <h3 style="font-size:1em; margin-bottom:10px; color:#334155; display:flex; align-items:center; gap:6px;">
+                    <i class="fas fa-bolt" style="color:#f59e0b;"></i> Lọc nhanh
+                </h3>
+                <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyXuatVien?'#dcfce7':'#fff'};color:${advancedFilterState.onlyXuatVien?'#16a34a':'#374151'};transition:all 0.15s;">
+                        <input type="checkbox" id="filter-xuatvien" ${advancedFilterState.onlyXuatVien ? 'checked' : ''}>
+                        <i class="fas fa-sign-out-alt"></i> Xuất viện
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyCanLamSang?'#eff6ff':'#fff'};color:${advancedFilterState.onlyCanLamSang?'#1d4ed8':'#374151'};transition:all 0.15s;">
+                        <input type="checkbox" id="filter-canlamsang" ${advancedFilterState.onlyCanLamSang ? 'checked' : ''}>
+                        <i class="fas fa-microscope"></i> Cận lâm sàng
+                    </label>
+                </div>
+            </section>
                 <h3 style="font-size:1em; margin-bottom:8px; color:#334155; display:flex; align-items:center; gap:6px;">
                     <i class="fas fa-hand-holding-medical" style="color:#1976d2;"></i> Tên phẫu thuật
                 </h3>
@@ -1237,7 +1448,7 @@ function openFilterDialog(onApply) {
                 resetFilter();
                 dialog.remove();
                 if (onApply) onApply();
-                updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
+                refreshAdvancedFilterUI();
             }
         }
     ]);
@@ -1250,7 +1461,7 @@ function openFilterDialog(onApply) {
     function triggerUpdate() {
         applyInputs();
         if (onApply) onApply();
-        updateFilterBadge(document.getElementById('dr-advanced-filter-btn') || {});
+        refreshAdvancedFilterUI();
     }
 
     // Event listeners for date chips
@@ -1296,6 +1507,12 @@ function openFilterDialog(onApply) {
         el.onchange = triggerUpdate;
     });
 
+    // Quick filter checkbox listeners
+    const xuatVienCb = inner.querySelector('#filter-xuatvien');
+    const canLamSangCb = inner.querySelector('#filter-canlamsang');
+    if (xuatVienCb) xuatVienCb.onchange = triggerUpdate;
+    if (canLamSangCb) canLamSangCb.onchange = triggerUpdate;
+
     // Clear icon logic
     const surgeryInput = inner.querySelector('#filter-surgery-name');
     const clearBtn = inner.querySelector('#clear-surgery-name');
@@ -1313,6 +1530,12 @@ function openFilterDialog(onApply) {
     }
 
     function applyInputs() {
+        // Quick filters
+        const xuatVienCb = inner.querySelector('#filter-xuatvien');
+        const canLamSangCb = inner.querySelector('#filter-canlamsang');
+        if (xuatVienCb) advancedFilterState.onlyXuatVien = xuatVienCb.checked;
+        if (canLamSangCb) advancedFilterState.onlyCanLamSang = canLamSangCb.checked;
+
         advancedFilterState.surgeryName = (inner.querySelector('#filter-surgery-name').value || '').trim();
         
         advancedFilterState.surgeons = [];
@@ -1334,6 +1557,8 @@ function openFilterDialog(onApply) {
 
         // CRITICAL FIX: Update active state immediately
         advancedFilterState.active = !!(
+            advancedFilterState.onlyXuatVien ||
+            advancedFilterState.onlyCanLamSang ||
             advancedFilterState.surgeryName || 
             advancedFilterState.surgeons.length > 0 || 
             advancedFilterState.surgeryDate || 
@@ -1343,6 +1568,8 @@ function openFilterDialog(onApply) {
 
     function resetFilter() {
         advancedFilterState.active = false;
+        advancedFilterState.onlyXuatVien = false;
+        advancedFilterState.onlyCanLamSang = false;
         advancedFilterState.yLenhTags = [];
         advancedFilterState.yLenhTagsLogic = 'OR';
         advancedFilterState.surgeryName = '';
@@ -1487,9 +1714,6 @@ function matchesAdvancedFilter(item) {
         }
     }
 
-    // Update active flag for the badge
-    advancedFilterState.active = hasCondition;
-    
     return true;
 }
 
@@ -1499,7 +1723,7 @@ module.exports = {
     advancedFilterState
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":42,"../utils/dateUtils":44,"./dialogManager":11}],6:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":43,"../utils/dateUtils":45,"./dialogManager":11}],6:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -1544,7 +1768,33 @@ module.exports = { createAutoLoginToggle, applyToggleStyles };
 
 },{}],7:[function(require,module,exports){
 // cardTooltip.js - Global hover tooltip for patient cards
-const Utils = require('../utils');
+
+const STORAGE_KEY = 'dr-card-hover-preview';
+let tooltipEnabled = true;
+
+function syncEnabledFromStorage() {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            tooltipEnabled = saved !== '0';
+        }
+    } catch (_) {}
+    return tooltipEnabled;
+}
+
+function setEnabled(enabled) {
+    tooltipEnabled = enabled !== false;
+    const tooltip = document.getElementById('dr-global-card-tooltip');
+    if (tooltip && !tooltipEnabled) {
+        tooltip.style.display = 'none';
+    }
+}
+
+function isEnabled() {
+    return tooltipEnabled;
+}
+
+syncEnabledFromStorage();
 
 /**
  * Attach hover tooltip to a patient card
@@ -1555,6 +1805,7 @@ function attach(card, contentSource) {
     if (!card || !contentSource) return;
 
     card.addEventListener('mouseenter', (e) => {
+        if (!isEnabled()) return;
         let tooltip = document.getElementById('dr-global-card-tooltip');
         if (!tooltip) {
             tooltip = document.createElement('div');
@@ -1598,6 +1849,7 @@ function attach(card, contentSource) {
     });
 
     card.addEventListener('mousemove', (e) => {
+        if (!isEnabled()) return;
         const tooltip = document.getElementById('dr-global-card-tooltip');
         if (tooltip && tooltip.style.display === 'block') {
             let top = e.clientY + 15;
@@ -1625,9 +1877,15 @@ function attach(card, contentSource) {
     });
 }
 
-module.exports = { attach };
+module.exports = {
+    attach,
+    setEnabled,
+    isEnabled,
+    syncEnabledFromStorage,
+    STORAGE_KEY
+};
 
-},{"../utils":42}],8:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // contextMenu.js
 const { copyToClipboard } = require('../utils/uiUtils');
 
@@ -1762,7 +2020,7 @@ class ContextMenu {
 const contextMenu = new ContextMenu();
 module.exports = contextMenu;
 
-},{"../pages/page.dashboard.support":27,"../services/checklistService":33,"../services/reportService":36,"../utils/uiUtils":55,"./actionButtons":4}],9:[function(require,module,exports){
+},{"../pages/page.dashboard.support":28,"../services/checklistService":34,"../services/reportService":37,"../utils/uiUtils":56,"./actionButtons":4}],9:[function(require,module,exports){
 // copyDienTienAI.js
 // Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
 
@@ -2291,7 +2549,7 @@ function setupCopyMenu(bottomBar) {
 
 module.exports = { setupCopyMenu };
 
-},{"../pages/page.dashboard.support":27,"../services/apiService":32,"../services/reportService":36,"../utils/dateUtils":44,"./dialogManager":11}],11:[function(require,module,exports){
+},{"../pages/page.dashboard.support":28,"../services/apiService":33,"../services/reportService":37,"../utils/dateUtils":45,"./dialogManager":11}],11:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -2486,70 +2744,12 @@ class DisplaySettings {
     }
 
     showModal() {
-        const overlay = document.createElement('div');
-        overlay.className = 'dr-settings-modal-overlay';
-        
-        const modal = document.createElement('div');
-        modal.className = 'dr-settings-modal';
-        
-        modal.innerHTML = `
-            <div class="dr-settings-header">
-                <h3>Cài đặt hiển thị & tính năng</h3>
-                <button class="dr-settings-close">×</button>
-            </div>
-            <div class="dr-settings-body">
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label">Hiện thẻ Hướng xử trí (HXT)</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-hxt" ${this.settings.showHXT ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label">Hiện Phương pháp phẫu thuật</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-pppt" ${this.settings.showPPPT ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label">Hiện Bác sĩ thực hiện</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-surgeon" ${this.settings.showSurgeon ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label" title="Click vào mã bệnh nhân để copy nhanh">Tự động Copy PID khi click</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-autocopy" ${this.settings.autoCopyPID ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-            </div>
-        `;
-        
-        const closeBtn = modal.querySelector('.dr-settings-close');
-        
-        const close = () => {
-            if (document.body.contains(overlay)) {
-                document.body.removeChild(overlay);
-            }
-        };
-        
-        closeBtn.onclick = close;
-        overlay.onclick = (e) => {
-            if (e.target === overlay) close();
-        };
-        
-        // Handlers
-        modal.querySelector('#setting-hxt').onchange = (e) => this.set('showHXT', e.target.checked);
-        modal.querySelector('#setting-pppt').onchange = (e) => this.set('showPPPT', e.target.checked);
-        modal.querySelector('#setting-surgeon').onchange = (e) => this.set('showSurgeon', e.target.checked);
-        modal.querySelector('#setting-autocopy').onchange = (e) => this.set('autoCopyPID', e.target.checked);
-        
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
+        try {
+            const { showSettingsDialog } = require('./settingsDialog');
+            showSettingsDialog('display');
+        } catch(e) {
+            console.error('Lỗi mở settings dialog:', e);
+        }
     }
 }
 
@@ -2557,7 +2757,7 @@ class DisplaySettings {
 const displaySettings = new DisplaySettings();
 module.exports = displaySettings;
 
-},{}],13:[function(require,module,exports){
+},{"./settingsDialog":20}],13:[function(require,module,exports){
 // hsbaDataFetcher.js - Fetch HSBA V2 data via background tab and GraphQL
 
 /*
@@ -3355,7 +3555,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":33,"./dialogManager":11}],14:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":34,"./dialogManager":11}],14:[function(require,module,exports){
 // components/khoaSelect.js - Reusable khoa selection button with dropdown
 
 const ApiService = require('../services/apiService');
@@ -3460,7 +3660,7 @@ function createKhoaSelect(opts) {
 
 module.exports = { createKhoaSelect };
 
-},{"../services/apiService":32}],15:[function(require,module,exports){
+},{"../services/apiService":33}],15:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -3540,7 +3740,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":27,"../services/checklistService":33,"../services/reportService":36,"../utils":42,"../utils/domUpdaters":45,"../utils/htmlUtils":48,"../utils/patientDataMapper":50,"../utils/tagUtils":53,"./actionButtons":4}],16:[function(require,module,exports){
+},{"../pages/page.dashboard.support":28,"../services/checklistService":34,"../services/reportService":37,"../utils":43,"../utils/domUpdaters":46,"../utils/htmlUtils":49,"../utils/patientDataMapper":51,"../utils/tagUtils":54,"./actionButtons":4}],16:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -3646,7 +3846,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":20}],18:[function(require,module,exports){
+},{"./sidebarSession":21}],18:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -3876,7 +4076,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":33,"../services/reportService":36,"../utils":42,"../utils/globalFnUtils":46,"../utils/stateSync":51,"../utils/uiUtils":55,"./displaySettings":12,"./phauThuatHandlers":19,"./yLenhHandlers":22}],19:[function(require,module,exports){
+},{"../services/checklistService":34,"../services/reportService":37,"../utils":43,"../utils/globalFnUtils":47,"../utils/stateSync":52,"../utils/uiUtils":56,"./displaySettings":12,"./phauThuatHandlers":19,"./yLenhHandlers":23}],19:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4408,7 +4608,507 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":33,"../utils/globalFnUtils":46,"../utils/stateSync":51,"../utils/surgeryUtils":52}],20:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":34,"../utils/globalFnUtils":47,"../utils/stateSync":52,"../utils/surgeryUtils":53}],20:[function(require,module,exports){
+// settingsDialog.js - Dialog component for settings (reusable, mirrors ?caidat page)
+const DialogManager = require('./dialogManager');
+const SettingsService = require('../services/settingsService');
+const { showToast } = require('../utils/uiUtils');
+
+let _dialogEl = null;
+
+/**
+ * Open the settings dialog.
+ * @param {string} initialTab - One of: 'display', 'discharge', 'account', 'account-cloud'
+ */
+async function showSettingsDialog(initialTab = 'display') {
+    // Toggle: close if already open
+    if (_dialogEl && document.body.contains(_dialogEl)) {
+        document.body.removeChild(_dialogEl);
+        _dialogEl = null;
+        return;
+    }
+
+    // Overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'dr-settings-dialog-overlay';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+    _dialogEl = overlay;
+
+    // Container
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'background:#fff;border-radius:16px;width:100%;max-width:960px;height:80vh;display:flex;overflow:hidden;box-shadow:0 20px 60px -10px rgba(0,0,0,0.3);position:relative;flex-direction:column;';
+
+    // Header bar
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0;background:#fafafa;';
+    header.innerHTML = `
+        <div style="display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-sliders-h" style="color:#2563eb;font-size:1.1em;"></i>
+            <span style="font-weight:700;font-size:1.05em;color:#111827;">Cài đặt</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span id="dr-sd-save-status" style="font-size:12px;color:#6b7280;font-weight:600;"></span>
+            <button id="dr-sd-close" style="appearance:none;border:none;background:#f1f5f9;width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:18px;color:#64748b;display:flex;align-items:center;justify-content:center;padding:0;">&times;</button>
+        </div>
+    `;
+
+    // Body: sidebar + content
+    const body = document.createElement('div');
+    body.style.cssText = 'display:flex;flex:1;overflow:hidden;';
+
+    // Sidebar
+    const sidebar = document.createElement('aside');
+    sidebar.style.cssText = 'width:200px;border-right:1px solid #e5e7eb;background:#fafafa;padding:12px;flex-shrink:0;overflow-y:auto;';
+    const tabs = [
+        { id: 'display',       icon: 'fa-desktop',      label: 'Hiển thị' },
+        { id: 'discharge',     icon: 'fa-file-medical',  label: 'Dặn dò ra viện' },
+        { id: 'account',       icon: 'fa-user-lock',     label: 'Account' },
+        { id: 'account-cloud', icon: 'fa-cloud',         label: 'Account Cloud' },
+    ];
+    sidebar.innerHTML = `
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;padding:4px 8px 8px;">Menu</div>
+        ${tabs.map(t => `
+            <button data-tab="${t.id}" class="dr-sd-tab-btn" style="
+                display:flex;align-items:center;gap:8px;width:100%;padding:9px 10px;border-radius:8px;border:1px solid transparent;
+                background:none;cursor:pointer;font-size:13px;text-align:left;color:#374151;margin-bottom:4px;transition:all 0.15s;
+                ${initialTab === t.id ? 'background:#fff;border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.12) inset;color:#2563eb;font-weight:600;' : ''}
+            "><i class="fas ${t.icon}" style="width:16px;text-align:center;${initialTab === t.id ? 'color:#2563eb' : 'color:#94a3b8'};"></i>${t.label}</button>
+        `).join('')}
+    `;
+
+    // Content area
+    const content = document.createElement('div');
+    content.style.cssText = 'flex:1;overflow-y:auto;padding:20px;min-width:0;';
+
+    // Tab panels
+    content.innerHTML = `
+        <!-- Display tab -->
+        <div id="dr-sd-tab-display" class="dr-sd-tab-panel" style="display:${initialTab==='display'?'block':'none'}">
+            <h3 style="margin:0 0 4px;font-size:1em;color:#111827;">Hiển thị & Tính năng</h3>
+            <p style="margin:0 0 16px;font-size:13px;color:#6b7280;">Cài đặt những gì hiển thị trên thẻ bệnh nhân.</p>
+            <div id="dr-sd-display-settings"></div>
+        </div>
+
+        <!-- Discharge tab -->
+        <div id="dr-sd-tab-discharge" class="dr-sd-tab-panel" style="display:${initialTab==='discharge'?'block':'none'}">
+            <h3 style="margin:0 0 4px;font-size:1em;color:#111827;">Lời dặn dò ra viện</h3>
+            <p style="margin:0 0 16px;font-size:13px;color:#6b7280;">Danh sách lời dặn mặc định khi xuất viện. Lưu tự động.</p>
+            <div id="dr-sd-discharge-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+            <button id="dr-sd-add-discharge" style="appearance:none;border:1px dashed #94a3b8;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;color:#64748b;font-size:13px;">+ Thêm mục</button>
+        </div>
+
+        <!-- Account tab -->
+        <div id="dr-sd-tab-account" class="dr-sd-tab-panel" style="display:${initialTab==='account'?'block':'none'}">
+            <h3 style="margin:0 0 4px;font-size:1em;color:#111827;">Account</h3>
+            <div style="margin-bottom:12px;padding:10px;border:1px solid #fde68a;background:#fffbeb;border-radius:8px;color:#92400e;font-size:13px;">
+                <b>Lưu ý:</b> Thông tin chỉ lưu trên thiết bị (localStorage). Không dùng trên máy công cộng.
+            </div>
+            <div id="dr-sd-acc-autologin-wrap" style="margin-bottom:16px;"></div>
+            <div id="dr-sd-acc-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;"></div>
+        </div>
+
+        <!-- Account Cloud tab -->
+        <div id="dr-sd-tab-account-cloud" class="dr-sd-tab-panel" style="display:${initialTab==='account-cloud'?'block':'none'}">
+            <h3 style="margin:0 0 4px;font-size:1em;color:#111827;">Account Cloud</h3>
+            <div style="margin-bottom:12px;padding:10px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;color:#1e3a8a;font-size:13px;">
+                <b>Cloud theo bác sĩ đăng nhập:</b> Danh sách được mã hóa và lưu vào API. Dashboard Authors đọc từ đây.
+            </div>
+            <div id="dr-sd-cloud-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;"></div>
+        </div>
+    `;
+
+    body.appendChild(sidebar);
+    body.appendChild(content);
+    wrap.appendChild(header);
+    wrap.appendChild(body);
+    overlay.appendChild(wrap);
+    document.body.appendChild(overlay);
+
+    // === Close logic ===
+    const close = () => {
+        if (document.body.contains(overlay)) document.body.removeChild(overlay);
+        _dialogEl = null;
+    };
+    overlay.querySelector('#dr-sd-close').onclick = close;
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); }
+    });
+
+    // === Tab switching ===
+    sidebar.querySelectorAll('.dr-sd-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.dataset.tab;
+            sidebar.querySelectorAll('.dr-sd-tab-btn').forEach(b => {
+                b.style.background = 'none';
+                b.style.borderColor = 'transparent';
+                b.style.boxShadow = 'none';
+                b.style.color = '#374151';
+                b.style.fontWeight = 'normal';
+                const icon = b.querySelector('i');
+                if (icon) icon.style.color = '#94a3b8';
+            });
+            btn.style.background = '#fff';
+            btn.style.borderColor = '#2563eb';
+            btn.style.boxShadow = '0 0 0 2px rgba(37,99,235,.12) inset';
+            btn.style.color = '#2563eb';
+            btn.style.fontWeight = '600';
+            const icon = btn.querySelector('i');
+            if (icon) icon.style.color = '#2563eb';
+
+            content.querySelectorAll('.dr-sd-tab-panel').forEach(p => p.style.display = 'none');
+            const panel = content.querySelector(`#dr-sd-tab-${tabId}`);
+            if (panel) panel.style.display = 'block';
+        });
+    });
+
+    // === Display settings ===
+    try {
+        const displaySettingsInstance = require('./displaySettings');
+        const cardTooltip = require('./cardTooltip');
+        const CARD_HOVER_TOOLTIP_KEY = cardTooltip.STORAGE_KEY || 'dr-card-hover-preview';
+        const displayContainer = content.querySelector('#dr-sd-display-settings');
+        if (displayContainer) {
+            const items = [
+                { key: 'showHXT',       label: 'Hiện thẻ Hướng xử trí (HXT)', icon: 'fa-map-signs' },
+                { key: 'showPPPT',      label: 'Hiện Phương pháp phẫu thuật', icon: 'fa-procedures' },
+                { key: 'showSurgeon',   label: 'Hiện Bác sĩ thực hiện',         icon: 'fa-user-md' },
+                { key: 'autoCopyPID',   label: 'Tự động Copy PID khi click',     icon: 'fa-copy' },
+            ];
+            items.forEach(item => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:8px;background:#fafafa;';
+                const checked = displaySettingsInstance.get(item.key);
+                row.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <i class="fas ${item.icon}" style="width:18px;text-align:center;color:#64748b;"></i>
+                        <span style="font-size:14px;color:#374151;">${item.label}</span>
+                    </div>
+                    <label class="dr-switch" style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer;" title="${item.label}">
+                        <input type="checkbox" data-key="${item.key}" ${checked ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute;">
+                        <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${checked?'#2563eb':'#cbd5e1'};border-radius:24px;transition:.3s;">
+                            <span style="position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:${checked?'23px':'3px'};transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></span>
+                        </span>
+                    </label>
+                `;
+                const input = row.querySelector('input[type="checkbox"]');
+                const track = row.querySelector('span[style*="border-radius:24px"]');
+                const thumb = track ? track.querySelector('span') : null;
+                input.addEventListener('change', () => {
+                    displaySettingsInstance.set(item.key, input.checked);
+                    if (track) track.style.background = input.checked ? '#2563eb' : '#cbd5e1';
+                    if (thumb) thumb.style.left = input.checked ? '23px' : '3px';
+                });
+                displayContainer.appendChild(row);
+            });
+
+            if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
+                localStorage.setItem(CARD_HOVER_TOOLTIP_KEY, '1');
+            }
+            const hoverPreviewEnabled = localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) !== '0';
+            const cloudRow = document.createElement('div');
+            cloudRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #bfdbfe;border-radius:10px;margin-top:16px;background:#eff6ff;';
+            cloudRow.innerHTML = `
+                <div style="display:flex;align-items:flex-start;gap:10px;min-width:0;">
+                    <i class="fas fa-up-right-and-down-left-from-center" style="width:18px;text-align:center;color:#2563eb;margin-top:1px;"></i>
+                    <div>
+                        <div style="font-size:14px;color:#1e3a8a;font-weight:600;display:flex;align-items:center;gap:8px;">
+                            <span>Xem trước thẻ lớn khi hover</span>
+                            <span style="display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:10px;font-weight:700;">Cloud</span>
+                        </div>
+                        <div style="font-size:12px;color:#475569;margin-top:4px;line-height:1.45;">Di chuột vào .dr-card sẽ hiện popup lớn theo chuột. Cài đặt này được lưu vào API người dùng.</div>
+                    </div>
+                </div>
+                <label class="dr-switch" style="position:relative;display:inline-block;width:44px;height:24px;cursor:pointer;flex-shrink:0;" title="Xem trước thẻ lớn khi hover">
+                    <input type="checkbox" id="dr-sd-card-hover-preview" ${hoverPreviewEnabled ? 'checked' : ''} style="opacity:0;width:0;height:0;position:absolute;">
+                    <span style="position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:${hoverPreviewEnabled ? '#2563eb' : '#cbd5e1'};border-radius:24px;transition:.3s;">
+                        <span style="position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;left:${hoverPreviewEnabled ? '23px' : '3px'};transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></span>
+                    </span>
+                </label>
+            `;
+            const cloudInput = cloudRow.querySelector('#dr-sd-card-hover-preview');
+            const cloudTrack = cloudRow.querySelector('span[style*="border-radius:24px"]');
+            const cloudThumb = cloudTrack ? cloudTrack.querySelector('span') : null;
+            cloudInput.addEventListener('change', () => {
+                localStorage.setItem(CARD_HOVER_TOOLTIP_KEY, cloudInput.checked ? '1' : '0');
+                if (cardTooltip && typeof cardTooltip.setEnabled === 'function') {
+                    cardTooltip.setEnabled(cloudInput.checked);
+                }
+                if (cloudTrack) cloudTrack.style.background = cloudInput.checked ? '#2563eb' : '#cbd5e1';
+                if (cloudThumb) cloudThumb.style.left = cloudInput.checked ? '23px' : '3px';
+                scheduleAutoSave();
+            });
+            displayContainer.appendChild(cloudRow);
+        }
+    } catch(e) { console.warn('Display settings render error', e); }
+
+    // === API-based tabs (discharge, account, account-cloud) ===
+    const statusEl = header.querySelector('#dr-sd-save-status');
+    let _settings = null, _checklistObj = null, _doctorName = '', _chungThuSo = '';
+    let _cloudAccounts = [];
+    const DASHBOARD_STORAGE_KEYS = [
+        'dr-card-view',
+        'dr-view-mode',
+        'dr-card-hover-preview',
+        'dr-filter-type',
+        'dr-filter-khoa',
+        'dr-tracking-pids'
+    ];
+
+    // Auto-save
+    let _autoSaveTimeout;
+    const scheduleAutoSave = () => {
+        clearTimeout(_autoSaveTimeout);
+        statusEl.textContent = 'Sẽ lưu...';
+        statusEl.style.color = '#f59e0b';
+        _autoSaveTimeout = setTimeout(doAutoSave, 800);
+    };
+
+    const doAutoSave = async () => {
+        try {
+            statusEl.textContent = 'Đang lưu...';
+            statusEl.style.color = '#3b82f6';
+
+            const dischargeList = content.querySelector('#dr-sd-discharge-list');
+            const dischargeValues = dischargeList
+                ? Array.from(dischargeList.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean)
+                : (_settings && _settings.danDoRaVien ? _settings.danDoRaVien : []);
+
+            const dashboardSettings = {};
+            DASHBOARD_STORAGE_KEYS.forEach((key) => {
+                const value = localStorage.getItem(key);
+                if (value !== null) dashboardSettings[key] = value;
+            });
+            if (dashboardSettings['dr-view-mode'] && !dashboardSettings['dr-card-view']) {
+                dashboardSettings['dr-card-view'] = dashboardSettings['dr-view-mode'];
+            }
+
+            const nextBase = {
+                ...(_settings || {}),
+                danDoRaVien: dischargeValues,
+                dashboard: {
+                    ...((_settings && _settings.dashboard) || {}),
+                    ...dashboardSettings
+                }
+            };
+            let next = await SettingsService.withCloudAccounts(nextBase, _cloudAccounts, { doctorName: _doctorName, chungThuSo: _chungThuSo });
+            delete next.accounts;
+            delete next.accountsCloud;
+
+            if (!_checklistObj && _chungThuSo) {
+                const created = await SettingsService.createSettingsPhieu({ name: _doctorName, chungThuSo: _chungThuSo });
+                if (created && created.isValid) _checklistObj = await SettingsService.loadSettingsPhieu(_chungThuSo);
+            }
+            if (!_checklistObj) {
+                statusEl.textContent = 'Lỗi: Chưa có phiếu';
+                statusEl.style.color = '#dc2626';
+                return;
+            }
+            const ok = await SettingsService.updateSettingsState(_checklistObj, next);
+            if (ok) {
+                _settings = next;
+                statusEl.textContent = '✓ Đã lưu';
+                statusEl.style.color = '#16a34a';
+                showToast('✓ Cài đặt đã được lưu!', 'success', 2500);
+            } else {
+                statusEl.textContent = '✗ Lưu thất bại';
+                statusEl.style.color = '#dc2626';
+                showToast('✗ Lưu thất bại', 'error', 2500);
+            }
+        } catch(e) {
+            statusEl.textContent = '✗ Lỗi';
+            statusEl.style.color = '#dc2626';
+        } finally {
+            setTimeout(() => { statusEl.textContent = ''; statusEl.style.color = '#6b7280'; }, 3500);
+        }
+    };
+
+    // Discharge helpers
+    const dischargeList = content.querySelector('#dr-sd-discharge-list');
+    function addDischargeRow(text) {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;';
+        row.innerHTML = `
+            <input type="text" value="${(text || '').replace(/"/g, '&quot;')}" placeholder="Nhập lời dặn dò..."
+                style="flex:1;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">
+            <button style="appearance:none;border:1px solid #fee2e2;background:#fff;color:#dc2626;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:13px;flex-shrink:0;">Xóa</button>
+        `;
+        row.querySelector('button').onclick = () => { row.remove(); scheduleAutoSave(); };
+        row.querySelector('input').oninput = scheduleAutoSave;
+        dischargeList.appendChild(row);
+    }
+
+    content.querySelector('#dr-sd-add-discharge').onclick = () => {
+        addDischargeRow('');
+        scheduleAutoSave();
+    };
+
+    // Account helpers (localStorage-based)
+    const ls = window.localStorage;
+    const ACC_KEY = 'dr_accounts_json';
+    const DEF_KEY = 'dr_acc_default';
+    const AUTO_KEY = 'dr_acc_autologin';
+    function readAccounts() { try { const p = JSON.parse(ls.getItem(ACC_KEY) || '[]'); return Array.isArray(p) ? p : []; } catch(_) { return []; } }
+    function writeAccounts(arr) { ls.setItem(ACC_KEY, JSON.stringify(arr)); }
+    function readDefault() { return ls.getItem(DEF_KEY) || ''; }
+    function writeDefault(u) { ls.setItem(DEF_KEY, u || ''); }
+
+    async function performQuickLogin(acc) {
+        if (!acc || !acc.username) return;
+        if (typeof GM_openInTab !== 'function') { alert('Cần quyền GM_openInTab'); return; }
+        const loginKey = `dr_quick_login_${acc.username}`;
+        await GM.setValue(loginKey, JSON.stringify({ username: acc.username, password: acc.password, ts: Date.now() }));
+        GM_openInTab(window.location.origin + '/Home/Login?quicklogin=' + encodeURIComponent(acc.username), { active: true, insert: true, incognito: true });
+    }
+
+    const accGrid = content.querySelector('#dr-sd-acc-grid');
+    function renderAccGrid() {
+        accGrid.innerHTML = '';
+        const accounts = readAccounts();
+        let def = readDefault();
+        if (accounts.length === 1 && accounts[0].username && def !== accounts[0].username) {
+            writeDefault(accounts[0].username); def = accounts[0].username;
+        }
+        accounts.forEach((acc, idx) => {
+            const box = document.createElement('div');
+            box.style.cssText = 'border:1px solid #e5e7eb;border-radius:12px;padding:12px;position:relative;background:#fff;transition:border-color 0.2s;';
+            box.onmouseover = () => box.style.borderColor = '#2563eb';
+            box.onmouseout = () => box.style.borderColor = '#e5e7eb';
+            const rid = `dr-acc-local-${idx}`;
+            box.innerHTML = `
+                <button class="dr-acc-remove" style="position:absolute;right:8px;top:8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px;">Xóa</button>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;margin-top:10px;">
+                    <label style="width:70px;font-size:12px;color:#6b7280;">Bí danh</label>
+                    <input class="dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: Khoa Ngoại" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                    <label style="width:70px;font-size:12px;color:#6b7280;">Username</label>
+                    <input class="dr-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
+                    <label style="width:70px;font-size:12px;color:#6b7280;">Password</label>
+                    <input class="dr-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid #f3f4f6;padding-top:10px;">
+                    <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;">
+                        <input id="${rid}" type="radio" name="dr-sd-acc-default" ${def===acc.username?'checked':''} style="margin:0;"> Mặc định
+                    </label>
+                    <button class="dr-acc-login-btn" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">Login 🕵️</button>
+                </div>
+            `;
+            box.querySelector('.dr-acc-remove').onclick = () => { if (confirm('Xóa tài khoản?')) { const a = readAccounts(); a.splice(idx,1); writeAccounts(a); if (def===acc.username) writeDefault(''); renderAccGrid(); } };
+            box.querySelector('.dr-acc-title').oninput = e => { const a = readAccounts(); if(a[idx]) { a[idx].title=e.target.value; writeAccounts(a); } };
+            box.querySelector('.dr-acc-username').oninput = e => { const a = readAccounts(); if(a[idx]) { const old=a[idx].username; a[idx].username=e.target.value; writeAccounts(a); if(readDefault()===old) writeDefault(e.target.value); } };
+            box.querySelector('.dr-acc-password').oninput = e => { const a = readAccounts(); if(a[idx]) { a[idx].password=e.target.value; writeAccounts(a); } };
+            box.querySelector('.dr-acc-login-btn').onclick = () => performQuickLogin(acc);
+            box.querySelector(`#${rid}`).onchange = e => { if(e.target.checked) writeDefault(acc.username||''); };
+            accGrid.appendChild(box);
+        });
+        const addBox = document.createElement('div');
+        addBox.style.cssText = 'border:2px dashed #cbd5e1;border-radius:12px;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;background:#f9fafb;min-height:140px;transition:all 0.2s;';
+        addBox.onmouseover = () => { addBox.style.borderColor='#2563eb'; addBox.style.color='#2563eb'; };
+        addBox.onmouseout = () => { addBox.style.borderColor='#cbd5e1'; addBox.style.color='#6b7280'; };
+        addBox.innerHTML = '<div style="font-size:28px;margin-bottom:4px;">+</div><div style="font-size:13px;font-weight:600;">Thêm tài khoản</div>';
+        addBox.onclick = () => { const a = readAccounts(); a.push({title:'',username:'',password:''}); writeAccounts(a); renderAccGrid(); };
+        accGrid.appendChild(addBox);
+    }
+
+    // Cloud account helpers
+    const cloudGrid = content.querySelector('#dr-sd-cloud-grid');
+    function renderCloudGrid() {
+        cloudGrid.innerHTML = '';
+        (_cloudAccounts || []).forEach((acc, idx) => {
+            const box = document.createElement('div');
+            box.style.cssText = 'border:1px solid #e5e7eb;border-radius:12px;padding:12px;position:relative;background:#fff;transition:border-color 0.2s;';
+            box.onmouseover = () => box.style.borderColor = '#2563eb';
+            box.onmouseout = () => box.style.borderColor = '#e5e7eb';
+            box.innerHTML = `
+                <button class="dr-cloud-remove" style="position:absolute;right:8px;top:8px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font-size:12px;">Xóa</button>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;margin-top:10px;">
+                    <label style="width:70px;font-size:12px;color:#6b7280;">Bí danh</label>
+                    <input class="dr-cloud-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: Trực Ngoại" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                    <label style="width:70px;font-size:12px;color:#6b7280;">Username</label>
+                    <input class="dr-cloud-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                </div>
+                <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
+                    <label style="width:70px;font-size:12px;color:#6b7280;">Password</label>
+                    <input class="dr-cloud-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" style="flex:1;padding:5px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:12px;">
+                </div>
+                <div style="display:flex;justify-content:flex-end;border-top:1px solid #f3f4f6;padding-top:10px;">
+                    <button class="dr-cloud-login-btn" style="background:#2563eb;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">Login 🕵️</button>
+                </div>
+            `;
+            box.querySelector('.dr-cloud-remove').onclick = () => {
+                if (confirm('Xóa account cloud này?')) { _cloudAccounts.splice(idx,1); renderCloudGrid(); scheduleAutoSave(); }
+            };
+            box.querySelector('.dr-cloud-title').oninput = e => { _cloudAccounts[idx].title = e.target.value; scheduleAutoSave(); };
+            box.querySelector('.dr-cloud-username').oninput = e => { _cloudAccounts[idx].username = e.target.value; scheduleAutoSave(); };
+            box.querySelector('.dr-cloud-password').oninput = e => { _cloudAccounts[idx].password = e.target.value; scheduleAutoSave(); };
+            box.querySelector('.dr-cloud-login-btn').onclick = () => performQuickLogin(_cloudAccounts[idx]);
+            cloudGrid.appendChild(box);
+        });
+        const addBox = document.createElement('div');
+        addBox.style.cssText = 'border:2px dashed #cbd5e1;border-radius:12px;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;background:#f9fafb;min-height:140px;transition:all 0.2s;';
+        addBox.onmouseover = () => { addBox.style.borderColor='#2563eb'; addBox.style.color='#2563eb'; };
+        addBox.onmouseout = () => { addBox.style.borderColor='#cbd5e1'; addBox.style.color='#6b7280'; };
+        addBox.innerHTML = '<div style="font-size:28px;margin-bottom:4px;">+</div><div style="font-size:13px;font-weight:600;">Thêm account cloud</div>';
+        addBox.onclick = () => { _cloudAccounts.push({title:'',username:'',password:''}); renderCloudGrid(); scheduleAutoSave(); };
+        cloudGrid.appendChild(addBox);
+    }
+
+    // Load API data
+    statusEl.textContent = 'Đang tải...';
+    statusEl.style.color = '#3b82f6';
+    try {
+        const result = await SettingsService.getOrCreateSettings();
+        _doctorName = result.doctorName || '';
+        _chungThuSo = result.chungThuSo || '';
+        _checklistObj = result.checklistObj;
+        _settings = result.settings;
+
+        _cloudAccounts = await SettingsService.getCloudAccounts(_settings, { doctorName: _doctorName, chungThuSo: _chungThuSo });
+
+        // Render discharge
+        const danDo = _settings && _settings.danDoRaVien ? _settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien;
+        (danDo || []).forEach(t => addDischargeRow(t));
+
+        // Render account grids
+        renderAccGrid();
+        renderCloudGrid();
+
+        // Auto-login toggle
+        try {
+            const { createAutoLoginToggle, applyToggleStyles } = require('./autoLoginToggle');
+            const toggleWrap = content.querySelector('#dr-sd-acc-autologin-wrap');
+            if (toggleWrap) {
+                const enabled = ls.getItem(AUTO_KEY) === '1';
+                const toggle = createAutoLoginToggle({
+                    enabled,
+                    onToggle: () => {
+                        const cur = ls.getItem(AUTO_KEY) === '1';
+                        ls.setItem(AUTO_KEY, cur ? '0' : '1');
+                        applyToggleStyles(toggle, !cur);
+                    },
+                    onDblClick: () => {},
+                    title: 'Bật/tắt tự động login'
+                });
+                toggleWrap.appendChild(toggle);
+            }
+        } catch(_) {}
+
+        statusEl.textContent = '';
+    } catch(e) {
+        console.error('settingsDialog load error', e);
+        statusEl.textContent = '✗ Lỗi tải dữ liệu';
+        statusEl.style.color = '#dc2626';
+    }
+}
+
+module.exports = { showSettingsDialog };
+
+},{"../services/settingsService":39,"../utils/uiUtils":56,"./autoLoginToggle":6,"./cardTooltip":7,"./dialogManager":11,"./displaySettings":12}],21:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -4443,7 +5143,7 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 // components/trackingUI.js
 
 const ApiService = require('../services/apiService');
@@ -5073,7 +5773,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
 
 module.exports = { setupTrackingUI };
 
-},{"../pages/page.dashboard.support":27,"../services/apiService":32,"../services/patientService":35,"../services/reportService":36,"../services/trackedPatientService":40,"../utils/khoaUtils":49,"../utils/textUtils":54,"./cardTooltip":7,"./dialogManager":11}],22:[function(require,module,exports){
+},{"../pages/page.dashboard.support":28,"../services/apiService":33,"../services/patientService":36,"../services/reportService":37,"../services/trackedPatientService":41,"../utils/khoaUtils":50,"../utils/textUtils":55,"./cardTooltip":7,"./dialogManager":11}],23:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -5537,7 +6237,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":33,"../utils/dateUtils":44,"../utils/globalFnUtils":46,"../utils/stateSync":51}],23:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":34,"../utils/dateUtils":45,"../utils/globalFnUtils":47,"../utils/stateSync":52}],24:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -5623,7 +6323,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 // otm-entry.js - Entry point for OTM content script
 (function() {
     'use strict';
@@ -5644,7 +6344,7 @@ module.exports = {
 
 })();
 
-},{"./otm.content.script":25}],25:[function(require,module,exports){
+},{"./otm.content.script":26}],26:[function(require,module,exports){
 // otm.content.js - Content script for OTM surgery data fetching
 (function() {
     'use strict';
@@ -6733,7 +7433,7 @@ module.exports = {
 
 })();
 
-},{}],26:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
@@ -6748,6 +7448,7 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 // Import refactored modules
 const PatientService = require('../services/patientService');
 const ChecklistService = require('../services/checklistService');
+const SettingsService = require('../services/settingsService');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const ModalManager = require('../components/modalManager');
 const LoginHandler = require('../components/loginHandler');
@@ -6784,6 +7485,10 @@ function showDashboardBenhNhanIfNeeded() {
     let openTabs = window.openTabs;
 
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
+    
+    // Set page title
+    document.title = 'Dashboard by drquochoai';
+    
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
 
     // Make utility functions globally available for onclick handlers
@@ -6816,6 +7521,111 @@ function showDashboardBenhNhanIfNeeded() {
 
     const checklistItems = BS_CAI_DAT.checklistItems;
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
+    const VIEW_KEY = 'dr-card-view';
+    const CARD_HOVER_TOOLTIP_KEY = cardTooltip.STORAGE_KEY || 'dr-card-hover-preview';
+    const DASHBOARD_CLOUD_KEYS = [
+        VIEW_KEY,
+        'dr-view-mode',
+        CARD_HOVER_TOOLTIP_KEY,
+        'dr-filter-type',
+        'dr-filter-khoa',
+        'dr-tracking-pids'
+    ];
+    let dashboardCloudContext = {
+        doctorName: '',
+        chungThuSo: '',
+        checklistObj: null,
+        settings: SettingsService.getDefaultSettings(),
+        cloudAccounts: [],
+        bootstrapLoaded: false
+    };
+    let dashboardSaveTimeout = null;
+
+    function applyCardHoverTooltipSetting() {
+        if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
+            localStorage.setItem(CARD_HOVER_TOOLTIP_KEY, '1');
+        }
+        if (cardTooltip && typeof cardTooltip.setEnabled === 'function') {
+            cardTooltip.setEnabled(localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) !== '0');
+        }
+    }
+
+    function applyDashboardSettingsToLocalStorage(dashboardSettings) {
+        if (!dashboardSettings || typeof dashboardSettings !== 'object') return;
+
+        Object.keys(dashboardSettings).forEach((key) => {
+            const value = dashboardSettings[key];
+            if (value === undefined || value === null) return;
+            localStorage.setItem(key, String(value));
+        });
+
+        if (!dashboardSettings[VIEW_KEY] && dashboardSettings['dr-view-mode']) {
+            localStorage.setItem(VIEW_KEY, String(dashboardSettings['dr-view-mode']));
+        }
+    }
+
+    function readDashboardSettingsFromLocalStorage() {
+        const dashboardSettings = {};
+        DASHBOARD_CLOUD_KEYS.forEach((key) => {
+            const value = localStorage.getItem(key);
+            if (value !== null) dashboardSettings[key] = value;
+        });
+
+        if (dashboardSettings['dr-view-mode'] && !dashboardSettings[VIEW_KEY]) {
+            dashboardSettings[VIEW_KEY] = dashboardSettings['dr-view-mode'];
+        }
+
+        return dashboardSettings;
+    }
+
+    async function ensureDashboardChecklistObj() {
+        if (dashboardCloudContext.checklistObj) return dashboardCloudContext.checklistObj;
+        if (!dashboardCloudContext.chungThuSo) return null;
+
+        const created = await SettingsService.createSettingsPhieu({
+            name: dashboardCloudContext.doctorName,
+            chungThuSo: dashboardCloudContext.chungThuSo
+        });
+        if (created && created.isValid) {
+            dashboardCloudContext.checklistObj = await SettingsService.loadSettingsPhieu(dashboardCloudContext.chungThuSo);
+        }
+        return dashboardCloudContext.checklistObj;
+    }
+
+    async function persistDashboardSettingsToCloud({ silent = true } = {}) {
+        try {
+            const checklistObj = await ensureDashboardChecklistObj();
+            if (!checklistObj) return false;
+
+            const nextSettings = {
+                ...(dashboardCloudContext.settings || SettingsService.getDefaultSettings()),
+                dashboard: {
+                    ...((dashboardCloudContext.settings && dashboardCloudContext.settings.dashboard) || {}),
+                    ...readDashboardSettingsFromLocalStorage()
+                }
+            };
+
+            const ok = await SettingsService.updateSettingsState(checklistObj, nextSettings);
+            if (ok) {
+                dashboardCloudContext.settings = nextSettings;
+                return true;
+            }
+
+            if (!silent) showToast('Không thể lưu cài đặt dashboard', 'error', 2500);
+            return false;
+        } catch (e) {
+            console.warn('Persist dashboard settings failed', e);
+            if (!silent) showToast('Không thể lưu cài đặt dashboard', 'error', 2500);
+            return false;
+        }
+    }
+
+    function scheduleDashboardSettingsSync() {
+        clearTimeout(dashboardSaveTimeout);
+        dashboardSaveTimeout = setTimeout(() => {
+            persistDashboardSettingsToCloud({ silent: true });
+        }, 800);
+    }
 
     // Helper function to create checklist section
     async function createChecklistSectionAsync(patient) {
@@ -7616,7 +8426,7 @@ function showDashboardBenhNhanIfNeeded() {
         topBar.className = 'dr-top-filter-bar';
         topBar.style.cssText = `
             position: sticky; top: 0; z-index: 1000;
-            display: flex; align-items: center; gap: 12px; 
+            display: flex; align-items: center; gap: 12px;
             padding: 12px 16px; margin: 0 0 8px 0;
             background: #fff; border-bottom: 1px solid #e0e0e0;
         `;
@@ -7629,7 +8439,28 @@ function showDashboardBenhNhanIfNeeded() {
                     </button>
                     <span id="dr-tracking-badge" style="position:absolute; top:-6px; right:-6px; background:#d32f2f; color:#fff; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.2);">0</span>
                 </div>
-                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh" 
+                <!-- Authors / Quick Login Dropdown -->
+                <div class="dr-view-dropdown dr-topbar-dropdown" id="dr-authors-dropdown-container">
+                    <button id="dr-authors-btn" class="dr-topbar-control-btn" title="Quản lý tài khoản & Đăng nhập nhanh">
+                        <i class="fas fa-user-shield"></i>
+                        <span class="dr-topbar-btn-text">Authors</span>
+                    </button>
+                    <div class="dr-dropdown-menu" style="min-width:240px; padding:8px 0;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; border-bottom:1px solid #f1f5f9; margin-bottom:4px;">
+                            <span style="font-weight:700; color:#475569; font-size:13px;">Tài khoản đã lưu</span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <button id="dr-authors-reload-btn" type="button" title="Tải lại danh sách account cloud" style="appearance:none; border:none; background:#f8fafc; color:#64748b; width:28px; height:28px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s;">
+                                    <i class="fas fa-rotate-right"></i>
+                                </button>
+                                <a href="/?caidat=account-cloud" target="_blank" title="Cài đặt account cloud" style="color:#64748b; transition:color 0.2s; width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:#f8fafc;"><i class="fas fa-cog"></i></a>
+                            </div>
+                        </div>
+                        <div id="dr-authors-list" style="max-height:300px; overflow-y:auto;">
+                            <div style="padding:12px; text-align:center; color:#94a3b8; font-size:12px;">Đang tải...</div>
+                        </div>
+                    </div>
+                </div>
+                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh"
                     autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                     style="flex:1; min-width: 220px; height:38px; padding: 0 10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
             </div>
@@ -7637,12 +8468,6 @@ function showDashboardBenhNhanIfNeeded() {
                 <span id="dr-total-compact" style="display:inline-block; text-align:center; color:#0f172a; font-weight:700; white-space:nowrap; background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 10px; border-radius:9999px; min-width:110px;">0/0</span>
             </div>
             <div class="dr-topbar-right" style="flex:1; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
-                <label class="dr-topbar-checkbox" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                    <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
-                </label>
-                <label class="dr-topbar-checkbox" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                    <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
-                </label>
                 <div class="dr-view-dropdown dr-topbar-dropdown dr-sort-dropdown" id="dr-sort-dropdown-container">
                     <div class="dr-dropdown-toggle dr-topbar-control-btn" id="dr-sort-toggle" title="Sắp xếp danh sách bệnh nhân">
                         <span><i class="fas fa-sort-amount-down-alt" style="margin-right:0px; color:#1e88e5;"></i> <span class="dr-topbar-btn-text">Sắp xếp</span></span>
@@ -7663,7 +8488,7 @@ function showDashboardBenhNhanIfNeeded() {
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Premium View Dropdown -->
                 <div class="dr-view-dropdown dr-topbar-dropdown" id="dr-view-dropdown-container">
                     <div class="dr-dropdown-toggle dr-topbar-control-btn" id="dr-view-toggle-premium" style="height:38px; display:flex; align-items:center; box-sizing:border-box; padding: 0 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-weight:600; color:#475569; gap:8px; cursor:pointer;">
@@ -7687,9 +8512,8 @@ function showDashboardBenhNhanIfNeeded() {
 
         const container = document.createElement('div');
         // View state
-        const VIEW_KEY = 'dr-card-view';
-        let view = (localStorage.getItem(VIEW_KEY) || 'grid');
-        
+        let view = (localStorage.getItem(VIEW_KEY) || localStorage.getItem('dr-view-mode') || 'grid');
+
         // Safety: ensure view is one of supported
         if (!['grid', 'list', 'fit'].includes(view)) view = 'grid';
 
@@ -7699,9 +8523,27 @@ function showDashboardBenhNhanIfNeeded() {
         const sortDropdownContainer = topBar.querySelector('#dr-sort-dropdown-container');
         const sortToggle = topBar.querySelector('#dr-sort-toggle');
         const sortItems = topBar.querySelectorAll('#dr-sort-dropdown-container .dr-dropdown-item');
+        const authorsContainer = topBar.querySelector('#dr-authors-dropdown-container');
+        const authorsBtn = topBar.querySelector('#dr-authors-btn');
+        const authorsReloadBtn = topBar.querySelector('#dr-authors-reload-btn');
+        const authorsList = topBar.querySelector('#dr-authors-list');
+
         const SORT_KEY = 'dr-card-sort';
         const validSortKeys = new Set(['default', 'admit-asc', 'admit-desc', 'stay-asc', 'stay-desc']);
         let currentSort = localStorage.getItem(SORT_KEY) || 'default';
+        let cloudAccounts = Array.isArray(dashboardCloudContext.cloudAccounts) ? [...dashboardCloudContext.cloudAccounts] : [];
+        let cloudAccountsLoaded = !!dashboardCloudContext.bootstrapLoaded;
+        let cloudAccountsLoading = null;
+
+        const setAuthorsReloadButtonState = (loading) => {
+            if (!authorsReloadBtn) return;
+            authorsReloadBtn.disabled = !!loading;
+            authorsReloadBtn.style.opacity = loading ? '0.65' : '1';
+            authorsReloadBtn.style.cursor = loading ? 'wait' : 'pointer';
+            authorsReloadBtn.innerHTML = loading
+                ? '<i class="fas fa-spinner fa-spin"></i>'
+                : '<i class="fas fa-rotate-right"></i>';
+        };
 
         if (!validSortKeys.has(currentSort)) currentSort = 'default';
 
@@ -7801,17 +8643,130 @@ function showDashboardBenhNhanIfNeeded() {
             applySelectedSort();
         };
 
+        const normalizeCloudAccounts = (accounts) => {
+            if (!Array.isArray(accounts)) return [];
+            return accounts
+                .map(acc => {
+                    if (!acc || typeof acc !== 'object') return null;
+                    return {
+                        title: String(acc.title || '').trim(),
+                        username: String(acc.username || '').trim(),
+                        password: String(acc.password || '')
+                    };
+                })
+                .filter(acc => acc && acc.username);
+        };
+
+        const loadCloudAccounts = async ({ force = false, showLoading = false } = {}) => {
+            if (cloudAccountsLoaded && !force) return cloudAccounts;
+            if (cloudAccountsLoading) return cloudAccountsLoading;
+
+            if (showLoading && authorsList) {
+                authorsList.innerHTML = '<div style="padding:12px; text-align:center; color:#94a3b8; font-size:12px;">Đang tải...</div>';
+            }
+            setAuthorsReloadButtonState(true);
+
+            cloudAccountsLoading = (async () => {
+                try {
+                    const SettingsService = require('../services/settingsService');
+                    const cloudData = await SettingsService.getOrCreateSettings();
+                    const s = cloudData && cloudData.settings ? cloudData.settings : null;
+                    const list = await SettingsService.getCloudAccounts(s || {}, {
+                        doctorName: cloudData && cloudData.doctorName,
+                        chungThuSo: cloudData && cloudData.chungThuSo
+                    });
+                    cloudAccounts = normalizeCloudAccounts(list);
+                    dashboardCloudContext = {
+                        doctorName: cloudData && cloudData.doctorName,
+                        chungThuSo: cloudData && cloudData.chungThuSo,
+                        checklistObj: cloudData && cloudData.checklistObj,
+                        settings: s || SettingsService.getDefaultSettings(),
+                        cloudAccounts: [...cloudAccounts],
+                        bootstrapLoaded: true
+                    };
+
+                    if (s && s.dashboard && typeof s.dashboard === 'object') {
+                        applyDashboardSettingsToLocalStorage(s.dashboard);
+                        applyCardHoverTooltipSetting();
+                    }
+                } catch (e) {
+                    console.warn('Cloud authors load failed', e);
+                    cloudAccounts = [];
+                } finally {
+                    cloudAccountsLoaded = true;
+                    cloudAccountsLoading = null;
+                    setAuthorsReloadButtonState(false);
+                }
+                return cloudAccounts;
+            })();
+
+            return cloudAccountsLoading;
+        };
+
+        const renderAuthorsList = () => {
+            if (!authorsList) return;
+            const accounts = cloudAccounts;
+            if (accounts.length === 0) {
+                authorsList.innerHTML = `
+                    <div style="padding:16px; text-align:center;">
+                        <div style="color:#64748b; font-size:12px; margin-bottom:8px;">Chưa có account cloud nào được lưu</div>
+                        <a href="/?caidat=account-cloud" target="_blank" style="display:inline-block; background:#2563eb; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; text-decoration:none;">Thêm ngay</a>
+                    </div>
+                `;
+                return;
+            }
+            authorsList.innerHTML = '';
+            accounts.forEach(acc => {
+                const item = document.createElement('div');
+                item.className = 'dr-dropdown-item';
+                item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 16px;';
+                item.innerHTML = `
+                    <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+                        <span style="font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${acc.title || acc.username}</span>
+                        <span style="font-size:11px; color:#64748b;">${acc.username}</span>
+                    </div>
+                    <button class="dr-quick-login-btn" style="background:#f1f5f9; color:#2563eb; border:none; border-radius:6px; padding:5px 10px; font-size:11px; font-weight:600; cursor:pointer; transition:all 0.2s;">Login 🕵️</button>
+                `;
+                item.querySelector('.dr-quick-login-btn').onclick = async (e) => {
+                    e.stopPropagation();
+                    if (!acc.username || !acc.password) return;
+
+                    // Save credentials to GM storage
+                    const loginKey = `dr_quick_login_${acc.username}`;
+                    await GM.setValue(loginKey, JSON.stringify({
+                        username: acc.username,
+                        password: acc.password,
+                        ts: Date.now()
+                    }));
+
+                    // Open incognito tab
+                    if (typeof GM_openInTab === 'function') {
+                        GM_openInTab(window.location.origin + '/Home/Login?quicklogin=' + encodeURIComponent(acc.username), {
+                            active: true,
+                            insert: true,
+                            incognito: true
+                        });
+                    } else {
+                        alert('Tiện ích cần quyền GM_openInTab để thực hiện tính năng này.');
+                    }
+                };
+                authorsList.appendChild(item);
+            });
+        };
+
         // Initialize UI
         updateViewUI(view);
         updateSortUI(currentSort);
 
-        // Toggle dropdown
-        const toggleBtn = topBar.querySelector('#dr-view-toggle-premium');
-        if (toggleBtn) {
-            toggleBtn.onclick = (e) => {
-                e.stopPropagation();
-                dropdownContainer.classList.toggle('open');
-            };
+        if (cloudAccountsLoaded) {
+            renderAuthorsList();
+        } else {
+            (async () => {
+                try {
+                    await loadCloudAccounts({ showLoading: true });
+                } catch(e) { console.warn('Cloud sync failed on start', e); }
+                renderAuthorsList();
+            })();
         }
 
         if (sortToggle) {
@@ -7821,28 +8776,56 @@ function showDashboardBenhNhanIfNeeded() {
             };
         }
 
+        if (authorsBtn) {
+            authorsBtn.onclick = (e) => {
+                e.stopPropagation();
+                authorsContainer.classList.toggle('open');
+                if (authorsContainer.classList.contains('open') && cloudAccountsLoaded) {
+                    renderAuthorsList();
+                }
+            };
+        }
+
+        if (authorsReloadBtn) {
+            authorsReloadBtn.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    await loadCloudAccounts({ force: true, showLoading: true });
+                    renderAuthorsList();
+                    showToast('Đã tải lại danh sách account cloud', 'success', 2200);
+                } catch (err) {
+                    console.warn('Manual cloud authors reload failed', err);
+                    showToast('Không thể tải lại account cloud', 'error', 2500);
+                }
+            };
+        }
+
         // Close dropdown when clicking outside
         document.addEventListener('click', () => {
-            if (dropdownContainer) dropdownContainer.classList.remove('open');
             if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
+            if (authorsContainer) authorsContainer.classList.remove('open');
         });
 
         // Handle item selection
         dropdownItems.forEach(item => {
             item.onclick = (e) => {
+                e.stopPropagation();
                 const targetView = item.getAttribute('data-view');
                 if (targetView === view) return;
 
                 localStorage.setItem(VIEW_KEY, targetView);
-                
+                localStorage.setItem('dr-view-mode', targetView);
+                scheduleDashboardSettingsSync();
+
                 // If switching between fit and others, we might need a full re-render or reload
-                // For now, let's try to just re-trigger renderCards if it's fit mode, 
+                // For now, let's try to just re-trigger renderCards if it's fit mode,
                 // but since the container structure changes much, a reload or re-exec of renderCards with original data is safer.
                 // However, the requested behavior is "không reload lại trang web".
-                
+
                 if (targetView === 'fit' || view === 'fit') {
                     // Re-render everything with the new view
-                    renderCards(data); 
+                    renderCards(data);
                 } else {
                     // Classic behavior for grid/list (might involve reload if complex)
                     renderCards(data);
@@ -7862,7 +8845,7 @@ function showDashboardBenhNhanIfNeeded() {
         });
 
         if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
-        
+
         if (view === 'fit') {
             container.className = 'dr-fit-container';
             container.style.paddingBottom = '0'; // Clean slate for fit mode
@@ -7914,11 +8897,9 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
-        const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
-        const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
         const totalCompact = topBar.querySelector('#dr-total-compact');
 
-        function getCardVisibilityState(card, keywords, onlyXV, onlyCLS) {
+        function getCardVisibilityState(card, keywords) {
             const nameAttr = card.getAttribute('data-name') || '';
             const mabnAttr = card.getAttribute('data-mabn') || '';
             const cdAttr = card.getAttribute('data-cd') || '';
@@ -7945,10 +8926,12 @@ function showDashboardBenhNhanIfNeeded() {
                     removeAccents(fullTxt).includes(normKey);
             });
 
-            const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
-            const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
+            const matchesXV = !advancedFilterState.onlyXuatVien || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
+            const matchesCLS = !advancedFilterState.onlyCanLamSang || card.dataset.hascls === '1';
             const item = card.__drPatientData || sortedData.find(p => p.mabn === card.getAttribute('data-mabn'));
-            const matchesAdvanced = !advancedFilterState.active || (item && matchesAdvancedFilter(item));
+                // Only run advanced filter logic if there are advanced criteria (not just quick filters)
+                const hasAdvancedCriteria = !!(advancedFilterState.surgeryName || advancedFilterState.surgeons.length > 0 || advancedFilterState.surgeryDate || advancedFilterState.yLenhTags.length > 0);
+                const matchesAdvanced = !hasAdvancedCriteria || (item && matchesAdvancedFilter(item));
 
             return matchesText && matchesXV && matchesCLS && matchesAdvanced;
         }
@@ -7966,8 +8949,6 @@ function showDashboardBenhNhanIfNeeded() {
 
         function applyFilter() {
             const rawQ = (searchInput.value || '').trim();
-            const onlyXV = !!chkXuatVien.checked;
-            const onlyCLS = !!chkCanLamSang.checked;
             let visible = 0;
 
             // Split by comma and process each keyword
@@ -7977,20 +8958,20 @@ function showDashboardBenhNhanIfNeeded() {
 
             const mainCards = container.querySelectorAll('.dr-card, .dr-list-row');
             mainCards.forEach(card => {
-                const show = getCardVisibilityState(card, keywords, onlyXV, onlyCLS);
+                const show = getCardVisibilityState(card, keywords);
                 updateCardDisplay(card, show);
                 if (show) visible++;
             });
 
             const trackingCards = document.querySelectorAll('#dr-tracking-active-list .dr-card');
             trackingCards.forEach(card => {
-                const show = getCardVisibilityState(card, keywords, onlyXV, onlyCLS);
+                const show = getCardVisibilityState(card, keywords);
                 updateCardDisplay(card, show);
             });
 
             // Update centered compact total, integrating the filter count
             if (totalCompact) {
-                const hasFilter = !!(keywords.length > 0 || onlyXV || onlyCLS || advancedFilterState.active);
+                const hasFilter = !!(keywords.length > 0 || advancedFilterState.active);
                 totalCompact.textContent = hasFilter ? `Hiển thị: ${visible}/${sortedData.length}` : `${visible}/${sortedData.length}`;
                 // Color accents: blue when filtered, neutral otherwise
                 if (hasFilter) {
@@ -8008,8 +8989,6 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         searchInput.addEventListener('input', applyFilter);
-        chkXuatVien.addEventListener('change', applyFilter);
-        chkCanLamSang.addEventListener('change', applyFilter);
 
         // Escape key to clear search
         searchInput.addEventListener('keydown', (e) => {
@@ -8400,7 +9379,40 @@ function showDashboardBenhNhanIfNeeded() {
     // Bottom bar styling helper removed (centralized in dashboard.support.js)
     // Main logic
     async function initializeDashboard() {
-        const data = await PatientService.loadPatientDataWithErrorHandling();
+        applyCardHoverTooltipSetting();
+
+        const [cloudData, data] = await Promise.all([
+            SettingsService.getOrCreateSettings().catch((e) => {
+                console.warn('Load dashboard cloud settings failed', e);
+                return null;
+            }),
+            PatientService.loadPatientDataWithErrorHandling()
+        ]);
+
+        if (cloudData && cloudData.settings) {
+            applyDashboardSettingsToLocalStorage(cloudData.settings.dashboard || {});
+            applyCardHoverTooltipSetting();
+
+            let cloudAccounts = [];
+            try {
+                cloudAccounts = await SettingsService.getCloudAccounts(cloudData.settings || {}, {
+                    doctorName: cloudData.doctorName,
+                    chungThuSo: cloudData.chungThuSo
+                });
+            } catch (e) {
+                console.warn('Load bootstrap cloud accounts failed', e);
+            }
+
+            dashboardCloudContext = {
+                doctorName: cloudData.doctorName || '',
+                chungThuSo: cloudData.chungThuSo || '',
+                checklistObj: cloudData.checklistObj || null,
+                settings: cloudData.settings || SettingsService.getDefaultSettings(),
+                cloudAccounts: Array.isArray(cloudAccounts) ? cloudAccounts : [],
+                bootstrapLoaded: true
+            };
+        }
+
         if (data) {
             renderCards(data);
         }
@@ -8953,7 +9965,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/cardTooltip":7,"../components/contextMenu":8,"../components/copyDienTienAI":9,"../components/copyMenu":10,"../components/dialogManager":11,"../components/displaySettings":12,"../components/hsbaDataFetcher":13,"../components/listView":15,"../components/loginHandler":16,"../components/modalManager":17,"../components/patientInfoSection":18,"../components/phauThuatHandlers":19,"../components/sidebarSession":20,"../components/trackingUI":21,"../services/apiService":32,"../services/checklistService":33,"../services/patientService":35,"../utils":42,"../utils/checklistUtils":43,"../utils/domUpdaters":45,"../utils/htmlUtils":48,"../utils/khoaUtils":49,"../utils/patientDataMapper":50,"../utils/surgeryUtils":52,"../utils/tagUtils":53,"../utils/textUtils":54,"../utils/uiUtils":55,"./page.dashboard.support":27}],27:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/cardTooltip":7,"../components/contextMenu":8,"../components/copyDienTienAI":9,"../components/copyMenu":10,"../components/dialogManager":11,"../components/displaySettings":12,"../components/hsbaDataFetcher":13,"../components/listView":15,"../components/loginHandler":16,"../components/modalManager":17,"../components/patientInfoSection":18,"../components/phauThuatHandlers":19,"../components/sidebarSession":21,"../components/trackingUI":22,"../services/apiService":33,"../services/checklistService":34,"../services/patientService":36,"../services/settingsService":39,"../utils":43,"../utils/checklistUtils":44,"../utils/domUpdaters":46,"../utils/htmlUtils":49,"../utils/khoaUtils":50,"../utils/patientDataMapper":51,"../utils/surgeryUtils":53,"../utils/tagUtils":54,"../utils/textUtils":55,"../utils/uiUtils":56,"./page.dashboard.support":28}],28:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -10012,15 +11024,75 @@ function addGlobalStyles() {
             color: #1976d2;
             background: #eff6ff;
         }
+        .dr-filter-dropdown .dr-dropdown-menu {
+            min-width: 280px;
+        }
         .dr-sort-dropdown:hover .dr-dropdown-menu,
-        .dr-sort-dropdown.open .dr-dropdown-menu {
+        .dr-sort-dropdown.open .dr-dropdown-menu,
+        .dr-filter-dropdown:hover .dr-dropdown-menu,
+        .dr-filter-dropdown.open .dr-dropdown-menu {
             display: block;
             opacity: 1;
             transform: translateY(0);
         }
         .dr-sort-dropdown:hover .dr-dropdown-toggle i.fa-chevron-down,
-        .dr-sort-dropdown.open .dr-dropdown-toggle i.fa-chevron-down {
+        .dr-sort-dropdown.open .dr-dropdown-toggle i.fa-chevron-down,
+        .dr-filter-dropdown:hover .dr-dropdown-toggle i.fa-chevron-down,
+        .dr-filter-dropdown.open .dr-dropdown-toggle i.fa-chevron-down {
             transform: rotate(180deg);
+        }
+        /* Fix hover gap: invisible bridge between toggle and menu so mouse doesn't leave container */
+        .dr-sort-dropdown .dr-dropdown-menu::before,
+        .dr-view-dropdown .dr-dropdown-menu::before,
+        .dr-filter-dropdown .dr-dropdown-menu::before {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: 0;
+            right: 0;
+            height: 10px;
+        }
+        .dr-filter-quick-menu .dr-dropdown-item {
+            justify-content: space-between;
+        }
+        .dr-filter-quick-menu .dr-filter-quick-indicator {
+            opacity: 0;
+            color: #16a34a;
+            transition: opacity 0.15s ease;
+        }
+        .dr-filter-submenu {
+            position: relative;
+        }
+        .dr-filter-submenu-menu {
+            position: absolute;
+            top: -8px;
+            left: calc(100% - 8px);
+            min-width: 180px;
+            background: rgba(255, 255, 255, 0.92);
+            backdrop-filter: blur(12px) saturate(180%);
+            -webkit-backdrop-filter: blur(12px) saturate(180%);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            padding: 6px;
+            display: none;
+            opacity: 0;
+            transform: translateX(8px);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10002;
+        }
+        .dr-filter-submenu:hover .dr-filter-submenu-menu {
+            display: block;
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .dr-filter-submenu-menu::before {
+            content: '';
+            position: absolute;
+            left: -12px;
+            top: 0;
+            bottom: 0;
+            width: 12px;
         }
 
         @media (max-width: 1180px) {
@@ -10146,6 +11218,16 @@ function addGlobalStyles() {
             color: #64748b;
         }
         .dr-view-dropdown.open .dr-dropdown-toggle i.fa-chevron-down {
+            transform: rotate(180deg);
+        }
+        #dr-view-dropdown-container:hover .dr-dropdown-menu,
+        #dr-view-dropdown-container.open .dr-dropdown-menu {
+            display: block;
+            opacity: 1;
+            transform: translateY(0);
+        }
+        #dr-view-dropdown-container:hover .dr-dropdown-toggle i.fa-chevron-down,
+        #dr-view-dropdown-container.open .dr-dropdown-toggle i.fa-chevron-down {
             transform: rotate(180deg);
         }
         .dr-dropdown-menu {
@@ -10482,7 +11564,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":11,"../services/apiService":32,"../services/reportService":36,"../utils/dateUtils":44}],28:[function(require,module,exports){
+},{"../components/dialogManager":11,"../services/apiService":33,"../services/reportService":37,"../utils/dateUtils":45}],29:[function(require,module,exports){
 // page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
@@ -10939,7 +12021,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":14,"../services/otm.token":34,"../services/surgeonSettingsService":39,"../utils/khoaUtils":49,"../utils/uiUtils":55}],29:[function(require,module,exports){
+},{"../components/khoaSelect":14,"../services/otm.token":35,"../services/surgeonSettingsService":40,"../utils/khoaUtils":50,"../utils/uiUtils":56}],30:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -11094,7 +12176,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":32,"../services/settingsService":38}],30:[function(require,module,exports){
+},{"../services/apiService":33,"../services/settingsService":39}],31:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
@@ -11113,6 +12195,9 @@ async function showSettingsIfNeeded() {
         const tabParam = u.searchParams.get('tab');
         const targetTab = (caidatParam && caidatParam !== 'true') ? caidatParam : (tabParam || 'discharge');
         if (!(/[?&](caidat)($|=|&)/.test(window.location.search))) return;
+
+        // Set page title
+        document.title = 'Cài đặt';
 
         // Reset page and mount a two-column layout with tabs
         document.body.innerHTML = '';
@@ -11151,6 +12236,7 @@ async function showSettingsIfNeeded() {
                         <div class="dr-st-menu">
                 <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
                 <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
+                                <button data-tab="account-cloud" class="${targetTab==='account-cloud'?'active':''}">Account Cloud</button>
                                 <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
                                 <button data-tab="otm-surgeons" class="${targetTab==='otm-surgeons'?'active':''}">Quản lý phẫu thuật</button>
             </div>
@@ -11162,11 +12248,8 @@ async function showSettingsIfNeeded() {
         right.className = 'dr-st-right';
                 right.innerHTML = `
             <div class="dr-st-head">
-                        <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':'Lời dặn dò ra viện'))}</h3>
-                <div>
-                    <button class="dr-st-btn" id="reload-tab">Tải lại</button>
-                    <button class="dr-st-btn primary" id="save-tab">Lưu</button>
-                </div>
+                                                <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='account-cloud'?'Account Cloud':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':'Lời dặn dò ra viện')))}</h3>
+                <div id="dr-auto-save-status" style="font-size:12px; color:#6b7280; font-weight:600;"></div>
             </div>
             <div class="dr-st-content">
                         <div id="tab-discharge" class="dr-st-tab ${targetTab==='discharge'?'active':''}">
@@ -11184,12 +12267,20 @@ async function showSettingsIfNeeded() {
                                         </div>
                                                                                                 <div id="dr-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
                                 </div>
+                                <div id="tab-account-cloud" class="dr-st-tab ${targetTab==='account-cloud'?'active':''}">
+                                                <div style="margin-bottom:12px; padding:10px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:8px; color:#1e3a8a">
+                                                <b>Cloud theo bác sĩ hiện tại:</b> Danh sách account dưới đây được mã hóa rồi lưu vào API cài đặt (<code>settingsService</code>) theo bác sĩ đang đăng nhập. Dropdown Authors ở dashboard sẽ đọc trực tiếp từ danh sách này, không dùng LocalStorage.
+                                        </div>
+                                                <div style="margin-top:8px; color:#475569; font-size:13px; line-height:1.5;">
+                                                Sau khi chỉnh sửa danh sách, bấm <b>Lưu</b> ở góc phải để cập nhật lên cloud.
+                                        </div>
+                                                                                                <div id="dr-cloud-acc-grid" style="display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; margin-top:12px;"></div>
+                                </div>
                                                                 <div id="tab-openworld" class="dr-st-tab ${targetTab==='openworld'?'active':''}">
                                                                         <div id="dr-openworld-container"></div>
                                                                 </div>
                                                                 <div id="tab-otm-surgeons" class="dr-st-tab ${targetTab==='otm-surgeons'?'active':''}">
                                                                         <div id="dr-otm-surgeons-container"></div>
-                                                                </div>
             </div>
         `;
 
@@ -11198,71 +12289,126 @@ async function showSettingsIfNeeded() {
         document.body.appendChild(wrap);
 
         // Load settings state
-        let { doctorName, checklistObj, settings } = await SettingsService.getOrCreateSettings();
+        let { doctorName, chungThuSo, checklistObj, settings } = await SettingsService.getOrCreateSettings();
         const titleEl = right.querySelector('.dr-st-title');
         const listEl = right.querySelector('#discharge-list');
         const doctorEl = left.querySelector('#dr-st-doctor');
-        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
+        if (doctorEl) {
+            doctorEl.style.cssText = 'padding:12px; font-size:12px; color:#6b7280; border-top:1px solid #e5e7eb;';
+            doctorEl.innerHTML = `
+                <div style="font-weight:600; color:#374151;">${doctorName || '(không xác định)'}</div>
+                <div style="font-size:11px; margin-top:2px;">CTS: ${chungThuSo || 'N/A'}</div>
+            `;
+        }
 
-                // Account tab: multi-account manager (localStorage only)
+                                // Account tab: localStorage manager (kept for local login compatibility)
                 const ls = window.localStorage;
                 const ACC_KEY = 'dr_accounts_json';
                 const DEF_KEY = 'dr_acc_default';
                 const AUTO_KEY = 'dr_acc_autologin';
+                                let cloudAccounts = [];
+
                 function readAccounts() {
-                        try { return JSON.parse(ls.getItem(ACC_KEY) || '[]'); } catch(_) { return []; }
+                                        try {
+                                                const parsed = JSON.parse(ls.getItem(ACC_KEY) || '[]');
+                                                return Array.isArray(parsed) ? parsed : [];
+                                        } catch (_) {
+                                                return [];
+                                        }
                 }
-                function writeAccounts(arr) { ls.setItem(ACC_KEY, JSON.stringify(arr || [])); }
+                function writeAccounts(arr) { 
+                                        ls.setItem(ACC_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
+                }
                 function readDefault() { return ls.getItem(DEF_KEY) || ''; }
                 function writeDefault(u) { ls.setItem(DEF_KEY, u || ''); }
+                                function readCloudAccounts() {
+                                        return Array.isArray(cloudAccounts) ? cloudAccounts : [];
+                                }
+                                function writeCloudAccounts(arr) {
+                                        cloudAccounts = Array.isArray(arr) ? arr : [];
+                                }
 
                 const grid = right.querySelector('#dr-acc-grid');
+                                const cloudGrid = right.querySelector('#dr-cloud-acc-grid');
+
+                                async function reloadCloudAccountsFromSettings() {
+                                        cloudAccounts = await SettingsService.getCloudAccounts(settings, { doctorName, chungThuSo });
+                                }
+
+                async function performQuickLogin(acc) {
+                    if (!acc || !acc.username || !acc.password) {
+                        alert('Thông tin tài khoản không hợp lệ');
+                        return;
+                    }
+                    if (typeof GM_openInTab !== 'function') {
+                        alert('Tiện ích cần quyền GM_openInTab để thực hiện tính năng này.');
+                        return;
+                    }
+
+                    // Save credentials to GM storage for the new tab to pick up
+                    const loginKey = `dr_quick_login_${acc.username}`;
+                    await GM.setValue(loginKey, JSON.stringify({
+                        username: acc.username,
+                        password: acc.password,
+                        ts: Date.now()
+                    }));
+
+                    // Open incognito tab to login page
+                    GM_openInTab(window.location.origin + '/Home/Login?quicklogin=' + encodeURIComponent(acc.username), {
+                        active: true,
+                        insert: true,
+                        incognito: true
+                    });
+                }
+
                 function renderGrid() {
                         if (!grid) return;
                         grid.innerHTML = '';
-                                                   const accounts = readAccounts();
-                                                   let def = readDefault();
-                                                   // If only one account, auto set as default
-                                                   if (accounts.length === 1) {
-                                                           const only = accounts[0];
-                                                           if (only && only.username && def !== only.username) {
-                                                                   writeDefault(only.username);
-                                                                   def = only.username;
-                                                           }
-                                                   }
+                        const accounts = readAccounts();
+                        let def = readDefault();
+                        // If only one account, auto set as default
+                        if (accounts.length === 1) {
+                            const only = accounts[0];
+                            if (only && only.username && def !== only.username) {
+                                writeDefault(only.username);
+                                def = only.username;
+                            }
+                        }
                         accounts.forEach((acc, idx) => {
                                 const box = document.createElement('div');
-                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:10px; padding:10px; position:relative; background:#fff;';
+                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:12px; padding:12px; position:relative; background:#fff; transition:all 0.2s;';
+                                box.onmouseover = () => box.style.borderColor = '#2563eb';
+                                box.onmouseout = () => box.style.borderColor = '#e5e7eb';
+                                
                                 const radioId = `dr-acc-default-${idx}`;
                                 box.innerHTML = `
-                                                                                   <button class="dr-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#dc2626; color:#fff; border:none; border-radius:6px; padding:2px 6px; cursor:pointer;">X</button>
-                                        <div class="dr-st-row" style="margin-top:8px;">
-                                                <label style="width:100px">Tiêu đề</label>
-                                                <input class="dr-st-input dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: BS. ABC" />
+                                        <button class="dr-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; font-size:12px;">Xóa</button>
+                                        <div class="dr-st-row" style="margin-top:10px;">
+                                                <label style="width:100px; font-size:13px; color:#6b7280;">Bí danh</label>
+                                                <input class="dr-st-input dr-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: Khoa Ngoại" />
                                         </div>
                                         <div class="dr-st-row">
-                                                <label style="width:100px">Tên đăng nhập</label>
+                                                <label style="width:100px; font-size:13px; color:#6b7280;">User</label>
                                                 <input class="dr-st-input dr-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" />
                                         </div>
                                         <div class="dr-st-row">
-                                                <label style="width:100px">Mật khẩu</label>
+                                                <label style="width:100px; font-size:13px; color:#6b7280;">Pass</label>
                                                 <input class="dr-st-input dr-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" />
                                         </div>
-                                        <div class="dr-st-row">
-                                                <input id="${radioId}" type="radio" name="dr-acc-default" class="dr-acc-default" ${def && def===acc.username ? 'checked' : ''} />
-                                                <label for="${radioId}" style="margin-left:6px; cursor:pointer;">Tài khoản mặc định</label>
+                                        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:12px; padding-top:12px; border-top:1px solid #f3f4f6;">
+                                            <label style="display:flex; align-items:center; cursor:pointer; font-size:13px;">
+                                                <input id="${radioId}" type="radio" name="dr-acc-default" class="dr-acc-default" ${def && def===acc.username ? 'checked' : ''} style="margin-right:6px;" /> Mặc định
+                                            </label>
+                                            <button class="dr-acc-login-btn" style="background:#2563eb; color:#fff; border:none; border-radius:6px; padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;">1-Click Login 🕵️</button>
                                         </div>
                                 `;
+                                
                                 box.querySelector('.dr-acc-remove').addEventListener('click', () => {
                                         if (confirm('Xóa tài khoản này?')) {
                                                 const arr = readAccounts();
                                                 arr.splice(idx,1);
                                                 writeAccounts(arr);
-                                                                if (def === acc.username) writeDefault('');
-                                                                if (arr.length === 1) {
-                                                                        const u = arr[0] && arr[0].username || '';
-                                                                        if (u) writeDefault(u);
-                                                                }
+                                                if (def === acc.username) writeDefault('');
                                                 renderGrid();
                                         }
                                 });
@@ -11270,37 +12416,32 @@ async function showSettingsIfNeeded() {
                                         const arr = readAccounts();
                                         if (arr[idx]) { arr[idx].title = e.target.value; writeAccounts(arr); }
                                 });
-                                                box.querySelector('.dr-acc-username').addEventListener('input', (e) => {
+                                box.querySelector('.dr-acc-username').addEventListener('input', (e) => {
                                         const arr = readAccounts();
-                                                        if (arr[idx]) {
-                                                                const oldU = arr[idx].username || '';
-                                                                arr[idx].username = e.target.value; writeAccounts(arr);
-                                                                const curDef = readDefault();
-                                                                if (curDef === oldU) writeDefault(e.target.value || '');
-                                                        }
+                                        if (arr[idx]) {
+                                                const oldU = arr[idx].username || '';
+                                                arr[idx].username = e.target.value; writeAccounts(arr);
+                                                const curDef = readDefault();
+                                                if (curDef === oldU) writeDefault(e.target.value || '');
+                                        }
                                 });
                                 box.querySelector('.dr-acc-password').addEventListener('input', (e) => {
                                         const arr = readAccounts();
                                         if (arr[idx]) { arr[idx].password = e.target.value; writeAccounts(arr); }
                                 });
+                                box.querySelector('.dr-acc-login-btn').addEventListener('click', () => performQuickLogin(acc));
+                                
                                 box.querySelector('.dr-acc-default').addEventListener('change', (e) => {
                                         if (e.target.checked) writeDefault(acc.username || '');
                                 });
-                                // Ensure label click also sets default (redundant with for=, but safe)
-                                const lbl = box.querySelector(`label[for="${radioId}"]`);
-                                if (lbl) {
-                                        lbl.addEventListener('click', () => {
-                                                const inp = box.querySelector(`#${radioId}`);
-                                                if (inp) { inp.checked = true; writeDefault(acc.username || ''); }
-                                        });
-                                }
                                 grid.appendChild(box);
                         });
                         // Add box
                         const addBox = document.createElement('div');
-                        addBox.style.cssText = 'border:1px dashed #cbd5e1; border-radius:10px; padding:10px; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#fafafa;';
-                        addBox.innerHTML = '<div style="font-size:28px; line-height:1;">+</div>';
-                        addBox.title = 'Thêm tài khoản';
+                        addBox.style.cssText = 'border:2px dashed #cbd5e1; border-radius:12px; padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#f9fafb; min-height:160px; transition:all 0.2s;';
+                        addBox.onmouseover = () => { addBox.style.borderColor = '#2563eb'; addBox.style.color = '#2563eb'; };
+                        addBox.onmouseout = () => { addBox.style.borderColor = '#cbd5e1'; addBox.style.color = '#6b7280'; };
+                        addBox.innerHTML = '<div style="font-size:32px; margin-bottom:4px;">+</div><div style="font-size:14px; font-weight:600;">Thêm tài khoản</div>';
                         addBox.addEventListener('click', () => {
                                 const arr = readAccounts();
                                 arr.push({ title:'', username:'', password:'' });
@@ -11309,7 +12450,89 @@ async function showSettingsIfNeeded() {
                         });
                         grid.appendChild(addBox);
                 }
+
+                function renderCloudGrid() {
+                        if (!cloudGrid) return;
+                        cloudGrid.innerHTML = '';
+                        const accounts = readCloudAccounts();
+                        accounts.forEach((acc, idx) => {
+                                const box = document.createElement('div');
+                                box.style.cssText = 'border:1px solid #e5e7eb; border-radius:12px; padding:12px; position:relative; background:#fff; transition:all 0.2s;';
+                                box.onmouseover = () => box.style.borderColor = '#2563eb';
+                                box.onmouseout = () => box.style.borderColor = '#e5e7eb';
+
+                                box.innerHTML = `
+                                        <button class="dr-cloud-acc-remove" title="Xóa" style="position:absolute; right:8px; top:8px; background:#fee2e2; color:#dc2626; border:none; border-radius:6px; padding:4px 8px; cursor:pointer; font-size:12px;">Xóa</button>
+                                        <div class="dr-st-row" style="margin-top:10px;">
+                                                <label style="width:100px; font-size:13px; color:#6b7280;">Bí danh</label>
+                                                <input class="dr-st-input dr-cloud-acc-title" type="text" value="${(acc.title||'').replace(/"/g,'&quot;')}" placeholder="VD: Trực Ngoại" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px; font-size:13px; color:#6b7280;">User</label>
+                                                <input class="dr-st-input dr-cloud-acc-username" type="text" value="${(acc.username||'').replace(/"/g,'&quot;')}" placeholder="Tên đăng nhập" />
+                                        </div>
+                                        <div class="dr-st-row">
+                                                <label style="width:100px; font-size:13px; color:#6b7280;">Pass</label>
+                                                <input class="dr-st-input dr-cloud-acc-password" type="password" value="${(acc.password||'').replace(/"/g,'&quot;')}" placeholder="Mật khẩu" />
+                                        </div>
+                                        <div style="display:flex; align-items:center; justify-content:flex-end; margin-top:12px; padding-top:12px; border-top:1px solid #f3f4f6;">
+                                            <button class="dr-cloud-acc-login-btn" style="background:#2563eb; color:#fff; border:none; border-radius:6px; padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;">1-Click Login 🕵️</button>
+                                        </div>
+                                `;
+
+                                box.querySelector('.dr-cloud-acc-remove').addEventListener('click', () => {
+                                        if (confirm('Xóa tài khoản cloud này?')) {
+                                                const arr = readCloudAccounts();
+                                                arr.splice(idx, 1);
+                                                writeCloudAccounts(arr);
+                                                renderCloudGrid();
+                                        }
+                                });
+                                box.querySelector('.dr-cloud-acc-title').addEventListener('input', (e) => {
+                                        const arr = readCloudAccounts();
+                                        if (arr[idx]) {
+                                                arr[idx].title = e.target.value;
+                                                writeCloudAccounts(arr);
+                                        }
+                                });
+                                box.querySelector('.dr-cloud-acc-username').addEventListener('input', (e) => {
+                                        const arr = readCloudAccounts();
+                                        if (arr[idx]) {
+                                                arr[idx].username = e.target.value;
+                                                writeCloudAccounts(arr);
+                                        }
+                                });
+                                box.querySelector('.dr-cloud-acc-password').addEventListener('input', (e) => {
+                                        const arr = readCloudAccounts();
+                                        if (arr[idx]) {
+                                                arr[idx].password = e.target.value;
+                                                writeCloudAccounts(arr);
+                                        }
+                                });
+                                box.querySelector('.dr-cloud-acc-login-btn').addEventListener('click', () => {
+                                        const arr = readCloudAccounts();
+                                        performQuickLogin(arr[idx]);
+                                });
+
+                                cloudGrid.appendChild(box);
+                        });
+
+                        const addBox = document.createElement('div');
+                        addBox.style.cssText = 'border:2px dashed #cbd5e1; border-radius:12px; padding:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer; color:#6b7280; background:#f9fafb; min-height:160px; transition:all 0.2s;';
+                        addBox.onmouseover = () => { addBox.style.borderColor = '#2563eb'; addBox.style.color = '#2563eb'; };
+                        addBox.onmouseout = () => { addBox.style.borderColor = '#cbd5e1'; addBox.style.color = '#6b7280'; };
+                        addBox.innerHTML = '<div style="font-size:32px; margin-bottom:4px;">+</div><div style="font-size:14px; font-weight:600;">Thêm account cloud</div>';
+                        addBox.addEventListener('click', () => {
+                                const arr = readCloudAccounts();
+                                arr.push({ title:'', username:'', password:'' });
+                                writeCloudAccounts(arr);
+                                renderCloudGrid();
+                        });
+                        cloudGrid.appendChild(addBox);
+                }
                 renderGrid();
+                await reloadCloudAccountsFromSettings();
+                renderCloudGrid();
 
                 // Top-level auto-login toggle (shared component)
                 try {
@@ -11346,24 +12569,112 @@ async function showSettingsIfNeeded() {
 
         renderDischarge(settings && settings.danDoRaVien ? settings.danDoRaVien : SettingsService.getDefaultSettings().danDoRaVien);
 
-        // Left menu switching (future tabs-ready)
+        // Auto-save function
+        const { showToast } = require('../utils/uiUtils');
+        let autoSaveTimeout;
+        const statusEl = right.querySelector('#dr-auto-save-status');
+        
+        const performAutoSave = async () => {
+                try {
+                        statusEl.textContent = 'Đang lưu...';
+                        statusEl.style.color = '#3b82f6';
+
+                        const dischargeValues = Array.from(listEl.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean);
+                        
+                        // Sync dashboard settings from LS
+                        const dashboardSettings = {};
+                        const DASHBOARD_KEYS = [
+                                                        'dr-card-view',
+                            'dr-view-toggle-premium',
+                                                        'dr-view-mode',
+                                                        'dr-card-hover-preview',
+                            'dr-filter-type',
+                            'dr-filter-khoa',
+                            'dr-tracking-pids'
+                        ];
+                        DASHBOARD_KEYS.forEach(k => {
+                            const val = ls.getItem(k);
+                            if (val !== null) dashboardSettings[k] = val;
+                        });
+
+                        const nextBase = {
+                            ...(settings || {}), 
+                            danDoRaVien: dischargeValues,
+                            dashboard: dashboardSettings
+                        };
+                        
+                        let next = await SettingsService.withCloudAccounts(nextBase, readCloudAccounts(), { doctorName, chungThuSo });
+                        delete next.accounts;
+                        delete next.accountsCloud;
+                        
+                        // Ensure checklist exists
+                        if (!checklistObj && chungThuSo) {
+                                const created = await SettingsService.createSettingsPhieu({ name: doctorName, chungThuSo });
+                                if (created && created.isValid) {
+                                        checklistObj = await SettingsService.loadSettingsPhieu(chungThuSo);
+                                }
+                        }
+                        
+                        if (!checklistObj) {
+                                statusEl.textContent = 'Lỗi: Chưa có phiếu cài đặt';
+                                statusEl.style.color = '#dc2626';
+                                return;
+                        }
+                        
+                        const ok = await SettingsService.updateSettingsState(checklistObj, next);
+                        if (ok) {
+                                settings = next;
+                                statusEl.textContent = '✓ Đã lưu';
+                                statusEl.style.color = '#16a34a';
+                                showToast('✓ Cài đặt đã được lưu thành công!', 'success', 3000);
+                        } else {
+                                statusEl.textContent = '✗ Lưu thất bại';
+                                statusEl.style.color = '#dc2626';
+                                showToast('✗ Lưu cài đặt thất bại', 'error', 3000);
+                        }
+                } catch (e) {
+                        console.error('Auto-save error:', e);
+                        statusEl.textContent = '✗ Lỗi';
+                        statusEl.style.color = '#dc2626';
+                        showToast('✗ Lỗi khi lưu: ' + e.message, 'error', 3000);
+                } finally {
+                        setTimeout(() => {
+                                if (statusEl) {
+                                        statusEl.textContent = '';
+                                        statusEl.style.color = '#6b7280';
+                                }
+                        }, 3500);
+                }
+        };
+
+        const scheduleAutoSave = () => {
+                clearTimeout(autoSaveTimeout);
+                statusEl.textContent = 'Sẽ lưu...';
+                statusEl.style.color = '#f59e0b';
+                autoSaveTimeout = setTimeout(performAutoSave, 800);
+        };
+
+        // Listen for changes on discharge inputs
+        listEl.addEventListener('input', scheduleAutoSave);
+
+        // Left menu switching
                 left.addEventListener('click', (e) => {
                                 const btn = e.target.closest('button[data-tab]');
                 if (!btn) return;
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim())));
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'account-cloud' ? 'Account Cloud' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim()))));
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
-                                // Update URL (no reload) to reflect current tab for deep linking
+                                // Update URL
                                 try {
                                         const url = new URL(window.location.href);
                                         url.searchParams.set('caidat', tab);
                                         window.history.replaceState({}, '', url);
                                 } catch(_) {}
-                                // Mount Open World content when its tab is shown
+                                // Mount Open World
                                 if (tab === 'openworld') {
                                         const mountEl = right.querySelector('#dr-openworld-container');
                                         if (mountEl && !mountEl.dataset.mounted) {
@@ -11394,42 +12705,22 @@ async function showSettingsIfNeeded() {
                             <button class="dr-st-btn remove-row" title="Xóa">Xóa</button>
                         `;
                         listEl.appendChild(row);
+                        row.querySelector('input').addEventListener('input', scheduleAutoSave);
                         return;
                 }
                 if (e.target.classList && e.target.classList.contains('remove-row')) {
                         e.target.closest('.dr-st-row')?.remove();
+                        scheduleAutoSave();
                         return;
                 }
-                if (e.target.id === 'reload-tab') {
-                        const data = await SettingsService.getOrCreateSettings();
-                        doctorName = data.doctorName;
-                        checklistObj = data.checklistObj;
-                        settings = data.settings || SettingsService.getDefaultSettings();
-                        renderDischarge(settings.danDoRaVien || []);
-                        if (doctorEl) doctorEl.textContent = doctorName ? `Bác sĩ: ${doctorName}` : 'Bác sĩ: (không xác định)';
-                        return;
-                }
-                if (e.target.id === 'save-tab') {
-                        const values = Array.from(listEl.querySelectorAll('input')).map(i => i.value.trim()).filter(Boolean);
-                        const next = { ...(settings || {}), danDoRaVien: values };
-                        // Ensure checklist exists
-                        if (!checklistObj && doctorName) {
-                                const created = await SettingsService.createSettingsPhieu(doctorName);
-                                if (created && created.isValid) {
-                                        checklistObj = await SettingsService.loadSettingsPhieu(doctorName);
-                                }
-                        }
-                        if (!checklistObj) {
-                                alert('Không thể lưu: chưa có phiếu cài đặt.');
-                                return;
-                        }
-                        const ok = await SettingsService.updateSettingsState(checklistObj, next);
-                        if (ok) {
-                                settings = next;
-                                alert('Đã lưu cài đặt');
-                        } else {
-                                alert('Lưu thất bại');
-                        }
+        });
+
+        // Auto-save for cloud accounts changes
+        right.addEventListener('input', (e) => {
+                if (e.target.classList && (e.target.classList.contains('dr-cloud-acc-title') || 
+                                           e.target.classList.contains('dr-cloud-acc-username') ||
+                                           e.target.classList.contains('dr-cloud-acc-password'))) {
+                        scheduleAutoSave();
                 }
         });
 
@@ -11457,7 +12748,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":31,"../services/settingsService":38,"../settings-open-world":41,"./page.settings-open-world":29}],31:[function(require,module,exports){
+},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":32,"../services/settingsService":39,"../settings-open-world":42,"../utils/uiUtils":56,"./page.settings-open-world":30}],32:[function(require,module,exports){
 // page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
@@ -11848,7 +13139,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":34,"../services/surgeonSettingsService":39,"../utils/khoaUtils":49}],32:[function(require,module,exports){
+},{"../services/otm.token":35,"../services/surgeonSettingsService":40,"../utils/khoaUtils":50}],33:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -12046,7 +13337,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":49}],33:[function(require,module,exports){
+},{"../utils/khoaUtils":50}],34:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -12314,7 +13605,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":44,"./apiService":32,"./saveQueue":37}],34:[function(require,module,exports){
+},{"../utils/dateUtils":45,"./apiService":33,"./saveQueue":38}],35:[function(require,module,exports){
 // otm.token.js - OTM Token management service
 // This service manages OTM authentication tokens and direct API access
 
@@ -12831,7 +14122,7 @@ const OTMTokenService = {
 
 module.exports = OTMTokenService;
 
-},{"./apiService":32}],35:[function(require,module,exports){
+},{"./apiService":33}],36:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
@@ -13056,7 +14347,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":16,"../pages/page.dashboard.support":27,"../utils/patientDataMapper":50,"./checklistService":33}],36:[function(require,module,exports){
+},{"../components/loginHandler":16,"../pages/page.dashboard.support":28,"../utils/patientDataMapper":51,"./checklistService":34}],37:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -13317,7 +14608,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":44,"../utils/htmlUtils":48,"../utils/patientDataMapper":50,"../utils/surgeryUtils":52,"./checklistService":33}],37:[function(require,module,exports){
+},{"../utils/dateUtils":45,"../utils/htmlUtils":49,"../utils/patientDataMapper":51,"../utils/surgeryUtils":53,"./checklistService":34}],38:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -13381,14 +14672,109 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],38:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
+const CLOUD_ACCOUNTS_VERSION = 1;
+const CLOUD_ACCOUNTS_ALG_AES = 'AES-GCM';
+const CLOUD_ACCOUNTS_ALG_FALLBACK = 'XOR-B64';
+
+function toBase64(uint8Array) {
+    let binary = '';
+    for (let i = 0; i < uint8Array.length; i += 1) {
+        binary += String.fromCharCode(uint8Array[i]);
+    }
+    return btoa(binary);
+}
+
+function fromBase64(base64Text) {
+    const binary = atob(base64Text || '');
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+function xorBytes(inputBytes, keyBytes) {
+    if (!inputBytes || !keyBytes || keyBytes.length === 0) return inputBytes;
+    const output = new Uint8Array(inputBytes.length);
+    for (let i = 0; i < inputBytes.length; i += 1) {
+        output[i] = inputBytes[i] ^ keyBytes[i % keyBytes.length];
+    }
+    return output;
+}
+
+function normalizeAccountList(list) {
+    if (!Array.isArray(list)) return [];
+    return list
+        .map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            return {
+                title: String(item.title || '').trim(),
+                username: String(item.username || '').trim(),
+                password: String(item.password || '')
+            };
+        })
+        .filter((item) => item && item.username);
+}
+
+function buildCryptoSeed(context) {
+    const chungThuSo = String((context && context.chungThuSo) || '').trim();
+    const doctorName = String((context && context.doctorName) || '').trim();
+    const source = chungThuSo || doctorName || 'anonymous';
+    return `dr.cloud.accounts.v1::${source}`;
+}
+
+async function deriveAesKey(seed) {
+    try {
+        if (!window.crypto || !window.crypto.subtle) return null;
+        const encoder = new TextEncoder();
+        const raw = encoder.encode(String(seed || ''));
+        const digest = await window.crypto.subtle.digest('SHA-256', raw);
+        return await window.crypto.subtle.importKey(
+            'raw',
+            digest,
+            { name: 'AES-GCM' },
+            false,
+            ['encrypt', 'decrypt']
+        );
+    } catch (_) {
+        return null;
+    }
+}
+
+async function encryptWithAesGcm(plainText, key) {
+    const iv = window.crypto.getRandomValues(new Uint8Array(12));
+    const encoder = new TextEncoder();
+    const encrypted = await window.crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        encoder.encode(String(plainText || ''))
+    );
+    return {
+        iv: toBase64(iv),
+        data: toBase64(new Uint8Array(encrypted))
+    };
+}
+
+async function decryptWithAesGcm(ivBase64, dataBase64, key) {
+    const iv = fromBase64(ivBase64 || '');
+    const cipher = fromBase64(dataBase64 || '');
+    const decrypted = await window.crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        key,
+        cipher
+    );
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+}
+
 const SettingsService = {
-    async fetchDoctorName() {
+    async fetchDoctorInfo() {
         try {
             const body = new URLSearchParams();
             body.set('FilterProperty', '');
@@ -13414,22 +14800,29 @@ const SettingsService = {
             const htmlText = await response.text();
             const parser = new DOMParser();
             const doc = parser.parseFromString(htmlText, 'text/html');
-            const input = doc.querySelector('#HoTen');
+            const nameInput = doc.querySelector('#HoTen');
+            const ctsInput = doc.querySelector('#ChungThuSo');
+            
             let name = '';
-            if (input) {
-                name = (input.value || input.getAttribute('value') || '').trim();
+            if (nameInput) {
+                name = (nameInput.value || nameInput.getAttribute('value') || '').trim();
             }
-            return name;
+            let chungThuSo = '';
+            if (ctsInput) {
+                chungThuSo = (ctsInput.value || ctsInput.getAttribute('value') || '').trim();
+            }
+
+            return { name, chungThuSo };
         } catch (e) {
-            console.error('Failed to fetch doctor name:', e);
-            return '';
+            console.error('Failed to fetch doctor info:', e);
+            return { name: '', chungThuSo: '' };
         }
     },
 
-    async loadSettingsPhieu(doctorName) {
-        // Use DSPhieu API with doctorName as mabn
+    async loadSettingsPhieu(chungThuSo) {
+        // Use DSPhieu API with chungThuSo as mabn
         const formData = new FormData();
-        formData.append('mabn', doctorName);
+        formData.append('mabn', chungThuSo);
         // very wide range
         formData.append('tungay', '01/01/1001 01:01');
         formData.append('denngay', '01/01/3001 01:01');
@@ -13441,8 +14834,8 @@ const SettingsService = {
         });
         const result = await resp.json();
         const data = (result && result.data) || [];
-        // Pick first item that looks like our settings (hoten endsWith % and mabn==doctorName)
-        const found = data.find(item => item && item.mabn === doctorName && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        // Pick first item that matches mabn==chungThuSo and hoten endsWith %
+        const found = data.find(item => item && item.mabn === chungThuSo && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
         return found;
     },
 
@@ -13456,21 +14849,127 @@ const SettingsService = {
         }
     },
 
-    async createSettingsPhieu(doctorName) {
-        // Reuse CreateAjax endpoint with doctorName as mabn
+    async encodeCloudAccounts(accounts, context) {
+        const normalized = normalizeAccountList(accounts);
+        const payloadText = JSON.stringify({
+            accounts: normalized,
+            updatedAt: Date.now()
+        });
+        const seed = buildCryptoSeed(context);
+        const key = await deriveAesKey(seed);
+
+        if (key) {
+            const encrypted = await encryptWithAesGcm(payloadText, key);
+            return {
+                v: CLOUD_ACCOUNTS_VERSION,
+                alg: CLOUD_ACCOUNTS_ALG_AES,
+                iv: encrypted.iv,
+                data: encrypted.data
+            };
+        }
+
+        return {
+            v: CLOUD_ACCOUNTS_VERSION,
+            alg: CLOUD_ACCOUNTS_ALG_FALLBACK,
+            data: toBase64(
+                xorBytes(
+                    new TextEncoder().encode(payloadText),
+                    new TextEncoder().encode(seed)
+                )
+            )
+        };
+    },
+
+    async decodeCloudAccounts(cloudAccounts, context) {
+        try {
+            if (!cloudAccounts) return [];
+
+            if (Array.isArray(cloudAccounts)) {
+                return normalizeAccountList(cloudAccounts);
+            }
+
+            if (typeof cloudAccounts === 'string') {
+                try {
+                    const parsed = JSON.parse(cloudAccounts);
+                    return this.decodeCloudAccounts(parsed, context);
+                } catch (_) {
+                    return [];
+                }
+            }
+
+            if (cloudAccounts && Array.isArray(cloudAccounts.items)) {
+                return normalizeAccountList(cloudAccounts.items);
+            }
+
+            const alg = String((cloudAccounts && cloudAccounts.alg) || CLOUD_ACCOUNTS_ALG_FALLBACK);
+            const seed = buildCryptoSeed(context);
+            const encodedData = cloudAccounts && cloudAccounts.data;
+            if (!encodedData) return [];
+
+            let payloadText = '';
+            if (alg === CLOUD_ACCOUNTS_ALG_AES) {
+                const key = await deriveAesKey(seed);
+                if (!key) return [];
+                payloadText = await decryptWithAesGcm(cloudAccounts.iv, encodedData, key);
+            } else {
+                payloadText = new TextDecoder().decode(
+                    xorBytes(
+                        fromBase64(encodedData),
+                        new TextEncoder().encode(seed)
+                    )
+                );
+            }
+
+            const payload = JSON.parse(payloadText);
+            if (Array.isArray(payload)) return normalizeAccountList(payload);
+            return normalizeAccountList(payload && payload.accounts);
+        } catch (e) {
+            console.warn('Decode cloud accounts failed:', e);
+            return [];
+        }
+    },
+
+    async getCloudAccounts(settings, context) {
+        const state = settings && typeof settings === 'object' ? settings : {};
+
+        if (Object.prototype.hasOwnProperty.call(state, 'cloudAccounts') && state.cloudAccounts) {
+            return this.decodeCloudAccounts(state.cloudAccounts, context);
+        }
+
+        if (Array.isArray(state.accountsCloud)) {
+            return normalizeAccountList(state.accountsCloud);
+        }
+
+        if (Array.isArray(state.accounts)) {
+            return normalizeAccountList(state.accounts);
+        }
+
+        return [];
+    },
+
+    async withCloudAccounts(settings, accounts, context) {
+        const next = {
+            ...(settings && typeof settings === 'object' ? settings : {})
+        };
+        next.cloudAccounts = await this.encodeCloudAccounts(accounts, context);
+        return next;
+    },
+
+    async createSettingsPhieu({ name, chungThuSo }) {
+        // Reuse CreateAjax endpoint with chungThuSo as mabn
         const formData = new FormData();
         formData.append('status', '1');
         formData.append('thebaohiemyte', 'Không');
         formData.append('chuky', '{}');
         formData.append('khac', '--*--');
         formData.append('khu', '1');
-        formData.append('mabn', doctorName);
+        formData.append('mabn', chungThuSo);
         formData.append('bieumauid', '027');
-    formData.append('makp', getSelectedKhoa('551'));
+        formData.append('makp', getSelectedKhoa('551'));
         formData.append('__model', 'TAH.Entity.Model.PHIEUCCTHONGTINVACAMKETNHAPVIEN.ERM_PHIEUCCTHONGTINVACAMKETNHAPVIEN');
         formData.append('actiontype', '');
         // Mark with name% so it can be identified and matched by endsWith('%')
-        formData.append('hoten', `${doctorName}%`);
+        formData.append('hoten', `${name}%`);
         formData.append('ngaysinh', '10/10/1999');
         formData.append('gioitinh', 'Nam');
 
@@ -13498,32 +14997,35 @@ const SettingsService = {
                 'Uống thuốc đúng toa được dặn',
                 'Tái khám đúng hẹn',
                 'Liên hệ khi có dấu hiệu bất thường'
-            ]
+            ],
+            dashboard: {}, // To store dashboard toggles/filters
+            cloudAccounts: null
         };
     },
 
     async getOrCreateSettings() {
-        const doctorName = await this.fetchDoctorName();
-        if (!doctorName) {
-            return { doctorName: '', checklistObj: null, settings: this.getDefaultSettings() };
+        const info = await this.fetchDoctorInfo();
+        if (!info.name || !info.chungThuSo) {
+            return { doctorName: info.name, chungThuSo: info.chungThuSo, checklistObj: null, settings: this.getDefaultSettings() };
         }
-        let checklistObj = await this.loadSettingsPhieu(doctorName);
+        let checklistObj = await this.loadSettingsPhieu(info.chungThuSo);
         if (!checklistObj) {
-            const created = await this.createSettingsPhieu(doctorName);
+            const created = await this.createSettingsPhieu(info);
             if (created && created.isValid && created.data) {
                 // Some CreateAjax returns full object, some just flags; re-read list to get object
-                checklistObj = await this.loadSettingsPhieu(doctorName);
+                checklistObj = await this.loadSettingsPhieu(info.chungThuSo);
             }
         }
         const settings = checklistObj ? this.parseSettingsState(checklistObj) : this.getDefaultSettings();
         if (!settings.danDoRaVien) settings.danDoRaVien = this.getDefaultSettings().danDoRaVien;
-        return { doctorName, checklistObj, settings };
+        if (!settings.dashboard) settings.dashboard = this.getDefaultSettings().dashboard;
+        return { doctorName: info.name, chungThuSo: info.chungThuSo, checklistObj, settings };
     }
 };
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":49,"./apiService":32}],39:[function(require,module,exports){
+},{"../utils/khoaUtils":50,"./apiService":33}],40:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -13618,7 +15120,7 @@ const SurgeonSettingsService = {
 
 module.exports = SurgeonSettingsService;
 
-},{"./apiService":32}],40:[function(require,module,exports){
+},{"./apiService":33}],41:[function(require,module,exports){
 // trackedPatientService.js - Manage tracked patients (from other departments)
 
 const ApiService = require('./apiService');
@@ -13712,14 +15214,14 @@ const TrackedPatientService = {
 
 module.exports = TrackedPatientService;
 
-},{"../utils/khoaUtils":49,"./apiService":32}],41:[function(require,module,exports){
+},{"../utils/khoaUtils":50,"./apiService":33}],42:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
 // This allows requiring '../settings-open-world' from files inside src/pages
 module.exports = require('./pages/page.settings-open-world');
 
-},{"./pages/page.settings-open-world":29}],42:[function(require,module,exports){
+},{"./pages/page.settings-open-world":30}],43:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -13814,7 +15316,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -13974,7 +15476,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":33,"./uiUtils":55}],44:[function(require,module,exports){
+},{"../services/checklistService":34,"./uiUtils":56}],45:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -14062,7 +15564,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],45:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -14179,7 +15681,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":48,"./surgeryUtils":52,"./tagUtils":53}],46:[function(require,module,exports){
+},{"./htmlUtils":49,"./surgeryUtils":53,"./tagUtils":54}],47:[function(require,module,exports){
 // globalFnUtils.js - Helper to call functions that may live on multiple global scopes
 // (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
 
@@ -14211,7 +15713,7 @@ function callGlobalFn(fnName, ...args) {
 
 module.exports = { callGlobalFn };
 
-},{}],47:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -14455,7 +15957,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],48:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -14470,7 +15972,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],49:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -14486,7 +15988,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],50:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -14737,7 +16239,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],51:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 // stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
 
 /**
@@ -14756,7 +16258,7 @@ function syncPatientStateToGlobal(mabn, newState) {
 
 module.exports = { syncPatientStateToGlobal };
 
-},{}],52:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -15039,7 +16541,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],53:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -15310,7 +16812,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],54:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],55:[function(require,module,exports){
 /**
  * Normalizes Vietnamese text by removing diacritics/accents
  * @param {string} str - The string to normalize
@@ -15344,7 +16846,7 @@ module.exports = {
     hasAccents
 };
 
-},{}],55:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

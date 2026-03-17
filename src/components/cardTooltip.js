@@ -1,5 +1,31 @@
 // cardTooltip.js - Global hover tooltip for patient cards
-const Utils = require('../utils');
+
+const STORAGE_KEY = 'dr-card-hover-preview';
+let tooltipEnabled = true;
+
+function syncEnabledFromStorage() {
+    try {
+        if (typeof localStorage !== 'undefined') {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            tooltipEnabled = saved !== '0';
+        }
+    } catch (_) {}
+    return tooltipEnabled;
+}
+
+function setEnabled(enabled) {
+    tooltipEnabled = enabled !== false;
+    const tooltip = document.getElementById('dr-global-card-tooltip');
+    if (tooltip && !tooltipEnabled) {
+        tooltip.style.display = 'none';
+    }
+}
+
+function isEnabled() {
+    return tooltipEnabled;
+}
+
+syncEnabledFromStorage();
 
 /**
  * Attach hover tooltip to a patient card
@@ -10,6 +36,7 @@ function attach(card, contentSource) {
     if (!card || !contentSource) return;
 
     card.addEventListener('mouseenter', (e) => {
+        if (!isEnabled()) return;
         let tooltip = document.getElementById('dr-global-card-tooltip');
         if (!tooltip) {
             tooltip = document.createElement('div');
@@ -53,6 +80,7 @@ function attach(card, contentSource) {
     });
 
     card.addEventListener('mousemove', (e) => {
+        if (!isEnabled()) return;
         const tooltip = document.getElementById('dr-global-card-tooltip');
         if (tooltip && tooltip.style.display === 'block') {
             let top = e.clientY + 15;
@@ -80,4 +108,10 @@ function attach(card, contentSource) {
     });
 }
 
-module.exports = { attach };
+module.exports = {
+    attach,
+    setEnabled,
+    isEnabled,
+    syncEnabledFromStorage,
+    STORAGE_KEY
+};

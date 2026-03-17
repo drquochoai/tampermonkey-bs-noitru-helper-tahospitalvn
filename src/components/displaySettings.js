@@ -73,70 +73,12 @@ class DisplaySettings {
     }
 
     showModal() {
-        const overlay = document.createElement('div');
-        overlay.className = 'dr-settings-modal-overlay';
-        
-        const modal = document.createElement('div');
-        modal.className = 'dr-settings-modal';
-        
-        modal.innerHTML = `
-            <div class="dr-settings-header">
-                <h3>Cài đặt hiển thị & tính năng</h3>
-                <button class="dr-settings-close">×</button>
-            </div>
-            <div class="dr-settings-body">
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label">Hiện thẻ Hướng xử trí (HXT)</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-hxt" ${this.settings.showHXT ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label">Hiện Phương pháp phẫu thuật</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-pppt" ${this.settings.showPPPT ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label">Hiện Bác sĩ thực hiện</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-surgeon" ${this.settings.showSurgeon ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-                <div class="dr-settings-row">
-                    <span class="dr-settings-label" title="Click vào mã bệnh nhân để copy nhanh">Tự động Copy PID khi click</span>
-                    <label class="dr-switch">
-                        <input type="checkbox" id="setting-autocopy" ${this.settings.autoCopyPID ? 'checked' : ''}>
-                        <span class="dr-slider"></span>
-                    </label>
-                </div>
-            </div>
-        `;
-        
-        const closeBtn = modal.querySelector('.dr-settings-close');
-        
-        const close = () => {
-            if (document.body.contains(overlay)) {
-                document.body.removeChild(overlay);
-            }
-        };
-        
-        closeBtn.onclick = close;
-        overlay.onclick = (e) => {
-            if (e.target === overlay) close();
-        };
-        
-        // Handlers
-        modal.querySelector('#setting-hxt').onchange = (e) => this.set('showHXT', e.target.checked);
-        modal.querySelector('#setting-pppt').onchange = (e) => this.set('showPPPT', e.target.checked);
-        modal.querySelector('#setting-surgeon').onchange = (e) => this.set('showSurgeon', e.target.checked);
-        modal.querySelector('#setting-autocopy').onchange = (e) => this.set('autoCopyPID', e.target.checked);
-        
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
+        try {
+            const { showSettingsDialog } = require('./settingsDialog');
+            showSettingsDialog('display');
+        } catch(e) {
+            console.error('Lỗi mở settings dialog:', e);
+        }
     }
 }
 

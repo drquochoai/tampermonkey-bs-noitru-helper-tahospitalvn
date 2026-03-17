@@ -11,6 +11,7 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 // Import refactored modules
 const PatientService = require('../services/patientService');
 const ChecklistService = require('../services/checklistService');
+const SettingsService = require('../services/settingsService');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const ModalManager = require('../components/modalManager');
 const LoginHandler = require('../components/loginHandler');
@@ -47,6 +48,10 @@ function showDashboardBenhNhanIfNeeded() {
     let openTabs = window.openTabs;
 
     if (!(/[?&](show=true|nln)($|&)/.test(window.location.search))) return;
+    
+    // Set page title
+    document.title = 'Dashboard by drquochoai';
+    
     addGlobalStyles(); // Đảm bảo style chỉ chèn 1 lần
 
     // Make utility functions globally available for onclick handlers
@@ -79,6 +84,111 @@ function showDashboardBenhNhanIfNeeded() {
 
     const checklistItems = BS_CAI_DAT.checklistItems;
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
+    const VIEW_KEY = 'dr-card-view';
+    const CARD_HOVER_TOOLTIP_KEY = cardTooltip.STORAGE_KEY || 'dr-card-hover-preview';
+    const DASHBOARD_CLOUD_KEYS = [
+        VIEW_KEY,
+        'dr-view-mode',
+        CARD_HOVER_TOOLTIP_KEY,
+        'dr-filter-type',
+        'dr-filter-khoa',
+        'dr-tracking-pids'
+    ];
+    let dashboardCloudContext = {
+        doctorName: '',
+        chungThuSo: '',
+        checklistObj: null,
+        settings: SettingsService.getDefaultSettings(),
+        cloudAccounts: [],
+        bootstrapLoaded: false
+    };
+    let dashboardSaveTimeout = null;
+
+    function applyCardHoverTooltipSetting() {
+        if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
+            localStorage.setItem(CARD_HOVER_TOOLTIP_KEY, '1');
+        }
+        if (cardTooltip && typeof cardTooltip.setEnabled === 'function') {
+            cardTooltip.setEnabled(localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) !== '0');
+        }
+    }
+
+    function applyDashboardSettingsToLocalStorage(dashboardSettings) {
+        if (!dashboardSettings || typeof dashboardSettings !== 'object') return;
+
+        Object.keys(dashboardSettings).forEach((key) => {
+            const value = dashboardSettings[key];
+            if (value === undefined || value === null) return;
+            localStorage.setItem(key, String(value));
+        });
+
+        if (!dashboardSettings[VIEW_KEY] && dashboardSettings['dr-view-mode']) {
+            localStorage.setItem(VIEW_KEY, String(dashboardSettings['dr-view-mode']));
+        }
+    }
+
+    function readDashboardSettingsFromLocalStorage() {
+        const dashboardSettings = {};
+        DASHBOARD_CLOUD_KEYS.forEach((key) => {
+            const value = localStorage.getItem(key);
+            if (value !== null) dashboardSettings[key] = value;
+        });
+
+        if (dashboardSettings['dr-view-mode'] && !dashboardSettings[VIEW_KEY]) {
+            dashboardSettings[VIEW_KEY] = dashboardSettings['dr-view-mode'];
+        }
+
+        return dashboardSettings;
+    }
+
+    async function ensureDashboardChecklistObj() {
+        if (dashboardCloudContext.checklistObj) return dashboardCloudContext.checklistObj;
+        if (!dashboardCloudContext.chungThuSo) return null;
+
+        const created = await SettingsService.createSettingsPhieu({
+            name: dashboardCloudContext.doctorName,
+            chungThuSo: dashboardCloudContext.chungThuSo
+        });
+        if (created && created.isValid) {
+            dashboardCloudContext.checklistObj = await SettingsService.loadSettingsPhieu(dashboardCloudContext.chungThuSo);
+        }
+        return dashboardCloudContext.checklistObj;
+    }
+
+    async function persistDashboardSettingsToCloud({ silent = true } = {}) {
+        try {
+            const checklistObj = await ensureDashboardChecklistObj();
+            if (!checklistObj) return false;
+
+            const nextSettings = {
+                ...(dashboardCloudContext.settings || SettingsService.getDefaultSettings()),
+                dashboard: {
+                    ...((dashboardCloudContext.settings && dashboardCloudContext.settings.dashboard) || {}),
+                    ...readDashboardSettingsFromLocalStorage()
+                }
+            };
+
+            const ok = await SettingsService.updateSettingsState(checklistObj, nextSettings);
+            if (ok) {
+                dashboardCloudContext.settings = nextSettings;
+                return true;
+            }
+
+            if (!silent) showToast('Không thể lưu cài đặt dashboard', 'error', 2500);
+            return false;
+        } catch (e) {
+            console.warn('Persist dashboard settings failed', e);
+            if (!silent) showToast('Không thể lưu cài đặt dashboard', 'error', 2500);
+            return false;
+        }
+    }
+
+    function scheduleDashboardSettingsSync() {
+        clearTimeout(dashboardSaveTimeout);
+        dashboardSaveTimeout = setTimeout(() => {
+            persistDashboardSettingsToCloud({ silent: true });
+        }, 800);
+    }
 
     // Helper function to create checklist section
     async function createChecklistSectionAsync(patient) {
@@ -879,7 +989,7 @@ function showDashboardBenhNhanIfNeeded() {
         topBar.className = 'dr-top-filter-bar';
         topBar.style.cssText = `
             position: sticky; top: 0; z-index: 1000;
-            display: flex; align-items: center; gap: 12px; 
+            display: flex; align-items: center; gap: 12px;
             padding: 12px 16px; margin: 0 0 8px 0;
             background: #fff; border-bottom: 1px solid #e0e0e0;
         `;
@@ -892,7 +1002,28 @@ function showDashboardBenhNhanIfNeeded() {
                     </button>
                     <span id="dr-tracking-badge" style="position:absolute; top:-6px; right:-6px; background:#d32f2f; color:#fff; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:10px; box-shadow:0 2px 4px rgba(0,0,0,0.2);">0</span>
                 </div>
-                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh" 
+                <!-- Authors / Quick Login Dropdown -->
+                <div class="dr-view-dropdown dr-topbar-dropdown" id="dr-authors-dropdown-container">
+                    <button id="dr-authors-btn" class="dr-topbar-control-btn" title="Quản lý tài khoản & Đăng nhập nhanh">
+                        <i class="fas fa-user-shield"></i>
+                        <span class="dr-topbar-btn-text">Authors</span>
+                    </button>
+                    <div class="dr-dropdown-menu" style="min-width:240px; padding:8px 0;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 16px; border-bottom:1px solid #f1f5f9; margin-bottom:4px;">
+                            <span style="font-weight:700; color:#475569; font-size:13px;">Tài khoản đã lưu</span>
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <button id="dr-authors-reload-btn" type="button" title="Tải lại danh sách account cloud" style="appearance:none; border:none; background:#f8fafc; color:#64748b; width:28px; height:28px; border-radius:8px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s;">
+                                    <i class="fas fa-rotate-right"></i>
+                                </button>
+                                <a href="/?caidat=account-cloud" target="_blank" title="Cài đặt account cloud" style="color:#64748b; transition:color 0.2s; width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; background:#f8fafc;"><i class="fas fa-cog"></i></a>
+                            </div>
+                        </div>
+                        <div id="dr-authors-list" style="max-height:300px; overflow-y:auto;">
+                            <div style="padding:12px; text-align:center; color:#94a3b8; font-size:12px;">Đang tải...</div>
+                        </div>
+                    </div>
+                </div>
+                <input id="dr-search-input" type="text" placeholder="Lọc BN theo tên, MABN, phòng, chẩn đoán... [/] để tìm nhanh"
                     autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
                     style="flex:1; min-width: 220px; height:38px; padding: 0 10px; border:1px solid #ddd; border-radius:6px; box-sizing:border-box;">
             </div>
@@ -900,12 +1031,6 @@ function showDashboardBenhNhanIfNeeded() {
                 <span id="dr-total-compact" style="display:inline-block; text-align:center; color:#0f172a; font-weight:700; white-space:nowrap; background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 10px; border-radius:9999px; min-width:110px;">0/0</span>
             </div>
             <div class="dr-topbar-right" style="flex:1; display:flex; align-items:center; justify-content:flex-end; gap:12px;">
-                <label class="dr-topbar-checkbox" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                    <input id="dr-filter-xuatvien" type="checkbox"> Xuất viện
-                </label>
-                <label class="dr-topbar-checkbox" style="display:flex; align-items:center; gap:6px; white-space:nowrap;">
-                    <input id="dr-filter-canlamsang" type="checkbox"> Cận lâm sàng
-                </label>
                 <div class="dr-view-dropdown dr-topbar-dropdown dr-sort-dropdown" id="dr-sort-dropdown-container">
                     <div class="dr-dropdown-toggle dr-topbar-control-btn" id="dr-sort-toggle" title="Sắp xếp danh sách bệnh nhân">
                         <span><i class="fas fa-sort-amount-down-alt" style="margin-right:0px; color:#1e88e5;"></i> <span class="dr-topbar-btn-text">Sắp xếp</span></span>
@@ -926,7 +1051,7 @@ function showDashboardBenhNhanIfNeeded() {
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Premium View Dropdown -->
                 <div class="dr-view-dropdown dr-topbar-dropdown" id="dr-view-dropdown-container">
                     <div class="dr-dropdown-toggle dr-topbar-control-btn" id="dr-view-toggle-premium" style="height:38px; display:flex; align-items:center; box-sizing:border-box; padding: 0 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; font-weight:600; color:#475569; gap:8px; cursor:pointer;">
@@ -950,9 +1075,8 @@ function showDashboardBenhNhanIfNeeded() {
 
         const container = document.createElement('div');
         // View state
-        const VIEW_KEY = 'dr-card-view';
-        let view = (localStorage.getItem(VIEW_KEY) || 'grid');
-        
+        let view = (localStorage.getItem(VIEW_KEY) || localStorage.getItem('dr-view-mode') || 'grid');
+
         // Safety: ensure view is one of supported
         if (!['grid', 'list', 'fit'].includes(view)) view = 'grid';
 
@@ -962,9 +1086,27 @@ function showDashboardBenhNhanIfNeeded() {
         const sortDropdownContainer = topBar.querySelector('#dr-sort-dropdown-container');
         const sortToggle = topBar.querySelector('#dr-sort-toggle');
         const sortItems = topBar.querySelectorAll('#dr-sort-dropdown-container .dr-dropdown-item');
+        const authorsContainer = topBar.querySelector('#dr-authors-dropdown-container');
+        const authorsBtn = topBar.querySelector('#dr-authors-btn');
+        const authorsReloadBtn = topBar.querySelector('#dr-authors-reload-btn');
+        const authorsList = topBar.querySelector('#dr-authors-list');
+
         const SORT_KEY = 'dr-card-sort';
         const validSortKeys = new Set(['default', 'admit-asc', 'admit-desc', 'stay-asc', 'stay-desc']);
         let currentSort = localStorage.getItem(SORT_KEY) || 'default';
+        let cloudAccounts = Array.isArray(dashboardCloudContext.cloudAccounts) ? [...dashboardCloudContext.cloudAccounts] : [];
+        let cloudAccountsLoaded = !!dashboardCloudContext.bootstrapLoaded;
+        let cloudAccountsLoading = null;
+
+        const setAuthorsReloadButtonState = (loading) => {
+            if (!authorsReloadBtn) return;
+            authorsReloadBtn.disabled = !!loading;
+            authorsReloadBtn.style.opacity = loading ? '0.65' : '1';
+            authorsReloadBtn.style.cursor = loading ? 'wait' : 'pointer';
+            authorsReloadBtn.innerHTML = loading
+                ? '<i class="fas fa-spinner fa-spin"></i>'
+                : '<i class="fas fa-rotate-right"></i>';
+        };
 
         if (!validSortKeys.has(currentSort)) currentSort = 'default';
 
@@ -1064,17 +1206,130 @@ function showDashboardBenhNhanIfNeeded() {
             applySelectedSort();
         };
 
+        const normalizeCloudAccounts = (accounts) => {
+            if (!Array.isArray(accounts)) return [];
+            return accounts
+                .map(acc => {
+                    if (!acc || typeof acc !== 'object') return null;
+                    return {
+                        title: String(acc.title || '').trim(),
+                        username: String(acc.username || '').trim(),
+                        password: String(acc.password || '')
+                    };
+                })
+                .filter(acc => acc && acc.username);
+        };
+
+        const loadCloudAccounts = async ({ force = false, showLoading = false } = {}) => {
+            if (cloudAccountsLoaded && !force) return cloudAccounts;
+            if (cloudAccountsLoading) return cloudAccountsLoading;
+
+            if (showLoading && authorsList) {
+                authorsList.innerHTML = '<div style="padding:12px; text-align:center; color:#94a3b8; font-size:12px;">Đang tải...</div>';
+            }
+            setAuthorsReloadButtonState(true);
+
+            cloudAccountsLoading = (async () => {
+                try {
+                    const SettingsService = require('../services/settingsService');
+                    const cloudData = await SettingsService.getOrCreateSettings();
+                    const s = cloudData && cloudData.settings ? cloudData.settings : null;
+                    const list = await SettingsService.getCloudAccounts(s || {}, {
+                        doctorName: cloudData && cloudData.doctorName,
+                        chungThuSo: cloudData && cloudData.chungThuSo
+                    });
+                    cloudAccounts = normalizeCloudAccounts(list);
+                    dashboardCloudContext = {
+                        doctorName: cloudData && cloudData.doctorName,
+                        chungThuSo: cloudData && cloudData.chungThuSo,
+                        checklistObj: cloudData && cloudData.checklistObj,
+                        settings: s || SettingsService.getDefaultSettings(),
+                        cloudAccounts: [...cloudAccounts],
+                        bootstrapLoaded: true
+                    };
+
+                    if (s && s.dashboard && typeof s.dashboard === 'object') {
+                        applyDashboardSettingsToLocalStorage(s.dashboard);
+                        applyCardHoverTooltipSetting();
+                    }
+                } catch (e) {
+                    console.warn('Cloud authors load failed', e);
+                    cloudAccounts = [];
+                } finally {
+                    cloudAccountsLoaded = true;
+                    cloudAccountsLoading = null;
+                    setAuthorsReloadButtonState(false);
+                }
+                return cloudAccounts;
+            })();
+
+            return cloudAccountsLoading;
+        };
+
+        const renderAuthorsList = () => {
+            if (!authorsList) return;
+            const accounts = cloudAccounts;
+            if (accounts.length === 0) {
+                authorsList.innerHTML = `
+                    <div style="padding:16px; text-align:center;">
+                        <div style="color:#64748b; font-size:12px; margin-bottom:8px;">Chưa có account cloud nào được lưu</div>
+                        <a href="/?caidat=account-cloud" target="_blank" style="display:inline-block; background:#2563eb; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; font-weight:600; text-decoration:none;">Thêm ngay</a>
+                    </div>
+                `;
+                return;
+            }
+            authorsList.innerHTML = '';
+            accounts.forEach(acc => {
+                const item = document.createElement('div');
+                item.className = 'dr-dropdown-item';
+                item.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:10px 16px;';
+                item.innerHTML = `
+                    <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+                        <span style="font-weight:600; color:#1e293b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${acc.title || acc.username}</span>
+                        <span style="font-size:11px; color:#64748b;">${acc.username}</span>
+                    </div>
+                    <button class="dr-quick-login-btn" style="background:#f1f5f9; color:#2563eb; border:none; border-radius:6px; padding:5px 10px; font-size:11px; font-weight:600; cursor:pointer; transition:all 0.2s;">Login 🕵️</button>
+                `;
+                item.querySelector('.dr-quick-login-btn').onclick = async (e) => {
+                    e.stopPropagation();
+                    if (!acc.username || !acc.password) return;
+
+                    // Save credentials to GM storage
+                    const loginKey = `dr_quick_login_${acc.username}`;
+                    await GM.setValue(loginKey, JSON.stringify({
+                        username: acc.username,
+                        password: acc.password,
+                        ts: Date.now()
+                    }));
+
+                    // Open incognito tab
+                    if (typeof GM_openInTab === 'function') {
+                        GM_openInTab(window.location.origin + '/Home/Login?quicklogin=' + encodeURIComponent(acc.username), {
+                            active: true,
+                            insert: true,
+                            incognito: true
+                        });
+                    } else {
+                        alert('Tiện ích cần quyền GM_openInTab để thực hiện tính năng này.');
+                    }
+                };
+                authorsList.appendChild(item);
+            });
+        };
+
         // Initialize UI
         updateViewUI(view);
         updateSortUI(currentSort);
 
-        // Toggle dropdown
-        const toggleBtn = topBar.querySelector('#dr-view-toggle-premium');
-        if (toggleBtn) {
-            toggleBtn.onclick = (e) => {
-                e.stopPropagation();
-                dropdownContainer.classList.toggle('open');
-            };
+        if (cloudAccountsLoaded) {
+            renderAuthorsList();
+        } else {
+            (async () => {
+                try {
+                    await loadCloudAccounts({ showLoading: true });
+                } catch(e) { console.warn('Cloud sync failed on start', e); }
+                renderAuthorsList();
+            })();
         }
 
         if (sortToggle) {
@@ -1084,28 +1339,56 @@ function showDashboardBenhNhanIfNeeded() {
             };
         }
 
+        if (authorsBtn) {
+            authorsBtn.onclick = (e) => {
+                e.stopPropagation();
+                authorsContainer.classList.toggle('open');
+                if (authorsContainer.classList.contains('open') && cloudAccountsLoaded) {
+                    renderAuthorsList();
+                }
+            };
+        }
+
+        if (authorsReloadBtn) {
+            authorsReloadBtn.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    await loadCloudAccounts({ force: true, showLoading: true });
+                    renderAuthorsList();
+                    showToast('Đã tải lại danh sách account cloud', 'success', 2200);
+                } catch (err) {
+                    console.warn('Manual cloud authors reload failed', err);
+                    showToast('Không thể tải lại account cloud', 'error', 2500);
+                }
+            };
+        }
+
         // Close dropdown when clicking outside
         document.addEventListener('click', () => {
-            if (dropdownContainer) dropdownContainer.classList.remove('open');
             if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
+            if (authorsContainer) authorsContainer.classList.remove('open');
         });
 
         // Handle item selection
         dropdownItems.forEach(item => {
             item.onclick = (e) => {
+                e.stopPropagation();
                 const targetView = item.getAttribute('data-view');
                 if (targetView === view) return;
 
                 localStorage.setItem(VIEW_KEY, targetView);
-                
+                localStorage.setItem('dr-view-mode', targetView);
+                scheduleDashboardSettingsSync();
+
                 // If switching between fit and others, we might need a full re-render or reload
-                // For now, let's try to just re-trigger renderCards if it's fit mode, 
+                // For now, let's try to just re-trigger renderCards if it's fit mode,
                 // but since the container structure changes much, a reload or re-exec of renderCards with original data is safer.
                 // However, the requested behavior is "không reload lại trang web".
-                
+
                 if (targetView === 'fit' || view === 'fit') {
                     // Re-render everything with the new view
-                    renderCards(data); 
+                    renderCards(data);
                 } else {
                     // Classic behavior for grid/list (might involve reload if complex)
                     renderCards(data);
@@ -1125,7 +1408,7 @@ function showDashboardBenhNhanIfNeeded() {
         });
 
         if (!localStorage.getItem(VIEW_KEY)) localStorage.setItem(VIEW_KEY, view);
-        
+
         if (view === 'fit') {
             container.className = 'dr-fit-container';
             container.style.paddingBottom = '0'; // Clean slate for fit mode
@@ -1177,11 +1460,9 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Filter logic
         const searchInput = topBar.querySelector('#dr-search-input');
-        const chkXuatVien = topBar.querySelector('#dr-filter-xuatvien');
-        const chkCanLamSang = topBar.querySelector('#dr-filter-canlamsang');
         const totalCompact = topBar.querySelector('#dr-total-compact');
 
-        function getCardVisibilityState(card, keywords, onlyXV, onlyCLS) {
+        function getCardVisibilityState(card, keywords) {
             const nameAttr = card.getAttribute('data-name') || '';
             const mabnAttr = card.getAttribute('data-mabn') || '';
             const cdAttr = card.getAttribute('data-cd') || '';
@@ -1208,10 +1489,12 @@ function showDashboardBenhNhanIfNeeded() {
                     removeAccents(fullTxt).includes(normKey);
             });
 
-            const matchesXV = !onlyXV || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
-            const matchesCLS = !onlyCLS || card.dataset.hascls === '1';
+            const matchesXV = !advancedFilterState.onlyXuatVien || card.dataset.hasxv === '1' || card.classList.contains('xuatvienanimation');
+            const matchesCLS = !advancedFilterState.onlyCanLamSang || card.dataset.hascls === '1';
             const item = card.__drPatientData || sortedData.find(p => p.mabn === card.getAttribute('data-mabn'));
-            const matchesAdvanced = !advancedFilterState.active || (item && matchesAdvancedFilter(item));
+                // Only run advanced filter logic if there are advanced criteria (not just quick filters)
+                const hasAdvancedCriteria = !!(advancedFilterState.surgeryName || advancedFilterState.surgeons.length > 0 || advancedFilterState.surgeryDate || advancedFilterState.yLenhTags.length > 0);
+                const matchesAdvanced = !hasAdvancedCriteria || (item && matchesAdvancedFilter(item));
 
             return matchesText && matchesXV && matchesCLS && matchesAdvanced;
         }
@@ -1229,8 +1512,6 @@ function showDashboardBenhNhanIfNeeded() {
 
         function applyFilter() {
             const rawQ = (searchInput.value || '').trim();
-            const onlyXV = !!chkXuatVien.checked;
-            const onlyCLS = !!chkCanLamSang.checked;
             let visible = 0;
 
             // Split by comma and process each keyword
@@ -1240,20 +1521,20 @@ function showDashboardBenhNhanIfNeeded() {
 
             const mainCards = container.querySelectorAll('.dr-card, .dr-list-row');
             mainCards.forEach(card => {
-                const show = getCardVisibilityState(card, keywords, onlyXV, onlyCLS);
+                const show = getCardVisibilityState(card, keywords);
                 updateCardDisplay(card, show);
                 if (show) visible++;
             });
 
             const trackingCards = document.querySelectorAll('#dr-tracking-active-list .dr-card');
             trackingCards.forEach(card => {
-                const show = getCardVisibilityState(card, keywords, onlyXV, onlyCLS);
+                const show = getCardVisibilityState(card, keywords);
                 updateCardDisplay(card, show);
             });
 
             // Update centered compact total, integrating the filter count
             if (totalCompact) {
-                const hasFilter = !!(keywords.length > 0 || onlyXV || onlyCLS || advancedFilterState.active);
+                const hasFilter = !!(keywords.length > 0 || advancedFilterState.active);
                 totalCompact.textContent = hasFilter ? `Hiển thị: ${visible}/${sortedData.length}` : `${visible}/${sortedData.length}`;
                 // Color accents: blue when filtered, neutral otherwise
                 if (hasFilter) {
@@ -1271,8 +1552,6 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         searchInput.addEventListener('input', applyFilter);
-        chkXuatVien.addEventListener('change', applyFilter);
-        chkCanLamSang.addEventListener('change', applyFilter);
 
         // Escape key to clear search
         searchInput.addEventListener('keydown', (e) => {
@@ -1663,7 +1942,40 @@ function showDashboardBenhNhanIfNeeded() {
     // Bottom bar styling helper removed (centralized in dashboard.support.js)
     // Main logic
     async function initializeDashboard() {
-        const data = await PatientService.loadPatientDataWithErrorHandling();
+        applyCardHoverTooltipSetting();
+
+        const [cloudData, data] = await Promise.all([
+            SettingsService.getOrCreateSettings().catch((e) => {
+                console.warn('Load dashboard cloud settings failed', e);
+                return null;
+            }),
+            PatientService.loadPatientDataWithErrorHandling()
+        ]);
+
+        if (cloudData && cloudData.settings) {
+            applyDashboardSettingsToLocalStorage(cloudData.settings.dashboard || {});
+            applyCardHoverTooltipSetting();
+
+            let cloudAccounts = [];
+            try {
+                cloudAccounts = await SettingsService.getCloudAccounts(cloudData.settings || {}, {
+                    doctorName: cloudData.doctorName,
+                    chungThuSo: cloudData.chungThuSo
+                });
+            } catch (e) {
+                console.warn('Load bootstrap cloud accounts failed', e);
+            }
+
+            dashboardCloudContext = {
+                doctorName: cloudData.doctorName || '',
+                chungThuSo: cloudData.chungThuSo || '',
+                checklistObj: cloudData.checklistObj || null,
+                settings: cloudData.settings || SettingsService.getDefaultSettings(),
+                cloudAccounts: Array.isArray(cloudAccounts) ? cloudAccounts : [],
+                bootstrapLoaded: true
+            };
+        }
+
         if (data) {
             renderCards(data);
         }

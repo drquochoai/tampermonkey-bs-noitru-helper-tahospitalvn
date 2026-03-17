@@ -35,7 +35,7 @@ if (typeof window !== 'undefined') {
 this.openHSBAV2 = openHSBAV2;
 unsafeWindow.openHSBAV2 = openHSBAV2;
 
-(function () {
+(async function () {
     'use strict';
 
     // Auto-redirect to dashboard if login was just successful and auto-login is enabled
@@ -128,6 +128,49 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     try {
         const isLoginPage = /\/Home\/Login(\?.*)?$/.test(window.location.pathname);
         if (isLoginPage && window.localStorage) {
+            const params = new URLSearchParams(window.location.search);
+            const quickLoginUser = params.get('quicklogin');
+            
+            if (quickLoginUser) {
+                const loginKey = `dr_quick_login_${quickLoginUser}`;
+                const credsStr = await GM.getValue(loginKey);
+                if (credsStr) {
+                    try {
+                        const creds = JSON.parse(credsStr);
+                        if (creds && creds.username === quickLoginUser && (Date.now() - creds.ts < 60000)) {
+                            // Clear it after pick up
+                            await GM.deleteValue(loginKey);
+
+                            // Robust filling: poll for inputs
+                            let tries = 0;
+                            const fillIv = setInterval(() => {
+                                tries++;
+                                const uInput = document.querySelector('input[name="username"]');
+                                const pInput = document.querySelector('input[name="password"]');
+                                const btn = document.querySelector('button[type="submit"]');
+
+                                if (uInput && pInput && btn) {
+                                    clearInterval(fillIv);
+                                    uInput.value = creds.username;
+                                    pInput.value = creds.password;
+                                    
+                                    // Trigger input events for potential framework listeners
+                                    uInput.dispatchEvent(new Event('input', { bubbles: true }));
+                                    pInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+                                    setTimeout(() => {
+                                        window.sessionStorage.setItem('bsnt_login_clicked', '1');
+                                        btn.click();
+                                    }, 200);
+                                }
+                                if (tries > 50) clearInterval(fillIv);
+                            }, 100);
+                            return; // Stop and let this one finish
+                        }
+                    } catch (e) { console.error('Quick login failed', e); }
+                }
+            }
+
             const ACC_KEY = 'dr_accounts_json';
             const DEF_KEY = 'dr_acc_default';
             const AUTO_KEY = 'dr_acc_autologin';

@@ -5148,9 +5148,22 @@ module.exports = SidebarSession;
 
 const ApiService = require('../services/apiService');
 const TrackedPatientService = require('../services/trackedPatientService');
+const Utils = require('../utils');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 const DialogManager = require('./dialogManager');
 const cardTooltip = require('./cardTooltip');
+
+function safeCalculateAge(dateString) {
+    if (!dateString) return '';
+    try {
+        if (typeof Utils.calculateAge !== 'function') return '';
+        const age = Utils.calculateAge(dateString);
+        return age === null || age === undefined || Number.isNaN(age) ? '' : age;
+    } catch (error) {
+        console.warn('TrackingUI: calculateAge failed', error);
+        return '';
+    }
+}
 
 function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
     const btn = topBar.querySelector('#dr-tracking-btn');
@@ -5485,12 +5498,11 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
                     let html = '<table border="1" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">';
                     html += '<tr style="background:#f2f2f2;"><th>STT</th><th>Mã BN</th><th>Họ tên</th><th>Giới tính</th><th>Tuổi</th><th>Chẩn đoán</th></tr>';
                     
-                    const Utils = require('../utils/textUtils');
                     dummyPatients.forEach((d, index) => {
                         const cacheInfo = trackedState.cache[d.mabn] || {};
                         const name = cacheInfo.hoten || '';
                         const gender = cacheInfo.phai === 1 ? 'Nữ' : (cacheInfo.phai === 0 ? 'Nam' : '');
-                        const ageStr = cacheInfo.ngaysinh ? Utils.calculateAge(cacheInfo.ngaysinh) : '';
+                        const ageStr = safeCalculateAge(cacheInfo.ngaysinh);
                         const diag = cacheInfo.chandoanvk || '';
                         
                         html += `<tr>
@@ -5581,9 +5593,9 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
                 const cacheInfo = trackedState.cache[d.mabn];
                 // 4. Caching Discharged Patients Data
                 if (cacheInfo && cacheInfo.hoten) {
-                    const Utils = require('../utils/textUtils');
                     const gender = cacheInfo.phai === 1 ? 'Nữ' : 'Nam';
-                    const ageStr = cacheInfo.ngaysinh ? `(${Utils.calculateAge(cacheInfo.ngaysinh)} tuổi)` : '';
+                    const ageVal = safeCalculateAge(cacheInfo.ngaysinh);
+                    const ageStr = ageVal !== '' ? `(${ageVal} tuổi)` : '';
                     infoHtml = `
                         <div style="flex:1; min-width:0; padding-right:8px;">
                             <div style="font-size:13px; font-weight:700; color:#334155;">${cacheInfo.hoten}</div>
@@ -5773,7 +5785,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
 
 module.exports = { setupTrackingUI };
 
-},{"../pages/page.dashboard.support":28,"../services/apiService":33,"../services/patientService":36,"../services/reportService":37,"../services/trackedPatientService":41,"../utils/khoaUtils":50,"../utils/textUtils":55,"./cardTooltip":7,"./dialogManager":11}],23:[function(require,module,exports){
+},{"../pages/page.dashboard.support":28,"../services/apiService":33,"../services/patientService":36,"../services/reportService":37,"../services/trackedPatientService":41,"../utils":43,"../utils/khoaUtils":50,"./cardTooltip":7,"./dialogManager":11}],23:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -11286,12 +11298,15 @@ function addGlobalStyles() {
             width: 100%;
             box-sizing: border-box;
             overflow: hidden; /* No scroll requested */
+            justify-items: center;
+            align-items: center;
         }
         .dr-fit-container .dr-card {
             min-width: 0 !important;
-            max-width: none !important;
-            width: 100% !important;
-            height: 100% !important;
+            max-width: min(100%, 760px) !important;
+            width: min(100%, 760px) !important;
+            max-height: min(100%, 520px) !important;
+            height: min(100%, 520px) !important;
             margin: 0 !important;
             padding: 8px !important; /* Slightly smaller padding */
             display: flex;
@@ -11301,6 +11316,8 @@ function addGlobalStyles() {
             box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
             overflow: hidden; /* Prevent content expansion */
             position: relative;
+            justify-self: center;
+            align-self: center;
         }
         .dr-fit-container .dr-card .dr-room-label {
             font-size: var(--fit-title-size, 1.1em);

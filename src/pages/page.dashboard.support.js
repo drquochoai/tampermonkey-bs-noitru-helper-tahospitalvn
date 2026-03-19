@@ -1318,12 +1318,15 @@ function addGlobalStyles() {
             width: 100%;
             box-sizing: border-box;
             overflow: hidden; /* No scroll requested */
+            justify-items: center;
+            align-items: center;
         }
         .dr-fit-container .dr-card {
             min-width: 0 !important;
-            max-width: none !important;
-            width: 100% !important;
-            height: 100% !important;
+            max-width: min(100%, 760px) !important;
+            width: min(100%, 760px) !important;
+            max-height: min(100%, 520px) !important;
+            height: min(100%, 520px) !important;
             margin: 0 !important;
             padding: 8px !important; /* Slightly smaller padding */
             display: flex;
@@ -1333,6 +1336,8 @@ function addGlobalStyles() {
             box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
             overflow: hidden; /* Prevent content expansion */
             position: relative;
+            justify-self: center;
+            align-self: center;
         }
         .dr-fit-container .dr-card .dr-room-label {
             font-size: var(--fit-title-size, 1.1em);

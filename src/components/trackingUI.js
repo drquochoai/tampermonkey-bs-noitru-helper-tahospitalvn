@@ -2,9 +2,22 @@
 
 const ApiService = require('../services/apiService');
 const TrackedPatientService = require('../services/trackedPatientService');
+const Utils = require('../utils');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 const DialogManager = require('./dialogManager');
 const cardTooltip = require('./cardTooltip');
+
+function safeCalculateAge(dateString) {
+    if (!dateString) return '';
+    try {
+        if (typeof Utils.calculateAge !== 'function') return '';
+        const age = Utils.calculateAge(dateString);
+        return age === null || age === undefined || Number.isNaN(age) ? '' : age;
+    } catch (error) {
+        console.warn('TrackingUI: calculateAge failed', error);
+        return '';
+    }
+}
 
 function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
     const btn = topBar.querySelector('#dr-tracking-btn');
@@ -339,12 +352,11 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
                     let html = '<table border="1" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif;">';
                     html += '<tr style="background:#f2f2f2;"><th>STT</th><th>Mã BN</th><th>Họ tên</th><th>Giới tính</th><th>Tuổi</th><th>Chẩn đoán</th></tr>';
                     
-                    const Utils = require('../utils/textUtils');
                     dummyPatients.forEach((d, index) => {
                         const cacheInfo = trackedState.cache[d.mabn] || {};
                         const name = cacheInfo.hoten || '';
                         const gender = cacheInfo.phai === 1 ? 'Nữ' : (cacheInfo.phai === 0 ? 'Nam' : '');
-                        const ageStr = cacheInfo.ngaysinh ? Utils.calculateAge(cacheInfo.ngaysinh) : '';
+                        const ageStr = safeCalculateAge(cacheInfo.ngaysinh);
                         const diag = cacheInfo.chandoanvk || '';
                         
                         html += `<tr>
@@ -435,9 +447,9 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
                 const cacheInfo = trackedState.cache[d.mabn];
                 // 4. Caching Discharged Patients Data
                 if (cacheInfo && cacheInfo.hoten) {
-                    const Utils = require('../utils/textUtils');
                     const gender = cacheInfo.phai === 1 ? 'Nữ' : 'Nam';
-                    const ageStr = cacheInfo.ngaysinh ? `(${Utils.calculateAge(cacheInfo.ngaysinh)} tuổi)` : '';
+                    const ageVal = safeCalculateAge(cacheInfo.ngaysinh);
+                    const ageStr = ageVal !== '' ? `(${ageVal} tuổi)` : '';
                     infoHtml = `
                         <div style="flex:1; min-width:0; padding-right:8px;">
                             <div style="font-size:13px; font-weight:700; color:#334155;">${cacheInfo.hoten}</div>

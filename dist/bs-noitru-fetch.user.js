@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.1.01
+// @version      2.1.02
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -397,7 +397,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":50}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":51}],3:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -899,7 +899,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":9,"./components/hsbaDataFetcher":13,"./googleAppsScript":24,"./pages/otm-entry":25,"./pages/page.dashboard":27,"./pages/page.lichmo.homnay":29,"./pages/page.settings":31,"./services/checklistService":34,"./utils":43,"./utils/hsbaV2Download":48}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":9,"./components/hsbaDataFetcher":13,"./googleAppsScript":25,"./pages/otm-entry":26,"./pages/page.dashboard":28,"./pages/page.lichmo.homnay":30,"./pages/page.settings":32,"./services/checklistService":35,"./utils":44,"./utils/hsbaV2Download":49}],4:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -1022,7 +1022,7 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":28,"../services/checklistService":34,"../services/reportService":37}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":29,"../services/checklistService":35,"../services/reportService":38}],5:[function(require,module,exports){
 // advancedFilter.js - Logic for advanced dashboard filtering
 const DialogManager = require('./dialogManager');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -1723,7 +1723,7 @@ module.exports = {
     advancedFilterState
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":43,"../utils/dateUtils":45,"./dialogManager":11}],6:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":44,"../utils/dateUtils":46,"./dialogManager":11}],6:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -2020,7 +2020,7 @@ class ContextMenu {
 const contextMenu = new ContextMenu();
 module.exports = contextMenu;
 
-},{"../pages/page.dashboard.support":28,"../services/checklistService":34,"../services/reportService":37,"../utils/uiUtils":56,"./actionButtons":4}],9:[function(require,module,exports){
+},{"../pages/page.dashboard.support":29,"../services/checklistService":35,"../services/reportService":38,"../utils/uiUtils":57,"./actionButtons":4}],9:[function(require,module,exports){
 // copyDienTienAI.js
 // Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
 
@@ -2299,6 +2299,7 @@ module.exports = {
 const DialogManager = require('./dialogManager');
 const ReportService = require('../services/reportService');
 const DateUtils = require('../utils/dateUtils');
+const ChecklistService = require('../services/checklistService');
 
 /**
  * Setup Copy menu next to "Mổ theo ngày"
@@ -2451,13 +2452,37 @@ function setupCopyMenu(bottomBar) {
                 targetStates = states;
             } else if (item.type === 'new') {
                 const targetMidnight = new Date(item.date); targetMidnight.setHours(0, 0, 0, 0);
+                const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+                const isTodayTarget = targetMidnight.getTime() === todayMidnight.getTime();
+                const currentKhoaName = getCurrentKhoaName();
+
+                const localNewAtDeptPatients = [];
+                const localNewAtDeptStates = [];
+                const localReceivedPatients = [];
+                const localReceivedStates = [];
+
                 sortedPatients.forEach((p, idx) => {
-                    const admitDate = parseAdmitDate(p.ngayvv);
-                    if (admitDate && admitDate.getTime() === targetMidnight.getTime()) {
-                        targetPatients.push(p);
-                        targetStates.push(states[idx]);
+                    const classification = isTodayTarget
+                        ? classifyNewPatientTodayFlow(p, targetMidnight, currentKhoaName)
+                        : classifyNewPatientYesterdayFlow(p, targetMidnight);
+                    if (!classification) return;
+
+                    if (classification.group === 'receivedFromOtherDept') {
+                        localReceivedPatients.push(p);
+                        localReceivedStates.push(states[idx]);
+                    } else {
+                        localNewAtDeptPatients.push(p);
+                        localNewAtDeptStates.push(states[idx]);
                     }
+
+                    targetPatients.push(p);
+                    targetStates.push(states[idx]);
                 });
+
+                newAtDeptPatients = localNewAtDeptPatients;
+                newAtDeptStates = localNewAtDeptStates;
+                receivedFromOtherDeptPatients = localReceivedPatients;
+                receivedFromOtherDeptStates = localReceivedStates;
             } else if (item.type === 'pt' || item.type === 'pt-special') {
                 const targetMidnight = new Date(item.date); targetMidnight.setHours(0, 0, 0, 0);
                 sortedPatients.forEach((p, idx) => {
@@ -2479,7 +2504,6 @@ function setupCopyMenu(bottomBar) {
             }
 
             // AUTO-UPDATE HXT: If surgery exists but HXT is empty, set to "Ổn định nội khoa"
-            const ApiService = require('../services/apiService');
             for (let i = 0; i < targetPatients.length; i++) {
                 const p = targetPatients[i];
                 const s = targetStates[i];
@@ -2514,6 +2538,16 @@ function setupCopyMenu(bottomBar) {
                 const res = ReportService.generateSurgerySpecialReport(targetPatients, targetStates);
                 resultHtml = res.html;
                 resultText = res.text;
+            } else if (item.type === 'new') {
+                const groupedReport = buildGroupedNewPatientReport({
+                    title: `BỆNH MỚI ${item.subtitle || ''}`.trim(),
+                    newAtDeptPatients,
+                    newAtDeptStates,
+                    receivedFromOtherDeptPatients,
+                    receivedFromOtherDeptStates
+                });
+                resultHtml = groupedReport.html;
+                resultText = groupedReport.text;
             } else {
                 resultHtml = ReportService.generateHTMLReport(targetPatients, targetStates);
                 resultText = ReportService.generateTextReport(targetPatients, targetStates);
@@ -2528,28 +2562,130 @@ function setupCopyMenu(bottomBar) {
         }
     }
 
+    let newAtDeptPatients = [];
+    let newAtDeptStates = [];
+    let receivedFromOtherDeptPatients = [];
+    let receivedFromOtherDeptStates = [];
+
     function parseAdmitDate(dateStr) {
         if (!dateStr) return null;
         try {
-            // Support dd/mm/yyyy and yyyy-mm-dd
-            let usFormat = dateStr;
-            if (dateStr.includes('/')) {
-                const parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    usFormat = `${parts[1]}/${parts[0]}/${parts[2]}`;
-                }
-            }
+            const usFormat = DateUtils.convertToUSFormat(String(dateStr));
             const d = new Date(usFormat);
             if (isNaN(d.getTime())) return null;
             d.setHours(0, 0, 0, 0);
             return d;
         } catch (_) { return null; }
     }
+
+    function normalizeDeptName(name) {
+        return String(name || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toUpperCase();
+    }
+
+    function getCurrentKhoaName() {
+        try {
+            const khoaSelect = document.getElementById('ddlKhoa');
+            if (!khoaSelect) return '';
+            const selected = khoaSelect.options && khoaSelect.selectedIndex >= 0
+                ? khoaSelect.options[khoaSelect.selectedIndex]
+                : null;
+            return (selected && selected.textContent ? selected.textContent : '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function classifyNewPatientTodayFlow(patient, targetMidnight, currentKhoaName) {
+        if (!patient || !targetMidnight) return null;
+
+        const ngayVaoKhoa = parseAdmitDate(patient.ngayvk);
+        if (!ngayVaoKhoa || ngayVaoKhoa.getTime() !== targetMidnight.getTime()) {
+            return null;
+        }
+
+        const normalizedCurrentKhoa = normalizeDeptName(currentKhoaName);
+        const normalizedTenKpvv = normalizeDeptName(patient.tenkpvv);
+        const normalizedTenKhoaChuyen = normalizeDeptName(patient.tenkhoachuyen);
+        const normalizedGmhs = normalizeDeptName('KHOA GÂY MÊ - HỒI SỨC');
+
+        const receivedFromOtherDept = Boolean(
+            normalizedCurrentKhoa &&
+            normalizedTenKpvv &&
+            normalizedCurrentKhoa !== normalizedTenKpvv
+        );
+
+        if (!receivedFromOtherDept && normalizedTenKhoaChuyen === normalizedGmhs) {
+            const ngayVaoVien = parseAdmitDate(patient.ngayvv);
+            if (!ngayVaoVien || ngayVaoVien.getTime() !== targetMidnight.getTime()) {
+                return null;
+            }
+        }
+
+        return {
+            group: receivedFromOtherDept ? 'receivedFromOtherDept' : 'newAtCurrentDept'
+        };
+    }
+
+    function classifyNewPatientYesterdayFlow(patient, targetMidnight) {
+        if (!patient || !targetMidnight) return null;
+        const ngayVaoVien = parseAdmitDate(patient.ngayvv);
+        if (!ngayVaoVien || ngayVaoVien.getTime() !== targetMidnight.getTime()) {
+            return null;
+        }
+        return {
+            group: 'newAtCurrentDept'
+        };
+    }
+
+    function formatGroupedTextSection(patients, states) {
+        let text = '';
+        patients.forEach((patient, idx) => {
+            const data = ReportService.formatPatientData(patient, idx, states[idx] || {});
+            const locationText = data.room ? `${data.room} ${data.bed}`.trim() : data.bed;
+            text += `${data.index}. ${locationText} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+            text += `   Chẩn đoán: ${data.diagnosis}\n`;
+            if (data.ppptDisplay) text += `   PPPT: ${data.ppptDisplay}\n`;
+            if (data.ngayPtDisplay) text += `   Ngày PT: ${data.ngayPtDisplay}\n`;
+            if (data.hxt) text += `   HXT: ${data.hxt}\n`;
+        });
+        return text;
+    }
+
+    function buildGroupedNewPatientReport({
+        title,
+        newAtDeptPatients,
+        newAtDeptStates,
+        receivedFromOtherDeptPatients,
+        receivedFromOtherDeptStates
+    }) {
+        const total = (newAtDeptPatients.length + receivedFromOtherDeptPatients.length);
+
+        let html = `<div style='margin:0 0 10px 0;'><h2 style='font-size:1.25em; margin:0; color:#0f172a;'>${title}</h2><div style='color:#334155;'>Tổng số bệnh nhân mới: <b>${total}</b></div></div>`;
+        let text = `${title}\nTổng số bệnh nhân mới: ${total}\n\n`;
+
+        html += `<div style='margin:0 0 6px 0; font-weight:700; color:#14532d;'>Bệnh mới của khoa (${newAtDeptPatients.length})</div>`;
+        html += ReportService.generateHTMLReport(newAtDeptPatients, newAtDeptStates);
+        text += `Bệnh mới của khoa (${newAtDeptPatients.length})\n`;
+        text += formatGroupedTextSection(newAtDeptPatients, newAtDeptStates);
+        text += `\n`;
+
+        html += `<div style='margin:8px 0 6px 0; font-weight:700; color:#9a3412;'>Nhận từ khoa khác (${receivedFromOtherDeptPatients.length})</div>`;
+        html += ReportService.generateHTMLReport(receivedFromOtherDeptPatients, receivedFromOtherDeptStates);
+        text += `Nhận từ khoa khác (${receivedFromOtherDeptPatients.length})\n`;
+        text += formatGroupedTextSection(receivedFromOtherDeptPatients, receivedFromOtherDeptStates);
+
+        return { html, text };
+    }
 }
 
 module.exports = { setupCopyMenu };
 
-},{"../pages/page.dashboard.support":28,"../services/apiService":33,"../services/reportService":37,"../utils/dateUtils":45,"./dialogManager":11}],11:[function(require,module,exports){
+},{"../pages/page.dashboard.support":29,"../services/checklistService":35,"../services/reportService":38,"../utils/dateUtils":46,"./dialogManager":11}],11:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -3555,7 +3691,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":34,"./dialogManager":11}],14:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":35,"./dialogManager":11}],14:[function(require,module,exports){
 // components/khoaSelect.js - Reusable khoa selection button with dropdown
 
 const ApiService = require('../services/apiService');
@@ -3660,7 +3796,7 @@ function createKhoaSelect(opts) {
 
 module.exports = { createKhoaSelect };
 
-},{"../services/apiService":33}],15:[function(require,module,exports){
+},{"../services/apiService":34}],15:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -3740,7 +3876,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":28,"../services/checklistService":34,"../services/reportService":37,"../utils":43,"../utils/domUpdaters":46,"../utils/htmlUtils":49,"../utils/patientDataMapper":51,"../utils/tagUtils":54,"./actionButtons":4}],16:[function(require,module,exports){
+},{"../pages/page.dashboard.support":29,"../services/checklistService":35,"../services/reportService":38,"../utils":44,"../utils/domUpdaters":47,"../utils/htmlUtils":50,"../utils/patientDataMapper":52,"../utils/tagUtils":55,"./actionButtons":4}],16:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -4076,7 +4212,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":34,"../services/reportService":37,"../utils":43,"../utils/globalFnUtils":47,"../utils/stateSync":52,"../utils/uiUtils":56,"./displaySettings":12,"./phauThuatHandlers":19,"./yLenhHandlers":23}],19:[function(require,module,exports){
+},{"../services/checklistService":35,"../services/reportService":38,"../utils":44,"../utils/globalFnUtils":48,"../utils/stateSync":53,"../utils/uiUtils":57,"./displaySettings":12,"./phauThuatHandlers":19,"./yLenhHandlers":24}],19:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4608,11 +4744,12 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":34,"../utils/globalFnUtils":47,"../utils/stateSync":52,"../utils/surgeryUtils":53}],20:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":35,"../utils/globalFnUtils":48,"../utils/stateSync":53,"../utils/surgeryUtils":54}],20:[function(require,module,exports){
 // settingsDialog.js - Dialog component for settings (reusable, mirrors ?caidat page)
 const DialogManager = require('./dialogManager');
 const SettingsService = require('../services/settingsService');
 const { showToast } = require('../utils/uiUtils');
+const { mountUserInfoSettingsTab } = require('./userInfoSettingsTab');
 
 let _dialogEl = null;
 
@@ -4662,6 +4799,7 @@ async function showSettingsDialog(initialTab = 'display') {
     const tabs = [
         { id: 'display',       icon: 'fa-desktop',      label: 'Hiển thị' },
         { id: 'discharge',     icon: 'fa-file-medical',  label: 'Dặn dò ra viện' },
+        { id: 'user-info',     icon: 'fa-hospital-user', label: 'Thông tin người dùng' },
         { id: 'account',       icon: 'fa-user-lock',     label: 'Account' },
         { id: 'account-cloud', icon: 'fa-cloud',         label: 'Account Cloud' },
     ];
@@ -4695,6 +4833,11 @@ async function showSettingsDialog(initialTab = 'display') {
             <p style="margin:0 0 16px;font-size:13px;color:#6b7280;">Danh sách lời dặn mặc định khi xuất viện. Lưu tự động.</p>
             <div id="dr-sd-discharge-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
             <button id="dr-sd-add-discharge" style="appearance:none;border:1px dashed #94a3b8;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;color:#64748b;font-size:13px;">+ Thêm mục</button>
+        </div>
+
+        <!-- User info tab -->
+        <div id="dr-sd-tab-user-info" class="dr-sd-tab-panel" style="display:${initialTab==='user-info'?'block':'none'}">
+            <div id="dr-sd-user-info-container"></div>
         </div>
 
         <!-- Account tab -->
@@ -4759,6 +4902,9 @@ async function showSettingsDialog(initialTab = 'display') {
             content.querySelectorAll('.dr-sd-tab-panel').forEach(p => p.style.display = 'none');
             const panel = content.querySelector(`#dr-sd-tab-${tabId}`);
             if (panel) panel.style.display = 'block';
+            if (tabId === 'user-info') {
+                ensureUserInfoMounted();
+            }
         });
     });
 
@@ -4846,6 +4992,7 @@ async function showSettingsDialog(initialTab = 'display') {
     const statusEl = header.querySelector('#dr-sd-save-status');
     let _settings = null, _checklistObj = null, _doctorName = '', _chungThuSo = '';
     let _cloudAccounts = [];
+    let _userInfoMounted = false;
     const DASHBOARD_STORAGE_KEYS = [
         'dr-card-view',
         'dr-view-mode',
@@ -5058,6 +5205,19 @@ async function showSettingsDialog(initialTab = 'display') {
         cloudGrid.appendChild(addBox);
     }
 
+    async function ensureUserInfoMounted() {
+        if (_userInfoMounted) return;
+        const mountEl = content.querySelector('#dr-sd-user-info-container');
+        if (!mountEl) return;
+        _userInfoMounted = true;
+        await mountUserInfoSettingsTab({
+            container: mountEl,
+            getSettings: () => _settings,
+            setSettings: (next) => { _settings = next; },
+            scheduleAutoSave
+        });
+    }
+
     // Load API data
     statusEl.textContent = 'Đang tải...';
     statusEl.style.color = '#3b82f6';
@@ -5077,6 +5237,7 @@ async function showSettingsDialog(initialTab = 'display') {
         // Render account grids
         renderAccGrid();
         renderCloudGrid();
+        if (initialTab === 'user-info') await ensureUserInfoMounted();
 
         // Auto-login toggle
         try {
@@ -5108,7 +5269,7 @@ async function showSettingsDialog(initialTab = 'display') {
 
 module.exports = { showSettingsDialog };
 
-},{"../services/settingsService":39,"../utils/uiUtils":56,"./autoLoginToggle":6,"./cardTooltip":7,"./dialogManager":11,"./displaySettings":12}],21:[function(require,module,exports){
+},{"../services/settingsService":40,"../utils/uiUtils":57,"./autoLoginToggle":6,"./cardTooltip":7,"./dialogManager":11,"./displaySettings":12,"./userInfoSettingsTab":23}],21:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -5785,7 +5946,325 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
 
 module.exports = { setupTrackingUI };
 
-},{"../pages/page.dashboard.support":28,"../services/apiService":33,"../services/patientService":36,"../services/reportService":37,"../services/trackedPatientService":41,"../utils":43,"../utils/khoaUtils":50,"./cardTooltip":7,"./dialogManager":11}],23:[function(require,module,exports){
+},{"../pages/page.dashboard.support":29,"../services/apiService":34,"../services/patientService":37,"../services/reportService":38,"../services/trackedPatientService":42,"../utils":44,"../utils/khoaUtils":51,"./cardTooltip":7,"./dialogManager":11}],23:[function(require,module,exports){
+const ApiService = require('../services/apiService');
+
+function ensureMarkup(container) {
+    if (!container) return;
+    if (container.dataset.userInfoMounted === '1') return;
+
+    container.innerHTML = `
+        <h3 style="margin:0 0 4px;font-size:1em;color:#111827;">Thông tin người dùng</h3>
+        <p style="margin:0 0 16px;font-size:13px;color:#6b7280;">Cấu hình khoa làm việc và danh sách khoa/phòng được phép truy cập. Dữ liệu lưu cloud theo bác sĩ đang đăng nhập.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <button id="dr-ui-refresh-dept" style="appearance:none;border:1px solid #cbd5e1;background:#fff;padding:7px 12px;border-radius:8px;cursor:pointer;color:#334155;font-size:13px;">Tải lại danh sách khoa/phòng</button>
+            <span id="dr-ui-dept-status" style="font-size:12px;color:#64748b;"></span>
+        </div>
+        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:12px;background:#fafafa;">
+            <div style="font-size:13px;font-weight:600;color:#1f2937;margin-bottom:6px;">Khoa làm việc của bạn</div>
+            <select id="dr-ui-working-khoa" style="width:100%;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;background:#fff;">
+                <option value="">-- Chọn khoa/phòng --</option>
+            </select>
+        </div>
+        <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fff;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                <div style="font-size:13px;font-weight:600;color:#1f2937;">Khoa/phòng muốn truy cập</div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <button id="dr-ui-select-all" style="appearance:none;border:1px solid #d1d5db;background:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:#334155;">Chọn tất cả</button>
+                    <button id="dr-ui-clear-all" style="appearance:none;border:1px solid #fecaca;background:#fff1f2;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:#be123c;">Bỏ chọn tất cả</button>
+                </div>
+            </div>
+            <div id="dr-ui-access-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;max-height:320px;overflow:auto;"></div>
+        </div>
+    `;
+
+    container.dataset.userInfoMounted = '1';
+}
+
+function readAccessibleIds(userInfo) {
+    const ids = Array.isArray(userInfo && userInfo.accessibleKhoaIds)
+        ? userInfo.accessibleKhoaIds
+        : (Array.isArray(userInfo && userInfo.accessibleKhoa)
+            ? userInfo.accessibleKhoa.map((it) => it && it.id)
+            : []);
+
+    return new Set(
+        ids
+            .map((id) => String(id || '').trim())
+            .filter(Boolean)
+    );
+}
+
+function toList(items) {
+    return Array.isArray(items) ? items : [];
+}
+
+async function withTimeout(promise, ms, message) {
+    let timer = null;
+    const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message || 'Timeout')), ms);
+    });
+    try {
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+async function mountUserInfoSettingsTab(opts) {
+    const {
+        container,
+        getSettings,
+        setSettings,
+        scheduleAutoSave
+    } = opts || {};
+
+    if (!container || typeof getSettings !== 'function' || typeof setSettings !== 'function') {
+        return null;
+    }
+
+    ensureMarkup(container);
+
+    const workingSelect = container.querySelector('#dr-ui-working-khoa');
+    const accessList = container.querySelector('#dr-ui-access-list');
+    const statusEl = container.querySelector('#dr-ui-dept-status');
+    const refreshBtn = container.querySelector('#dr-ui-refresh-dept');
+    const selectAllBtn = container.querySelector('#dr-ui-select-all');
+    const clearAllBtn = container.querySelector('#dr-ui-clear-all');
+
+    let allKhoa = [];
+    let activeKhoa = [];
+    let workingKhoaId = '';
+    let accessibleKhoaIds = new Set();
+
+    function ensureWorkingAlwaysAccessible() {
+        if (!workingKhoaId) return;
+        accessibleKhoaIds.add(String(workingKhoaId));
+    }
+
+    function emitRealtimeUserInfo(nextSettings) {
+        try {
+            const userInfo = (nextSettings && nextSettings.userInfo) || {};
+            const detail = {
+                userInfo,
+                ts: Date.now()
+            };
+            window.dispatchEvent(new CustomEvent('dr-user-info-updated', { detail }));
+            localStorage.setItem('dr_user_info_sync', JSON.stringify(detail));
+        } catch (_) {}
+    }
+
+    function pullStateFromSettings() {
+        const settings = getSettings() || {};
+        const userInfo = settings.userInfo || {};
+        workingKhoaId = String(userInfo.workingKhoaId || userInfo.defaultKhoaId || '').trim();
+        accessibleKhoaIds = readAccessibleIds(userInfo);
+        ensureWorkingAlwaysAccessible();
+    }
+
+    function pushStateToSettings(shouldSave) {
+        const settings = getSettings() || {};
+        ensureWorkingAlwaysAccessible();
+        const matchedWorking = toList(allKhoa).find((k) => String(k.id) === String(workingKhoaId));
+        const activeLookup = new Map(toList(activeKhoa).map((k) => [String(k.id), k.name || '']));
+
+        const next = {
+            ...settings,
+            userInfo: {
+                ...(settings.userInfo || {}),
+                workingKhoaId: String(workingKhoaId || ''),
+                workingKhoaName: (matchedWorking && matchedWorking.name) || '',
+                accessibleKhoaIds: Array.from(accessibleKhoaIds),
+                accessibleKhoa: Array.from(accessibleKhoaIds).map((id) => ({
+                    id,
+                    name: activeLookup.get(id) || ''
+                }))
+            }
+        };
+
+        setSettings(next);
+        if (shouldSave) emitRealtimeUserInfo(next);
+        if (shouldSave && typeof scheduleAutoSave === 'function') scheduleAutoSave();
+    }
+
+    function renderWorkingKhoa() {
+        if (!workingSelect) return;
+        workingSelect.innerHTML = '<option value="">-- Chọn khoa/phòng --</option>';
+
+        toList(allKhoa).forEach((k) => {
+            const opt = document.createElement('option');
+            opt.value = String(k.id || '');
+            opt.textContent = `${k.name || 'Khoa'} (${k.id || ''})`;
+            workingSelect.appendChild(opt);
+        });
+
+        if (!workingKhoaId && allKhoa.length) {
+            let preferred = '';
+            try {
+                preferred = String(localStorage.getItem('bsnt_khoa_dashboard') || '').trim();
+            } catch (_) {}
+            const preferredExists = allKhoa.some((k) => String(k.id) === preferred);
+            workingKhoaId = preferredExists ? preferred : String(allKhoa[0].id || '');
+        }
+
+        if (workingKhoaId) {
+            workingSelect.value = workingKhoaId;
+            if (workingSelect.value !== workingKhoaId && allKhoa.length) {
+                workingKhoaId = String(allKhoa[0].id || '');
+                workingSelect.value = workingKhoaId;
+            }
+        }
+
+        ensureWorkingAlwaysAccessible();
+    }
+
+    function renderAccessibleKhoa() {
+        if (!accessList) return;
+        if (!toList(activeKhoa).length) {
+            accessList.innerHTML = '<div style="font-size:12px;color:#6b7280;font-style:italic;">Chưa có khoa/phòng đang có bệnh nhân.</div>';
+            return;
+        }
+
+        accessList.innerHTML = '';
+        toList(activeKhoa).forEach((dept) => {
+            const deptId = String(dept.id || '');
+            const isWorking = deptId === String(workingKhoaId || '');
+            const checked = isWorking || accessibleKhoaIds.has(deptId);
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;align-items:center;gap:8px;border:1px solid #e5e7eb;border-radius:8px;padding:7px 9px;background:#fff;cursor:pointer;';
+            label.innerHTML = `
+                <input type="checkbox" class="dr-ui-access-item" value="${deptId}" ${checked ? 'checked' : ''} ${isWorking ? 'disabled' : ''} style="margin:0;">
+                <span style="font-size:12px;color:#1f2937;line-height:1.35;">${dept.name || 'Khoa'} <span style="color:#64748b;">(${dept.id || ''})</span>${dept.patientCount ? ` <span style="color:#16a34a;">- ${dept.patientCount} BN</span>` : ''}${isWorking ? ' <span style="color:#2563eb;">- Khoa làm việc</span>' : ''}</span>
+            `;
+            accessList.appendChild(label);
+        });
+    }
+
+    async function loadWorkingKhoaList() {
+        const list = await ApiService.fetchKhoaPhong();
+        allKhoa = toList(list).map((k) => ({
+            id: String((k && k.id) || ''),
+            name: String((k && k.name) || '')
+        })).filter((k) => k.id);
+        renderWorkingKhoa();
+        ensureWorkingAlwaysAccessible();
+    }
+
+    async function loadActiveKhoaList() {
+        const list = await withTimeout(
+            ApiService.fetchActiveKhoaPhongFromSearch(),
+            25000,
+            'Tai danh sach khoa/phong qua lau'
+        );
+        activeKhoa = toList(list).map((k) => ({
+            id: String((k && k.id) || ''),
+            name: String((k && k.name) || ''),
+            patientCount: Number((k && k.patientCount) || 0)
+        })).filter((k) => k.id && k.name);
+
+        if (workingKhoaId && !activeKhoa.some((k) => String(k.id) === String(workingKhoaId))) {
+            const found = allKhoa.find((k) => String(k.id) === String(workingKhoaId));
+            activeKhoa.unshift({
+                id: String(workingKhoaId),
+                name: (found && found.name) || `Khoa ${workingKhoaId}`,
+                patientCount: 0
+            });
+        }
+
+        renderAccessibleKhoa();
+    }
+
+    async function reloadAll() {
+        if (statusEl) {
+            statusEl.textContent = 'Đang tải danh sách khoa/phòng...';
+            statusEl.style.color = '#2563eb';
+        }
+
+        try {
+            pullStateFromSettings();
+            await Promise.all([loadWorkingKhoaList(), loadActiveKhoaList()]);
+            pushStateToSettings(false);
+            if (statusEl) {
+                statusEl.textContent = `Đã tải ${activeKhoa.length} khoa/phòng đang có bệnh nhân.`;
+                statusEl.style.color = '#16a34a';
+            }
+        } catch (e) {
+            console.warn('Load user info khoa settings failed', e);
+            if (statusEl) {
+                statusEl.textContent = 'Không tải được danh sách khoa/phòng.';
+                statusEl.style.color = '#dc2626';
+            }
+        }
+    }
+
+    pullStateFromSettings();
+
+    if (workingSelect && !workingSelect.dataset.bound) {
+        workingSelect.dataset.bound = '1';
+        workingSelect.addEventListener('change', () => {
+            workingKhoaId = String(workingSelect.value || '');
+            try {
+                if (workingKhoaId) localStorage.setItem('bsnt_khoa_dashboard', workingKhoaId);
+            } catch (_) {}
+            pushStateToSettings(true);
+        });
+    }
+
+    if (accessList && !accessList.dataset.bound) {
+        accessList.dataset.bound = '1';
+        accessList.addEventListener('change', (e) => {
+            const input = e.target;
+            if (!input || !input.classList || !input.classList.contains('dr-ui-access-item')) return;
+            const deptId = String(input.value || '');
+            if (!deptId) return;
+            if (deptId === String(workingKhoaId || '')) {
+                input.checked = true;
+                return;
+            }
+            if (input.checked) accessibleKhoaIds.add(deptId);
+            else accessibleKhoaIds.delete(deptId);
+            ensureWorkingAlwaysAccessible();
+            pushStateToSettings(true);
+        });
+    }
+
+    if (selectAllBtn && !selectAllBtn.dataset.bound) {
+        selectAllBtn.dataset.bound = '1';
+        selectAllBtn.addEventListener('click', () => {
+            accessibleKhoaIds = new Set(toList(activeKhoa).map((d) => String(d.id || '')).filter(Boolean));
+            ensureWorkingAlwaysAccessible();
+            renderAccessibleKhoa();
+            pushStateToSettings(true);
+        });
+    }
+
+    if (clearAllBtn && !clearAllBtn.dataset.bound) {
+        clearAllBtn.dataset.bound = '1';
+        clearAllBtn.addEventListener('click', () => {
+            accessibleKhoaIds = new Set();
+            ensureWorkingAlwaysAccessible();
+            renderAccessibleKhoa();
+            pushStateToSettings(true);
+        });
+    }
+
+    if (refreshBtn && !refreshBtn.dataset.bound) {
+        refreshBtn.dataset.bound = '1';
+        refreshBtn.addEventListener('click', () => {
+            reloadAll();
+        });
+    }
+
+    await reloadAll();
+
+    return {
+        reload: reloadAll
+    };
+}
+
+module.exports = { mountUserInfoSettingsTab };
+
+},{"../services/apiService":34}],24:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -6249,7 +6728,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":34,"../utils/dateUtils":45,"../utils/globalFnUtils":47,"../utils/stateSync":52}],24:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":35,"../utils/dateUtils":46,"../utils/globalFnUtils":48,"../utils/stateSync":53}],25:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -6335,7 +6814,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 // otm-entry.js - Entry point for OTM content script
 (function() {
     'use strict';
@@ -6356,7 +6835,7 @@ module.exports = {
 
 })();
 
-},{"./otm.content.script":26}],26:[function(require,module,exports){
+},{"./otm.content.script":27}],27:[function(require,module,exports){
 // otm.content.js - Content script for OTM surgery data fetching
 (function() {
     'use strict';
@@ -7445,7 +7924,7 @@ module.exports = {
 
 })();
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
@@ -7461,6 +7940,7 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const PatientService = require('../services/patientService');
 const ChecklistService = require('../services/checklistService');
 const SettingsService = require('../services/settingsService');
+const ApiService = require('../services/apiService');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const ModalManager = require('../components/modalManager');
 const LoginHandler = require('../components/loginHandler');
@@ -7481,6 +7961,7 @@ const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = 
 const { escapeHtml } = require('../utils/htmlUtils');
 const DomUpdaters = require('../utils/domUpdaters');
 const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('../utils/checklistUtils');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 // Global variable for OTM tabs
 if (typeof window !== 'undefined') {
@@ -7552,6 +8033,9 @@ function showDashboardBenhNhanIfNeeded() {
         bootstrapLoaded: false
     };
     let dashboardSaveTimeout = null;
+    let khoaSelectRefreshToken = 0;
+    let khoaSelectOptionsCache = null;
+    let lastManualKhoaId = '';
 
     function applyCardHoverTooltipSetting() {
         if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
@@ -7588,6 +8072,167 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         return dashboardSettings;
+    }
+
+    function getAccessibleKhoaIds(settingsObj) {
+        const userInfo = settingsObj && settingsObj.userInfo ? settingsObj.userInfo : {};
+        const ids = Array.isArray(userInfo.accessibleKhoaIds)
+            ? userInfo.accessibleKhoaIds
+            : (Array.isArray(userInfo.accessibleKhoa) ? userInfo.accessibleKhoa.map((it) => it && it.id) : []);
+        return (ids || []).map((id) => String(id || '').trim()).filter(Boolean);
+    }
+
+    function filterDataByAccessibleKhoa(data, settingsObj) {
+        if (!Array.isArray(data)) return [];
+        const ids = getAccessibleKhoaIds(settingsObj);
+        if (!ids.length) return data;
+        const allowSet = new Set(ids);
+        return data.filter((item) => allowSet.has(String((item && item.makp) || '').trim()));
+    }
+
+    async function refreshKhoaSelectByAccess({ reloadDataIfChanged = false, forceReloadList = false } = {}) {
+        const select = document.getElementById('dr-khoa-select');
+        if (!select) return;
+
+        const requestId = ++khoaSelectRefreshToken;
+        const previousValue = String(select.value || getSelectedKhoa('551'));
+
+        try {
+            select.disabled = true;
+            let list = khoaSelectOptionsCache;
+            if (forceReloadList || !Array.isArray(list) || !list.length) {
+                list = await ApiService.fetchKhoaPhong();
+                khoaSelectOptionsCache = Array.isArray(list) ? list : [];
+            }
+            if (requestId !== khoaSelectRefreshToken) return;
+
+            const userInfo = ((dashboardCloudContext.settings || {}).userInfo) || {};
+            const accessibleIds = getAccessibleKhoaIds(dashboardCloudContext.settings || {});
+            const allowSet = new Set(accessibleIds);
+            const defaultAllowedList = accessibleIds.length
+                ? list.filter((k) => allowSet.has(String((k && k.id) || '').trim()))
+                : list;
+
+            let filteredList = defaultAllowedList;
+            if (accessibleIds.length) {
+                const mapById = new Map();
+                defaultAllowedList.forEach((k) => {
+                    const id = String((k && k.id) || '').trim();
+                    if (!id) return;
+                    mapById.set(id, {
+                        id,
+                        name: String((k && k.name) || id)
+                    });
+                });
+
+                const accessibleMeta = Array.isArray(userInfo.accessibleKhoa) ? userInfo.accessibleKhoa : [];
+                accessibleIds.forEach((id) => {
+                    if (mapById.has(id)) return;
+                    const meta = accessibleMeta.find((x) => String((x && x.id) || '').trim() === id);
+                    mapById.set(id, {
+                        id,
+                        name: (meta && meta.name) ? String(meta.name) : `Khoa ${id}`
+                    });
+                });
+
+                filteredList = Array.from(mapById.values());
+            }
+
+            select.innerHTML = '';
+            if (!filteredList.length) {
+                select.innerHTML = '<option value="">Khong co khoa duoc cap quyen</option>';
+                select.disabled = true;
+                return;
+            }
+
+            filteredList.forEach((k) => {
+                const opt = document.createElement('option');
+                opt.value = String(k.id);
+                opt.textContent = k.name || k.id;
+                select.appendChild(opt);
+            });
+
+            let nextValue = String(lastManualKhoaId || previousValue || '').trim();
+            if (!filteredList.some((k) => String(k.id) === nextValue)) {
+                nextValue = String(filteredList[0].id || '');
+            }
+
+            if (nextValue) {
+                select.value = nextValue;
+                try { localStorage.setItem('bsnt_khoa_dashboard', nextValue); } catch (_) {}
+            }
+            select.disabled = false;
+
+            if (reloadDataIfChanged && nextValue && nextValue !== previousValue) {
+                const selectedOpt = select.options[select.selectedIndex];
+                const selectedName = (selectedOpt && selectedOpt.textContent) || nextValue;
+                await reloadDashboardForSelectedKhoa(selectedName);
+            }
+        } catch (e) {
+            console.warn('Refresh khoa select failed', e);
+            select.disabled = false;
+        }
+    }
+
+    function applyRealtimeUserInfo(detail) {
+        const userInfo = detail && detail.userInfo;
+        if (!userInfo || typeof userInfo !== 'object') return;
+
+        dashboardCloudContext.settings = {
+            ...(dashboardCloudContext.settings || SettingsService.getDefaultSettings()),
+            userInfo: {
+                ...(((dashboardCloudContext.settings || {}).userInfo) || {}),
+                ...userInfo
+            }
+        };
+
+        refreshKhoaSelectByAccess({ reloadDataIfChanged: true, forceReloadList: true });
+    }
+
+    function setKhoaLoadingStatus(text, isError) {
+        const el = document.getElementById('dr-khoa-loading-status');
+        if (!el) return;
+        el.textContent = text || '';
+        el.style.color = isError ? '#b91c1c' : '#475569';
+    }
+
+    async function reloadDashboardForSelectedKhoa(selectedName) {
+        const khoaName = String(selectedName || '').trim() || 'khoa da chon';
+        setKhoaLoadingStatus(`Dang tai thong tin ${khoaName}...`);
+        showToast(`Dang tai thong tin ${khoaName}...`, 'info', 1800);
+
+        try {
+            const fresh = await PatientService.loadPatientDataWithErrorHandling({ forceRefresh: true });
+            if (!fresh) {
+                setKhoaLoadingStatus('Khong tai duoc du lieu khoa/phong', true);
+                return;
+            }
+
+            // PatientService background enrichment already calls checklist endpoint
+            // DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien for checklist details.
+            renderCards(filterDataByAccessibleKhoa(fresh, dashboardCloudContext.settings || {}));
+            setKhoaLoadingStatus('');
+        } catch (e) {
+            console.warn('Reload dashboard by khoa failed', e);
+            setKhoaLoadingStatus('Loi tai du lieu khoa/phong', true);
+            showToast('Loi tai du lieu khoa/phong', 'error', 2200);
+        }
+    }
+
+    if (!window.__drUserInfoSyncBound) {
+        window.__drUserInfoSyncBound = true;
+
+        window.addEventListener('dr-user-info-updated', (event) => {
+            applyRealtimeUserInfo(event && event.detail);
+        });
+
+        window.addEventListener('storage', (event) => {
+            if (!event || event.key !== 'dr_user_info_sync' || !event.newValue) return;
+            try {
+                const payload = JSON.parse(event.newValue);
+                applyRealtimeUserInfo(payload);
+            } catch (_) {}
+        });
     }
 
     async function ensureDashboardChecklistObj() {
@@ -9338,8 +9983,6 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create bottom bar
     function createBottomBar() {
-        const ApiService = require('../services/apiService');
-        const { getSelectedKhoa } = require('../utils/khoaUtils');
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
@@ -9348,6 +9991,7 @@ function showDashboardBenhNhanIfNeeded() {
                     <i class="fas fa-cog"></i>
                 </a>
                 <select id="dr-khoa-select" class="dr-khoa-select" title="Chọn khoa"></select>
+                <span id="dr-khoa-loading-status" style="font-size:12px;color:#475569;white-space:nowrap;"></span>
             </div>
         `;
         document.body.appendChild(bottomBar);
@@ -9363,24 +10007,18 @@ function showDashboardBenhNhanIfNeeded() {
             try {
                 const select = document.getElementById('dr-khoa-select');
                 if (!select) return;
-                select.disabled = true;
                 select.innerHTML = `<option>Đang tải khoa...</option>`;
-                const list = await ApiService.fetchKhoaPhong();
-                const current = String(getSelectedKhoa('551'));
-                select.innerHTML = '';
-                list.forEach(k => {
-                    const opt = document.createElement('option');
-                    opt.value = String(k.id);
-                    opt.textContent = k.name || k.id;
-                    if (opt.value === current) opt.selected = true;
-                    select.appendChild(opt);
+                await refreshKhoaSelectByAccess({
+                    reloadDataIfChanged: false,
+                    forceReloadList: !Array.isArray(khoaSelectOptionsCache) || !khoaSelectOptionsCache.length
                 });
-                select.disabled = false;
-                select.addEventListener('change', (e) => {
+                select.addEventListener('change', async (e) => {
                     const val = e.target.value;
+                    lastManualKhoaId = String(val || '').trim();
+                    const selectedOpt = e.target.options[e.target.selectedIndex];
+                    const selectedName = (selectedOpt && selectedOpt.textContent) || val;
                     try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
-                    // reload dashboard data by simply reloading the page or re-running init
-                    window.location.reload();
+                    await reloadDashboardForSelectedKhoa(selectedName);
                 });
             } catch (e) {
                 console.warn('Load khoa for bottom bar failed', e);
@@ -9393,13 +10031,10 @@ function showDashboardBenhNhanIfNeeded() {
     async function initializeDashboard() {
         applyCardHoverTooltipSetting();
 
-        const [cloudData, data] = await Promise.all([
-            SettingsService.getOrCreateSettings().catch((e) => {
-                console.warn('Load dashboard cloud settings failed', e);
-                return null;
-            }),
-            PatientService.loadPatientDataWithErrorHandling()
-        ]);
+        const cloudData = await SettingsService.getOrCreateSettings().catch((e) => {
+            console.warn('Load dashboard cloud settings failed', e);
+            return null;
+        });
 
         if (cloudData && cloudData.settings) {
             applyDashboardSettingsToLocalStorage(cloudData.settings.dashboard || {});
@@ -9423,10 +10058,22 @@ function showDashboardBenhNhanIfNeeded() {
                 cloudAccounts: Array.isArray(cloudAccounts) ? cloudAccounts : [],
                 bootstrapLoaded: true
             };
+
+            const allowedIds = getAccessibleKhoaIds(dashboardCloudContext.settings || {});
+            if (allowedIds.length) {
+                const currentKhoa = String(getSelectedKhoa('551'));
+                if (!allowedIds.includes(currentKhoa)) {
+                    try {
+                        localStorage.setItem('bsnt_khoa_dashboard', allowedIds[0]);
+                    } catch (_) {}
+                }
+            }
         }
 
+        const data = await PatientService.loadPatientDataWithErrorHandling();
+
         if (data) {
-            renderCards(data);
+            renderCards(filterDataByAccessibleKhoa(data, dashboardCloudContext.settings || {}));
         }
     }
 
@@ -9977,7 +10624,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/cardTooltip":7,"../components/contextMenu":8,"../components/copyDienTienAI":9,"../components/copyMenu":10,"../components/dialogManager":11,"../components/displaySettings":12,"../components/hsbaDataFetcher":13,"../components/listView":15,"../components/loginHandler":16,"../components/modalManager":17,"../components/patientInfoSection":18,"../components/phauThuatHandlers":19,"../components/sidebarSession":21,"../components/trackingUI":22,"../services/apiService":33,"../services/checklistService":34,"../services/patientService":36,"../services/settingsService":39,"../utils":43,"../utils/checklistUtils":44,"../utils/domUpdaters":46,"../utils/htmlUtils":49,"../utils/khoaUtils":50,"../utils/patientDataMapper":51,"../utils/surgeryUtils":53,"../utils/tagUtils":54,"../utils/textUtils":55,"../utils/uiUtils":56,"./page.dashboard.support":28}],28:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/cardTooltip":7,"../components/contextMenu":8,"../components/copyDienTienAI":9,"../components/copyMenu":10,"../components/dialogManager":11,"../components/displaySettings":12,"../components/hsbaDataFetcher":13,"../components/listView":15,"../components/loginHandler":16,"../components/modalManager":17,"../components/patientInfoSection":18,"../components/phauThuatHandlers":19,"../components/sidebarSession":21,"../components/trackingUI":22,"../services/apiService":34,"../services/checklistService":35,"../services/patientService":37,"../services/settingsService":40,"../utils":44,"../utils/checklistUtils":45,"../utils/domUpdaters":47,"../utils/htmlUtils":50,"../utils/khoaUtils":51,"../utils/patientDataMapper":52,"../utils/surgeryUtils":54,"../utils/tagUtils":55,"../utils/textUtils":56,"../utils/uiUtils":57,"./page.dashboard.support":29}],29:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -10019,7 +10666,7 @@ async function createDirectReportGeneration() {
         const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
         const textReport = ReportService.generateTextReport(sortedPatients, states);
 
-        // Helpers to filter patients by admission date (ngayvv) using preloaded data only
+        // Helpers to classify new patients using ngayvk + tenkpvv vs current khoa
         function parseAdmitDateToMidnight(dateStr) {
             if (!dateStr) return null;
             try {
@@ -10031,7 +10678,92 @@ async function createDirectReportGeneration() {
             } catch (_) { return null; }
         }
 
-        function filterByAdmitDay(patientsArr, statesArr, targetDate) {
+        function normalizeDeptName(name) {
+            return String(name || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toUpperCase();
+        }
+
+        function getCurrentKhoaName() {
+            try {
+                const khoaSelect = document.getElementById('ddlKhoa');
+                if (!khoaSelect) return '';
+                const selected = khoaSelect.options && khoaSelect.selectedIndex >= 0
+                    ? khoaSelect.options[khoaSelect.selectedIndex]
+                    : null;
+                return (selected && selected.textContent ? selected.textContent : '').trim();
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function formatDateVN(d) {
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+        }
+
+        function filterNewPatientsTodayFlow(patientsArr, statesArr, targetDate) {
+            const target = new Date(targetDate);
+            target.setHours(0, 0, 0, 0);
+            const currentKhoaName = getCurrentKhoaName();
+            const normalizedCurrentKhoa = normalizeDeptName(currentKhoaName);
+            const normalizedGmhs = normalizeDeptName('KHOA GÂY MÊ - HỒI SỨC');
+            const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+
+            const grouped = {
+                newAtDeptPatients: [],
+                newAtDeptStates: [],
+                receivedPatients: [],
+                receivedStates: []
+            };
+
+            const filtered = [];
+
+            zipped.forEach(({ p, s }) => {
+                const ngayVaoKhoa = parseAdmitDateToMidnight(p && p.ngayvk);
+                if (!ngayVaoKhoa || ngayVaoKhoa.getTime() !== target.getTime()) {
+                    return;
+                }
+
+                const normalizedTenKpvv = normalizeDeptName(p && p.tenkpvv);
+                const normalizedTenKhoaChuyen = normalizeDeptName(p && p.tenkhoachuyen);
+                const isReceivedFromOtherDept = Boolean(
+                    normalizedCurrentKhoa &&
+                    normalizedTenKpvv &&
+                    normalizedCurrentKhoa !== normalizedTenKpvv
+                );
+
+                if (!isReceivedFromOtherDept && normalizedTenKhoaChuyen === normalizedGmhs) {
+                    const ngayVaoVien = parseAdmitDateToMidnight(p && p.ngayvv);
+                    if (!ngayVaoVien || ngayVaoVien.getTime() !== target.getTime()) {
+                        return;
+                    }
+                }
+
+                filtered.push({ p, s });
+
+                if (isReceivedFromOtherDept) {
+                    grouped.receivedPatients.push(p);
+                    grouped.receivedStates.push(s);
+                } else {
+                    grouped.newAtDeptPatients.push(p);
+                    grouped.newAtDeptStates.push(s);
+                }
+            });
+
+            return {
+                patients: filtered.map(z => z.p),
+                states: filtered.map(z => z.s),
+                ...grouped
+            };
+        }
+
+        function filterNewPatientsYesterdayFlow(patientsArr, statesArr, targetDate) {
             const target = new Date(targetDate);
             target.setHours(0, 0, 0, 0);
             const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
@@ -10039,20 +10771,65 @@ async function createDirectReportGeneration() {
                 const d = parseAdmitDateToMidnight(p && p.ngayvv);
                 return d && d.getTime() === target.getTime();
             });
+
             return {
                 patients: filtered.map(z => z.p),
-                states: filtered.map(z => z.s)
+                states: filtered.map(z => z.s),
+                newAtDeptPatients: filtered.map(z => z.p),
+                newAtDeptStates: filtered.map(z => z.s),
+                receivedPatients: [],
+                receivedStates: []
             };
+        }
+
+        function formatGroupedTextSection(patients, sectionStates) {
+            let text = '';
+            patients.forEach((patient, idx) => {
+                const data = ReportService.formatPatientData(patient, idx, sectionStates[idx] || {});
+                const locationText = data.room ? `${data.room} ${data.bed}`.trim() : data.bed;
+                text += `${data.index}. ${locationText} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+                text += `   Chẩn đoán: ${data.diagnosis}\n`;
+                if (data.ppptDisplay) text += `   PPPT: ${data.ppptDisplay}\n`;
+                if (data.ngayPtDisplay) text += `   Ngày PT: ${data.ngayPtDisplay}\n`;
+                if (data.hxt) text += `   HXT: ${data.hxt}\n`;
+            });
+            return text;
+        }
+
+        function buildGroupedNewPatientReport({ title, grouped }) {
+            const total = grouped.patients.length;
+
+            let html = `<div style='margin:0 0 10px 0;'><h2 style='font-size:1.25em; margin:0; color:#0f172a;'>${title}</h2><div style='color:#334155;'>Tổng số bệnh nhân mới: <b>${total}</b></div></div>`;
+            let text = `${title}\nTổng số bệnh nhân mới: ${total}\n\n`;
+
+            html += `<div style='margin:0 0 6px 0; font-weight:700; color:#14532d;'>Bệnh mới của khoa (${grouped.newAtDeptPatients.length})</div>`;
+            html += ReportService.generateHTMLReport(grouped.newAtDeptPatients, grouped.newAtDeptStates);
+            text += `Bệnh mới của khoa (${grouped.newAtDeptPatients.length})\n`;
+            text += formatGroupedTextSection(grouped.newAtDeptPatients, grouped.newAtDeptStates);
+            text += `\n`;
+
+            html += `<div style='margin:8px 0 6px 0; font-weight:700; color:#9a3412;'>Nhận từ khoa khác (${grouped.receivedPatients.length})</div>`;
+            html += ReportService.generateHTMLReport(grouped.receivedPatients, grouped.receivedStates);
+            text += `Nhận từ khoa khác (${grouped.receivedPatients.length})\n`;
+            text += formatGroupedTextSection(grouped.receivedPatients, grouped.receivedStates);
+
+            return { html, text };
         }
 
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-        const { patients: todayPatients, states: todayStates } = filterByAdmitDay(sortedPatients, states, today);
-        const { patients: yesterdayPatients, states: yesterdayStates } = filterByAdmitDay(sortedPatients, states, yesterday);
-        const htmlToday = ReportService.generateHTMLReport(todayPatients, todayStates);
-        const textToday = ReportService.generateTextReport(todayPatients, todayStates);
-        const htmlYesterday = ReportService.generateHTMLReport(yesterdayPatients, yesterdayStates);
-        const textYesterday = ReportService.generateTextReport(yesterdayPatients, yesterdayStates);
+        const todayGrouped = filterNewPatientsTodayFlow(sortedPatients, states, today);
+        const yesterdayGrouped = filterNewPatientsYesterdayFlow(sortedPatients, states, yesterday);
+        const todayPatients = todayGrouped.patients;
+        const yesterdayPatients = yesterdayGrouped.patients;
+        const { html: htmlToday, text: textToday } = buildGroupedNewPatientReport({
+            title: `BỆNH MỚI ${formatDateVN(today)}`,
+            grouped: todayGrouped
+        });
+        const { html: htmlYesterday, text: textYesterday } = buildGroupedNewPatientReport({
+            title: `BỆNH MỚI ${formatDateVN(yesterday)}`,
+            grouped: yesterdayGrouped
+        });
 
         // Filter by surgery date (latest surgery in state.phauThuatLog[0])
         function filterBySurgeryDay(patientsArr, statesArr, targetDate) {
@@ -11581,7 +12358,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":11,"../services/apiService":33,"../services/reportService":37,"../utils/dateUtils":45}],29:[function(require,module,exports){
+},{"../components/dialogManager":11,"../services/apiService":34,"../services/reportService":38,"../utils/dateUtils":46}],30:[function(require,module,exports){
 // page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
@@ -12038,7 +12815,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":14,"../services/otm.token":35,"../services/surgeonSettingsService":40,"../utils/khoaUtils":50,"../utils/uiUtils":56}],30:[function(require,module,exports){
+},{"../components/khoaSelect":14,"../services/otm.token":36,"../services/surgeonSettingsService":41,"../utils/khoaUtils":51,"../utils/uiUtils":57}],31:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -12193,10 +12970,11 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":33,"../services/settingsService":39}],31:[function(require,module,exports){
+},{"../services/apiService":34,"../services/settingsService":40}],32:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
+const { mountUserInfoSettingsTab } = require('../components/userInfoSettingsTab');
 let mountOpenWorldTab;
 try {
         ({ mountOpenWorldTab } = require('./page.settings-open-world'));
@@ -12252,6 +13030,7 @@ async function showSettingsIfNeeded() {
             <h2>Cài đặt</h2>
                         <div class="dr-st-menu">
                 <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
+                <button data-tab="user-info" class="${targetTab==='user-info'?'active':''}">Thông tin người dùng</button>
                 <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
                                 <button data-tab="account-cloud" class="${targetTab==='account-cloud'?'active':''}">Account Cloud</button>
                                 <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
@@ -12265,7 +13044,7 @@ async function showSettingsIfNeeded() {
         right.className = 'dr-st-right';
                 right.innerHTML = `
             <div class="dr-st-head">
-                                                <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='account-cloud'?'Account Cloud':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':'Lời dặn dò ra viện')))}</h3>
+                                                                                                <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='account-cloud'?'Account Cloud':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':(targetTab==='user-info'?'Thông tin người dùng':'Lời dặn dò ra viện'))))}</h3>
                 <div id="dr-auto-save-status" style="font-size:12px; color:#6b7280; font-weight:600;"></div>
             </div>
             <div class="dr-st-content">
@@ -12274,6 +13053,9 @@ async function showSettingsIfNeeded() {
                     <div id="discharge-list" class="dr-st-list"></div>
                     <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
                 </div>
+                                <div id="tab-user-info" class="dr-st-tab ${targetTab==='user-info'?'active':''}">
+                                        <div id="dr-user-info-container"></div>
+                                </div>
                                         <div id="tab-account" class="dr-st-tab ${targetTab==='account'?'active':''}">
                                                 <div style="margin-bottom:12px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#92400e">
                                                 <b>Lưu ý bảo mật:</b> Thông tin dưới đây chỉ lưu trên thiết bị (LocalStorage của trình duyệt), không gửi lên máy chủ. Hãy sử dụng trên máy tính cá nhân tin cậy. Nếu dùng máy công cộng, KHÔNG nhập mật khẩu ở đây.
@@ -12590,6 +13372,7 @@ async function showSettingsIfNeeded() {
         const { showToast } = require('../utils/uiUtils');
         let autoSaveTimeout;
         const statusEl = right.querySelector('#dr-auto-save-status');
+        let userInfoMounted = false;
         
         const performAutoSave = async () => {
                 try {
@@ -12671,6 +13454,19 @@ async function showSettingsIfNeeded() {
                 autoSaveTimeout = setTimeout(performAutoSave, 800);
         };
 
+        async function ensureUserInfoMounted() {
+                if (userInfoMounted) return;
+                const mountEl = right.querySelector('#dr-user-info-container');
+                if (!mountEl) return;
+                userInfoMounted = true;
+                await mountUserInfoSettingsTab({
+                        container: mountEl,
+                        getSettings: () => settings,
+                        setSettings: (next) => { settings = next; },
+                        scheduleAutoSave
+                });
+        }
+
         // Listen for changes on discharge inputs
         listEl.addEventListener('input', scheduleAutoSave);
 
@@ -12681,7 +13477,7 @@ async function showSettingsIfNeeded() {
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'account-cloud' ? 'Account Cloud' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim()))));
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'user-info' ? 'Thông tin người dùng' : (tab === 'account' ? 'Account' : (tab === 'account-cloud' ? 'Account Cloud' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim())))));
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
@@ -12692,7 +13488,9 @@ async function showSettingsIfNeeded() {
                                         window.history.replaceState({}, '', url);
                                 } catch(_) {}
                                 // Mount Open World
-                                if (tab === 'openworld') {
+                                if (tab === 'user-info') {
+                                        ensureUserInfoMounted();
+                                } else if (tab === 'openworld') {
                                         const mountEl = right.querySelector('#dr-openworld-container');
                                         if (mountEl && !mountEl.dataset.mounted) {
                                                 mountEl.dataset.mounted = '1';
@@ -12744,7 +13542,9 @@ async function showSettingsIfNeeded() {
         // Account tab no longer uses single username/password fields; managed via grid.
                 // Mount Open World if deep-linked initially
                 try {
-                        if (targetTab === 'openworld') {
+                        if (targetTab === 'user-info') {
+                                await ensureUserInfoMounted();
+                        } else if (targetTab === 'openworld') {
                                 const mountEl = right.querySelector('#dr-openworld-container');
                                 if (mountEl) {
                                         mountEl.dataset.mounted = '1';
@@ -12765,7 +13565,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":6,"../pages/page.settings.otm.quanlyphauthuat":32,"../services/settingsService":39,"../settings-open-world":42,"../utils/uiUtils":56,"./page.settings-open-world":30}],32:[function(require,module,exports){
+},{"../components/autoLoginToggle":6,"../components/userInfoSettingsTab":23,"../pages/page.settings.otm.quanlyphauthuat":33,"../services/settingsService":40,"../settings-open-world":43,"../utils/uiUtils":57,"./page.settings-open-world":31}],33:[function(require,module,exports){
 // page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
@@ -13156,11 +13956,40 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":35,"../services/surgeonSettingsService":40,"../utils/khoaUtils":50}],33:[function(require,module,exports){
+},{"../services/otm.token":36,"../services/surgeonSettingsService":41,"../utils/khoaUtils":51}],34:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 const ApiService = {
+    _pickFirstValue(obj, keys) {
+        if (!obj || typeof obj !== 'object' || !Array.isArray(keys)) return '';
+        for (let i = 0; i < keys.length; i += 1) {
+            const v = obj[keys[i]];
+            if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+        }
+        return '';
+    },
+
+    _extractToDieuTriRows(payload) {
+        if (Array.isArray(payload)) return payload;
+        if (!payload || typeof payload !== 'object') return [];
+
+        const candidates = [
+            payload.data,
+            payload.Data,
+            payload.rows,
+            payload.Rows,
+            payload.result,
+            payload.Result,
+            payload.items,
+            payload.Items
+        ];
+        for (let i = 0; i < candidates.length; i += 1) {
+            if (Array.isArray(candidates[i])) return candidates[i];
+        }
+        return [];
+    },
+
     /**
      * Load list of khoa/phòng (departments)
      */
@@ -13240,6 +14069,81 @@ const ApiService = {
             console.error('Lỗi khi lấy dữ liệu ToDieuTri:', error);
             throw error;
         }
+    },
+
+    /**
+     * Fetch all inpatients from Search endpoint without khoa filter.
+     */
+    async fetchToDieuTriDataAllKhoa() {
+        try {
+            const formData = new FormData();
+            formData.append('tk', '0');
+            formData.append('cbAll', '1');
+
+            const response = await fetch('/ToDieuTri/Search', {
+                method: 'POST',
+                body: formData,
+                credentials: 'include',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': '*/*'
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+            if (contentType.includes('application/json')) {
+                return await response.json();
+            }
+            const text = await response.text();
+            try {
+                return JSON.parse(text);
+            } catch (_) {
+                return { data: [] };
+            }
+        } catch (error) {
+            console.error('Lỗi khi lấy dữ liệu ToDieuTri (all khoa):', error);
+            throw error;
+        }
+    },
+
+    /**
+     * Build unique active khoa/phong list from current Search data.
+     * Uses a single-pass Map for speed on large patient datasets.
+     */
+    async fetchActiveKhoaPhongFromSearch() {
+        const payload = await this.fetchToDieuTriDataAllKhoa();
+        const rows = this._extractToDieuTriRows(payload);
+        const uniq = new Map();
+
+        for (let i = 0; i < rows.length; i += 1) {
+            const row = rows[i] || {};
+            const makp = this._pickFirstValue(row, ['makp', 'maKP', 'khoa', 'khoA_ID', 'makhoa', 'MAKP', 'Makp']);
+            const tenkp = this._pickFirstValue(row, ['tenkp', 'teN_KP', 'tenkhoa', 'teN_KHOA', 'khoaphong', 'TENKP', 'Tenkp']);
+            if (!makp || !tenkp) continue;
+
+            const key = `${makp}::${tenkp.toLowerCase()}`;
+            const existing = uniq.get(key);
+            if (existing) {
+                existing.patientCount += 1;
+            } else {
+                uniq.set(key, {
+                    id: makp,
+                    name: tenkp,
+                    patientCount: 1
+                });
+            }
+        }
+
+        return Array.from(uniq.values())
+            .sort((a, b) => {
+                const byName = String(a.name || '').localeCompare(String(b.name || ''), 'vi');
+                if (byName !== 0) return byName;
+                return String(a.id || '').localeCompare(String(b.id || ''));
+            });
     },
 
     /**
@@ -13354,7 +14258,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":50}],34:[function(require,module,exports){
+},{"../utils/khoaUtils":51}],35:[function(require,module,exports){
 // checklistService.js - Centralized checklist management
 
 const DateUtils = require('../utils/dateUtils');
@@ -13622,7 +14526,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/dateUtils":45,"./apiService":33,"./saveQueue":38}],35:[function(require,module,exports){
+},{"../utils/dateUtils":46,"./apiService":34,"./saveQueue":39}],36:[function(require,module,exports){
 // otm.token.js - OTM Token management service
 // This service manages OTM authentication tokens and direct API access
 
@@ -14139,13 +15043,14 @@ const OTMTokenService = {
 
 module.exports = OTMTokenService;
 
-},{"./apiService":33}],36:[function(require,module,exports){
+},{"./apiService":34}],37:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const LoginHandler = require('../components/loginHandler');
 const ChecklistService = require('./checklistService');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 const PatientService = {
     /**
@@ -14264,9 +15169,12 @@ const PatientService = {
     /**
      * Get patient data from window.dr_data or fetch from API
      */
-    async getPatientData() {
+    async getPatientData(options = {}) {
+        const { forceRefresh = false } = options || {};
+        const selectedKhoa = String(getSelectedKhoa('551') || '551');
+
         // Check if data already exists in window
-        if (window.dr_data && Array.isArray(window.dr_data) && window.dr_data.length > 0) {
+        if (!forceRefresh && window.dr_data && Array.isArray(window.dr_data) && window.dr_data.length > 0 && String(window.dr_data_khoa_id || '') === selectedKhoa) {
             return window.dr_data;
         }
 
@@ -14276,6 +15184,7 @@ const PatientService = {
 
         // Store basic data immediately for fast initial render
         window.dr_data = basicData;
+        window.dr_data_khoa_id = selectedKhoa;
 
         // Start enrichment in background (don't wait for it)
         this.enrichPatientDataInBackground(basicData);
@@ -14351,9 +15260,9 @@ const PatientService = {
     /**
      * Handle patient data loading with error handling
      */
-    async loadPatientDataWithErrorHandling() {
+    async loadPatientDataWithErrorHandling(options = {}) {
         try {
-            return await this.getPatientData();
+            return await this.getPatientData(options);
         } catch (error) {
             console.error('Failed to load patient data:', error);
             LoginHandler.handleLoginRequired();
@@ -14364,7 +15273,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":16,"../pages/page.dashboard.support":28,"../utils/patientDataMapper":51,"./checklistService":34}],37:[function(require,module,exports){
+},{"../components/loginHandler":16,"../pages/page.dashboard.support":29,"../utils/khoaUtils":51,"../utils/patientDataMapper":52,"./checklistService":35}],38:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -14468,7 +15377,7 @@ const ReportService = {
             gender,
             room: patient.teN_PHONG || '',
             bed: patient.teN_GIUONG || '',
-            diagnosis: `${patient.chandoanvk || ''}${cdkt ? '; ' + cdkt : ''}`,
+            diagnosis: `${this.formatDiagnosis(patient)}${cdkt ? '; ' + cdkt : ''}`,
             hxt,
             ppptDisplay,
             ngayPtDisplay
@@ -14497,6 +15406,19 @@ const ReportService = {
         }
 
         return { dob, age };
+    },
+
+    /**
+     * Format the main diagnosis with the primary ICD code.
+     */
+    formatDiagnosis(patient) {
+        const primaryDiagnosis = (patient && patient.chandoanvk) ? String(patient.chandoanvk).trim() : '';
+        const primaryIcd = (patient && patient.maicdvk) ? String(patient.maicdvk).trim() : '';
+
+        if (!primaryDiagnosis && !primaryIcd) return '';
+        if (!primaryIcd) return primaryDiagnosis;
+        if (!primaryDiagnosis) return `(${primaryIcd})`;
+        return `${primaryDiagnosis} (${primaryIcd})`;
     },
 
     /**
@@ -14625,7 +15547,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":45,"../utils/htmlUtils":49,"../utils/patientDataMapper":51,"../utils/surgeryUtils":53,"./checklistService":34}],38:[function(require,module,exports){
+},{"../utils/dateUtils":46,"../utils/htmlUtils":50,"../utils/patientDataMapper":52,"../utils/surgeryUtils":54,"./checklistService":35}],39:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -14689,7 +15611,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],39:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -15042,7 +15964,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":50,"./apiService":33}],40:[function(require,module,exports){
+},{"../utils/khoaUtils":51,"./apiService":34}],41:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -15137,7 +16059,7 @@ const SurgeonSettingsService = {
 
 module.exports = SurgeonSettingsService;
 
-},{"./apiService":33}],41:[function(require,module,exports){
+},{"./apiService":34}],42:[function(require,module,exports){
 // trackedPatientService.js - Manage tracked patients (from other departments)
 
 const ApiService = require('./apiService');
@@ -15231,14 +16153,14 @@ const TrackedPatientService = {
 
 module.exports = TrackedPatientService;
 
-},{"../utils/khoaUtils":50,"./apiService":33}],42:[function(require,module,exports){
+},{"../utils/khoaUtils":51,"./apiService":34}],43:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
 // This allows requiring '../settings-open-world' from files inside src/pages
 module.exports = require('./pages/page.settings-open-world');
 
-},{"./pages/page.settings-open-world":30}],43:[function(require,module,exports){
+},{"./pages/page.settings-open-world":31}],44:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -15333,7 +16255,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],44:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -15493,7 +16415,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":34,"./uiUtils":56}],45:[function(require,module,exports){
+},{"../services/checklistService":35,"./uiUtils":57}],46:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -15581,7 +16503,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],46:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -15698,7 +16620,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":49,"./surgeryUtils":53,"./tagUtils":54}],47:[function(require,module,exports){
+},{"./htmlUtils":50,"./surgeryUtils":54,"./tagUtils":55}],48:[function(require,module,exports){
 // globalFnUtils.js - Helper to call functions that may live on multiple global scopes
 // (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
 
@@ -15730,7 +16652,7 @@ function callGlobalFn(fnName, ...args) {
 
 module.exports = { callGlobalFn };
 
-},{}],48:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -15974,7 +16896,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],49:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -15989,7 +16911,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],50:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -16005,7 +16927,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],51:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -16027,6 +16949,10 @@ const PatientDataMapper = {
             maicdvk: item.maicdvk,
             kehoach: item.kehoach,
             ngayvv: item.ngayvv,
+            ngayvk: item.ngayvk,
+            tenkpvv: item.tenkpvv,
+            tenkhoachuyen: item.tenkhoachuyen,
+            makp: item.makp,
             maql: item.maql,
             tungay: item.tungay
         };
@@ -16256,7 +17182,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],52:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 // stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
 
 /**
@@ -16275,7 +17201,7 @@ function syncPatientStateToGlobal(mabn, newState) {
 
 module.exports = { syncPatientStateToGlobal };
 
-},{}],53:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -16558,7 +17484,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],54:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -16829,7 +17755,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],55:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],56:[function(require,module,exports){
 /**
  * Normalizes Vietnamese text by removing diacritics/accents
  * @param {string} str - The string to normalize
@@ -16863,7 +17789,7 @@ module.exports = {
     hasAccents
 };
 
-},{}],56:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

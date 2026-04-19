@@ -4,6 +4,7 @@ const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const LoginHandler = require('../components/loginHandler');
 const ChecklistService = require('./checklistService');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 const PatientService = {
     /**
@@ -122,9 +123,12 @@ const PatientService = {
     /**
      * Get patient data from window.dr_data or fetch from API
      */
-    async getPatientData() {
+    async getPatientData(options = {}) {
+        const { forceRefresh = false } = options || {};
+        const selectedKhoa = String(getSelectedKhoa('551') || '551');
+
         // Check if data already exists in window
-        if (window.dr_data && Array.isArray(window.dr_data) && window.dr_data.length > 0) {
+        if (!forceRefresh && window.dr_data && Array.isArray(window.dr_data) && window.dr_data.length > 0 && String(window.dr_data_khoa_id || '') === selectedKhoa) {
             return window.dr_data;
         }
 
@@ -134,6 +138,7 @@ const PatientService = {
 
         // Store basic data immediately for fast initial render
         window.dr_data = basicData;
+        window.dr_data_khoa_id = selectedKhoa;
 
         // Start enrichment in background (don't wait for it)
         this.enrichPatientDataInBackground(basicData);
@@ -209,9 +214,9 @@ const PatientService = {
     /**
      * Handle patient data loading with error handling
      */
-    async loadPatientDataWithErrorHandling() {
+    async loadPatientDataWithErrorHandling(options = {}) {
         try {
-            return await this.getPatientData();
+            return await this.getPatientData(options);
         } catch (error) {
             console.error('Failed to load patient data:', error);
             LoginHandler.handleLoginRequired();

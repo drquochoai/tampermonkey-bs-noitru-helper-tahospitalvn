@@ -101,7 +101,7 @@ const ReportService = {
             gender,
             room: patient.teN_PHONG || '',
             bed: patient.teN_GIUONG || '',
-            diagnosis: `${patient.chandoanvk || ''}${cdkt ? '; ' + cdkt : ''}`,
+            diagnosis: `${this.formatDiagnosis(patient)}${cdkt ? '; ' + cdkt : ''}`,
             hxt,
             ppptDisplay,
             ngayPtDisplay
@@ -130,6 +130,19 @@ const ReportService = {
         }
 
         return { dob, age };
+    },
+
+    /**
+     * Format the main diagnosis with the primary ICD code.
+     */
+    formatDiagnosis(patient) {
+        const primaryDiagnosis = (patient && patient.chandoanvk) ? String(patient.chandoanvk).trim() : '';
+        const primaryIcd = (patient && patient.maicdvk) ? String(patient.maicdvk).trim() : '';
+
+        if (!primaryDiagnosis && !primaryIcd) return '';
+        if (!primaryIcd) return primaryDiagnosis;
+        if (!primaryDiagnosis) return `(${primaryIcd})`;
+        return `${primaryDiagnosis} (${primaryIcd})`;
     },
 
     /**

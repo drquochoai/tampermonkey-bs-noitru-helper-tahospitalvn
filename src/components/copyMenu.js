@@ -2,6 +2,7 @@
 const DialogManager = require('./dialogManager');
 const ReportService = require('../services/reportService');
 const DateUtils = require('../utils/dateUtils');
+const ChecklistService = require('../services/checklistService');
 
 /**
  * Setup Copy menu next to "Mổ theo ngày"
@@ -154,13 +155,37 @@ function setupCopyMenu(bottomBar) {
                 targetStates = states;
             } else if (item.type === 'new') {
                 const targetMidnight = new Date(item.date); targetMidnight.setHours(0, 0, 0, 0);
+                const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0);
+                const isTodayTarget = targetMidnight.getTime() === todayMidnight.getTime();
+                const currentKhoaName = getCurrentKhoaName();
+
+                const localNewAtDeptPatients = [];
+                const localNewAtDeptStates = [];
+                const localReceivedPatients = [];
+                const localReceivedStates = [];
+
                 sortedPatients.forEach((p, idx) => {
-                    const admitDate = parseAdmitDate(p.ngayvv);
-                    if (admitDate && admitDate.getTime() === targetMidnight.getTime()) {
-                        targetPatients.push(p);
-                        targetStates.push(states[idx]);
+                    const classification = isTodayTarget
+                        ? classifyNewPatientTodayFlow(p, targetMidnight, currentKhoaName)
+                        : classifyNewPatientYesterdayFlow(p, targetMidnight);
+                    if (!classification) return;
+
+                    if (classification.group === 'receivedFromOtherDept') {
+                        localReceivedPatients.push(p);
+                        localReceivedStates.push(states[idx]);
+                    } else {
+                        localNewAtDeptPatients.push(p);
+                        localNewAtDeptStates.push(states[idx]);
                     }
+
+                    targetPatients.push(p);
+                    targetStates.push(states[idx]);
                 });
+
+                newAtDeptPatients = localNewAtDeptPatients;
+                newAtDeptStates = localNewAtDeptStates;
+                receivedFromOtherDeptPatients = localReceivedPatients;
+                receivedFromOtherDeptStates = localReceivedStates;
             } else if (item.type === 'pt' || item.type === 'pt-special') {
                 const targetMidnight = new Date(item.date); targetMidnight.setHours(0, 0, 0, 0);
                 sortedPatients.forEach((p, idx) => {
@@ -182,7 +207,6 @@ function setupCopyMenu(bottomBar) {
             }
 
             // AUTO-UPDATE HXT: If surgery exists but HXT is empty, set to "Ổn định nội khoa"
-            const ApiService = require('../services/apiService');
             for (let i = 0; i < targetPatients.length; i++) {
                 const p = targetPatients[i];
                 const s = targetStates[i];
@@ -217,6 +241,16 @@ function setupCopyMenu(bottomBar) {
                 const res = ReportService.generateSurgerySpecialReport(targetPatients, targetStates);
                 resultHtml = res.html;
                 resultText = res.text;
+            } else if (item.type === 'new') {
+                const groupedReport = buildGroupedNewPatientReport({
+                    title: `BỆNH MỚI ${item.subtitle || ''}`.trim(),
+                    newAtDeptPatients,
+                    newAtDeptStates,
+                    receivedFromOtherDeptPatients,
+                    receivedFromOtherDeptStates
+                });
+                resultHtml = groupedReport.html;
+                resultText = groupedReport.text;
             } else {
                 resultHtml = ReportService.generateHTMLReport(targetPatients, targetStates);
                 resultText = ReportService.generateTextReport(targetPatients, targetStates);
@@ -231,22 +265,124 @@ function setupCopyMenu(bottomBar) {
         }
     }
 
+    let newAtDeptPatients = [];
+    let newAtDeptStates = [];
+    let receivedFromOtherDeptPatients = [];
+    let receivedFromOtherDeptStates = [];
+
     function parseAdmitDate(dateStr) {
         if (!dateStr) return null;
         try {
-            // Support dd/mm/yyyy and yyyy-mm-dd
-            let usFormat = dateStr;
-            if (dateStr.includes('/')) {
-                const parts = dateStr.split('/');
-                if (parts.length === 3) {
-                    usFormat = `${parts[1]}/${parts[0]}/${parts[2]}`;
-                }
-            }
+            const usFormat = DateUtils.convertToUSFormat(String(dateStr));
             const d = new Date(usFormat);
             if (isNaN(d.getTime())) return null;
             d.setHours(0, 0, 0, 0);
             return d;
         } catch (_) { return null; }
+    }
+
+    function normalizeDeptName(name) {
+        return String(name || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toUpperCase();
+    }
+
+    function getCurrentKhoaName() {
+        try {
+            const khoaSelect = document.getElementById('ddlKhoa');
+            if (!khoaSelect) return '';
+            const selected = khoaSelect.options && khoaSelect.selectedIndex >= 0
+                ? khoaSelect.options[khoaSelect.selectedIndex]
+                : null;
+            return (selected && selected.textContent ? selected.textContent : '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function classifyNewPatientTodayFlow(patient, targetMidnight, currentKhoaName) {
+        if (!patient || !targetMidnight) return null;
+
+        const ngayVaoKhoa = parseAdmitDate(patient.ngayvk);
+        if (!ngayVaoKhoa || ngayVaoKhoa.getTime() !== targetMidnight.getTime()) {
+            return null;
+        }
+
+        const normalizedCurrentKhoa = normalizeDeptName(currentKhoaName);
+        const normalizedTenKpvv = normalizeDeptName(patient.tenkpvv);
+        const normalizedTenKhoaChuyen = normalizeDeptName(patient.tenkhoachuyen);
+        const normalizedGmhs = normalizeDeptName('KHOA GÂY MÊ - HỒI SỨC');
+
+        const receivedFromOtherDept = Boolean(
+            normalizedCurrentKhoa &&
+            normalizedTenKpvv &&
+            normalizedCurrentKhoa !== normalizedTenKpvv
+        );
+
+        if (!receivedFromOtherDept && normalizedTenKhoaChuyen === normalizedGmhs) {
+            const ngayVaoVien = parseAdmitDate(patient.ngayvv);
+            if (!ngayVaoVien || ngayVaoVien.getTime() !== targetMidnight.getTime()) {
+                return null;
+            }
+        }
+
+        return {
+            group: receivedFromOtherDept ? 'receivedFromOtherDept' : 'newAtCurrentDept'
+        };
+    }
+
+    function classifyNewPatientYesterdayFlow(patient, targetMidnight) {
+        if (!patient || !targetMidnight) return null;
+        const ngayVaoVien = parseAdmitDate(patient.ngayvv);
+        if (!ngayVaoVien || ngayVaoVien.getTime() !== targetMidnight.getTime()) {
+            return null;
+        }
+        return {
+            group: 'newAtCurrentDept'
+        };
+    }
+
+    function formatGroupedTextSection(patients, states) {
+        let text = '';
+        patients.forEach((patient, idx) => {
+            const data = ReportService.formatPatientData(patient, idx, states[idx] || {});
+            const locationText = data.room ? `${data.room} ${data.bed}`.trim() : data.bed;
+            text += `${data.index}. ${locationText} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+            text += `   Chẩn đoán: ${data.diagnosis}\n`;
+            if (data.ppptDisplay) text += `   PPPT: ${data.ppptDisplay}\n`;
+            if (data.ngayPtDisplay) text += `   Ngày PT: ${data.ngayPtDisplay}\n`;
+            if (data.hxt) text += `   HXT: ${data.hxt}\n`;
+        });
+        return text;
+    }
+
+    function buildGroupedNewPatientReport({
+        title,
+        newAtDeptPatients,
+        newAtDeptStates,
+        receivedFromOtherDeptPatients,
+        receivedFromOtherDeptStates
+    }) {
+        const total = (newAtDeptPatients.length + receivedFromOtherDeptPatients.length);
+
+        let html = `<div style='margin:0 0 10px 0;'><h2 style='font-size:1.25em; margin:0; color:#0f172a;'>${title}</h2><div style='color:#334155;'>Tổng số bệnh nhân mới: <b>${total}</b></div></div>`;
+        let text = `${title}\nTổng số bệnh nhân mới: ${total}\n\n`;
+
+        html += `<div style='margin:0 0 6px 0; font-weight:700; color:#14532d;'>Bệnh mới của khoa (${newAtDeptPatients.length})</div>`;
+        html += ReportService.generateHTMLReport(newAtDeptPatients, newAtDeptStates);
+        text += `Bệnh mới của khoa (${newAtDeptPatients.length})\n`;
+        text += formatGroupedTextSection(newAtDeptPatients, newAtDeptStates);
+        text += `\n`;
+
+        html += `<div style='margin:8px 0 6px 0; font-weight:700; color:#9a3412;'>Nhận từ khoa khác (${receivedFromOtherDeptPatients.length})</div>`;
+        html += ReportService.generateHTMLReport(receivedFromOtherDeptPatients, receivedFromOtherDeptStates);
+        text += `Nhận từ khoa khác (${receivedFromOtherDeptPatients.length})\n`;
+        text += formatGroupedTextSection(receivedFromOtherDeptPatients, receivedFromOtherDeptStates);
+
+        return { html, text };
     }
 }
 

@@ -1,6 +1,7 @@
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
+const { mountUserInfoSettingsTab } = require('../components/userInfoSettingsTab');
 let mountOpenWorldTab;
 try {
         ({ mountOpenWorldTab } = require('./page.settings-open-world'));
@@ -56,6 +57,7 @@ async function showSettingsIfNeeded() {
             <h2>Cài đặt</h2>
                         <div class="dr-st-menu">
                 <button data-tab="discharge" class="${targetTab==='discharge'?'active':''}">Lời dặn dò ra viện</button>
+                <button data-tab="user-info" class="${targetTab==='user-info'?'active':''}">Thông tin người dùng</button>
                 <button data-tab="account" class="${targetTab==='account'?'active':''}">Account</button>
                                 <button data-tab="account-cloud" class="${targetTab==='account-cloud'?'active':''}">Account Cloud</button>
                                 <button data-tab="openworld" class="${targetTab==='openworld'?'active':''}">Thông tin khoa/phòng</button>
@@ -69,7 +71,7 @@ async function showSettingsIfNeeded() {
         right.className = 'dr-st-right';
                 right.innerHTML = `
             <div class="dr-st-head">
-                                                <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='account-cloud'?'Account Cloud':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':'Lời dặn dò ra viện')))}</h3>
+                                                                                                <h3 class="dr-st-title">${targetTab==='account'?'Account':(targetTab==='account-cloud'?'Account Cloud':(targetTab==='openworld'?'Thông tin khoa/phòng':(targetTab==='otm-surgeons'?'Quản lý phẫu thuật':(targetTab==='user-info'?'Thông tin người dùng':'Lời dặn dò ra viện'))))}</h3>
                 <div id="dr-auto-save-status" style="font-size:12px; color:#6b7280; font-weight:600;"></div>
             </div>
             <div class="dr-st-content">
@@ -78,6 +80,9 @@ async function showSettingsIfNeeded() {
                     <div id="discharge-list" class="dr-st-list"></div>
                     <button id="add-discharge" class="dr-st-btn">+ Thêm mục</button>
                 </div>
+                                <div id="tab-user-info" class="dr-st-tab ${targetTab==='user-info'?'active':''}">
+                                        <div id="dr-user-info-container"></div>
+                                </div>
                                         <div id="tab-account" class="dr-st-tab ${targetTab==='account'?'active':''}">
                                                 <div style="margin-bottom:12px; padding:10px; border:1px solid #fde68a; background:#fffbeb; border-radius:8px; color:#92400e">
                                                 <b>Lưu ý bảo mật:</b> Thông tin dưới đây chỉ lưu trên thiết bị (LocalStorage của trình duyệt), không gửi lên máy chủ. Hãy sử dụng trên máy tính cá nhân tin cậy. Nếu dùng máy công cộng, KHÔNG nhập mật khẩu ở đây.
@@ -394,6 +399,7 @@ async function showSettingsIfNeeded() {
         const { showToast } = require('../utils/uiUtils');
         let autoSaveTimeout;
         const statusEl = right.querySelector('#dr-auto-save-status');
+        let userInfoMounted = false;
         
         const performAutoSave = async () => {
                 try {
@@ -475,6 +481,19 @@ async function showSettingsIfNeeded() {
                 autoSaveTimeout = setTimeout(performAutoSave, 800);
         };
 
+        async function ensureUserInfoMounted() {
+                if (userInfoMounted) return;
+                const mountEl = right.querySelector('#dr-user-info-container');
+                if (!mountEl) return;
+                userInfoMounted = true;
+                await mountUserInfoSettingsTab({
+                        container: mountEl,
+                        getSettings: () => settings,
+                        setSettings: (next) => { settings = next; },
+                        scheduleAutoSave
+                });
+        }
+
         // Listen for changes on discharge inputs
         listEl.addEventListener('input', scheduleAutoSave);
 
@@ -485,7 +504,7 @@ async function showSettingsIfNeeded() {
                 left.querySelectorAll('button').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 const tab = btn.dataset.tab;
-                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'account' ? 'Account' : (tab === 'account-cloud' ? 'Account Cloud' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim()))));
+                                titleEl.textContent = tab === 'discharge' ? 'Lời dặn dò ra viện' : (tab === 'user-info' ? 'Thông tin người dùng' : (tab === 'account' ? 'Account' : (tab === 'account-cloud' ? 'Account Cloud' : (tab === 'openworld' ? 'Thông tin khoa/phòng' : (tab === 'otm-surgeons' ? 'Quản lý phẫu thuật' : btn.textContent.trim())))));
                 right.querySelectorAll('.dr-st-tab').forEach(t => t.classList.remove('active'));
                 const target = right.querySelector(`#tab-${tab}`);
                 if (target) target.classList.add('active');
@@ -496,7 +515,9 @@ async function showSettingsIfNeeded() {
                                         window.history.replaceState({}, '', url);
                                 } catch(_) {}
                                 // Mount Open World
-                                if (tab === 'openworld') {
+                                if (tab === 'user-info') {
+                                        ensureUserInfoMounted();
+                                } else if (tab === 'openworld') {
                                         const mountEl = right.querySelector('#dr-openworld-container');
                                         if (mountEl && !mountEl.dataset.mounted) {
                                                 mountEl.dataset.mounted = '1';
@@ -548,7 +569,9 @@ async function showSettingsIfNeeded() {
         // Account tab no longer uses single username/password fields; managed via grid.
                 // Mount Open World if deep-linked initially
                 try {
-                        if (targetTab === 'openworld') {
+                        if (targetTab === 'user-info') {
+                                await ensureUserInfoMounted();
+                        } else if (targetTab === 'openworld') {
                                 const mountEl = right.querySelector('#dr-openworld-container');
                                 if (mountEl) {
                                         mountEl.dataset.mounted = '1';

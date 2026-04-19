@@ -12,6 +12,7 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const PatientService = require('../services/patientService');
 const ChecklistService = require('../services/checklistService');
 const SettingsService = require('../services/settingsService');
+const ApiService = require('../services/apiService');
 const PatientDataMapper = require('../utils/patientDataMapper');
 const ModalManager = require('../components/modalManager');
 const LoginHandler = require('../components/loginHandler');
@@ -32,6 +33,7 @@ const { addSurgeryStatusIcon, formatSurgeryInfo, updatePatientCardPhauThuat } = 
 const { escapeHtml } = require('../utils/htmlUtils');
 const DomUpdaters = require('../utils/domUpdaters');
 const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('../utils/checklistUtils');
+const { getSelectedKhoa } = require('../utils/khoaUtils');
 
 // Global variable for OTM tabs
 if (typeof window !== 'undefined') {
@@ -103,6 +105,9 @@ function showDashboardBenhNhanIfNeeded() {
         bootstrapLoaded: false
     };
     let dashboardSaveTimeout = null;
+    let khoaSelectRefreshToken = 0;
+    let khoaSelectOptionsCache = null;
+    let lastManualKhoaId = '';
 
     function applyCardHoverTooltipSetting() {
         if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
@@ -139,6 +144,167 @@ function showDashboardBenhNhanIfNeeded() {
         }
 
         return dashboardSettings;
+    }
+
+    function getAccessibleKhoaIds(settingsObj) {
+        const userInfo = settingsObj && settingsObj.userInfo ? settingsObj.userInfo : {};
+        const ids = Array.isArray(userInfo.accessibleKhoaIds)
+            ? userInfo.accessibleKhoaIds
+            : (Array.isArray(userInfo.accessibleKhoa) ? userInfo.accessibleKhoa.map((it) => it && it.id) : []);
+        return (ids || []).map((id) => String(id || '').trim()).filter(Boolean);
+    }
+
+    function filterDataByAccessibleKhoa(data, settingsObj) {
+        if (!Array.isArray(data)) return [];
+        const ids = getAccessibleKhoaIds(settingsObj);
+        if (!ids.length) return data;
+        const allowSet = new Set(ids);
+        return data.filter((item) => allowSet.has(String((item && item.makp) || '').trim()));
+    }
+
+    async function refreshKhoaSelectByAccess({ reloadDataIfChanged = false, forceReloadList = false } = {}) {
+        const select = document.getElementById('dr-khoa-select');
+        if (!select) return;
+
+        const requestId = ++khoaSelectRefreshToken;
+        const previousValue = String(select.value || getSelectedKhoa('551'));
+
+        try {
+            select.disabled = true;
+            let list = khoaSelectOptionsCache;
+            if (forceReloadList || !Array.isArray(list) || !list.length) {
+                list = await ApiService.fetchKhoaPhong();
+                khoaSelectOptionsCache = Array.isArray(list) ? list : [];
+            }
+            if (requestId !== khoaSelectRefreshToken) return;
+
+            const userInfo = ((dashboardCloudContext.settings || {}).userInfo) || {};
+            const accessibleIds = getAccessibleKhoaIds(dashboardCloudContext.settings || {});
+            const allowSet = new Set(accessibleIds);
+            const defaultAllowedList = accessibleIds.length
+                ? list.filter((k) => allowSet.has(String((k && k.id) || '').trim()))
+                : list;
+
+            let filteredList = defaultAllowedList;
+            if (accessibleIds.length) {
+                const mapById = new Map();
+                defaultAllowedList.forEach((k) => {
+                    const id = String((k && k.id) || '').trim();
+                    if (!id) return;
+                    mapById.set(id, {
+                        id,
+                        name: String((k && k.name) || id)
+                    });
+                });
+
+                const accessibleMeta = Array.isArray(userInfo.accessibleKhoa) ? userInfo.accessibleKhoa : [];
+                accessibleIds.forEach((id) => {
+                    if (mapById.has(id)) return;
+                    const meta = accessibleMeta.find((x) => String((x && x.id) || '').trim() === id);
+                    mapById.set(id, {
+                        id,
+                        name: (meta && meta.name) ? String(meta.name) : `Khoa ${id}`
+                    });
+                });
+
+                filteredList = Array.from(mapById.values());
+            }
+
+            select.innerHTML = '';
+            if (!filteredList.length) {
+                select.innerHTML = '<option value="">Khong co khoa duoc cap quyen</option>';
+                select.disabled = true;
+                return;
+            }
+
+            filteredList.forEach((k) => {
+                const opt = document.createElement('option');
+                opt.value = String(k.id);
+                opt.textContent = k.name || k.id;
+                select.appendChild(opt);
+            });
+
+            let nextValue = String(lastManualKhoaId || previousValue || '').trim();
+            if (!filteredList.some((k) => String(k.id) === nextValue)) {
+                nextValue = String(filteredList[0].id || '');
+            }
+
+            if (nextValue) {
+                select.value = nextValue;
+                try { localStorage.setItem('bsnt_khoa_dashboard', nextValue); } catch (_) {}
+            }
+            select.disabled = false;
+
+            if (reloadDataIfChanged && nextValue && nextValue !== previousValue) {
+                const selectedOpt = select.options[select.selectedIndex];
+                const selectedName = (selectedOpt && selectedOpt.textContent) || nextValue;
+                await reloadDashboardForSelectedKhoa(selectedName);
+            }
+        } catch (e) {
+            console.warn('Refresh khoa select failed', e);
+            select.disabled = false;
+        }
+    }
+
+    function applyRealtimeUserInfo(detail) {
+        const userInfo = detail && detail.userInfo;
+        if (!userInfo || typeof userInfo !== 'object') return;
+
+        dashboardCloudContext.settings = {
+            ...(dashboardCloudContext.settings || SettingsService.getDefaultSettings()),
+            userInfo: {
+                ...(((dashboardCloudContext.settings || {}).userInfo) || {}),
+                ...userInfo
+            }
+        };
+
+        refreshKhoaSelectByAccess({ reloadDataIfChanged: true, forceReloadList: true });
+    }
+
+    function setKhoaLoadingStatus(text, isError) {
+        const el = document.getElementById('dr-khoa-loading-status');
+        if (!el) return;
+        el.textContent = text || '';
+        el.style.color = isError ? '#b91c1c' : '#475569';
+    }
+
+    async function reloadDashboardForSelectedKhoa(selectedName) {
+        const khoaName = String(selectedName || '').trim() || 'khoa da chon';
+        setKhoaLoadingStatus(`Dang tai thong tin ${khoaName}...`);
+        showToast(`Dang tai thong tin ${khoaName}...`, 'info', 1800);
+
+        try {
+            const fresh = await PatientService.loadPatientDataWithErrorHandling({ forceRefresh: true });
+            if (!fresh) {
+                setKhoaLoadingStatus('Khong tai duoc du lieu khoa/phong', true);
+                return;
+            }
+
+            // PatientService background enrichment already calls checklist endpoint
+            // DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien for checklist details.
+            renderCards(filterDataByAccessibleKhoa(fresh, dashboardCloudContext.settings || {}));
+            setKhoaLoadingStatus('');
+        } catch (e) {
+            console.warn('Reload dashboard by khoa failed', e);
+            setKhoaLoadingStatus('Loi tai du lieu khoa/phong', true);
+            showToast('Loi tai du lieu khoa/phong', 'error', 2200);
+        }
+    }
+
+    if (!window.__drUserInfoSyncBound) {
+        window.__drUserInfoSyncBound = true;
+
+        window.addEventListener('dr-user-info-updated', (event) => {
+            applyRealtimeUserInfo(event && event.detail);
+        });
+
+        window.addEventListener('storage', (event) => {
+            if (!event || event.key !== 'dr_user_info_sync' || !event.newValue) return;
+            try {
+                const payload = JSON.parse(event.newValue);
+                applyRealtimeUserInfo(payload);
+            } catch (_) {}
+        });
     }
 
     async function ensureDashboardChecklistObj() {
@@ -1889,8 +2055,6 @@ function showDashboardBenhNhanIfNeeded() {
 
     // Helper function to create bottom bar
     function createBottomBar() {
-        const ApiService = require('../services/apiService');
-        const { getSelectedKhoa } = require('../utils/khoaUtils');
         const bottomBar = document.createElement('div');
         bottomBar.className = 'dr-bottom-bar';
         bottomBar.innerHTML = `
@@ -1899,6 +2063,7 @@ function showDashboardBenhNhanIfNeeded() {
                     <i class="fas fa-cog"></i>
                 </a>
                 <select id="dr-khoa-select" class="dr-khoa-select" title="Chọn khoa"></select>
+                <span id="dr-khoa-loading-status" style="font-size:12px;color:#475569;white-space:nowrap;"></span>
             </div>
         `;
         document.body.appendChild(bottomBar);
@@ -1914,24 +2079,18 @@ function showDashboardBenhNhanIfNeeded() {
             try {
                 const select = document.getElementById('dr-khoa-select');
                 if (!select) return;
-                select.disabled = true;
                 select.innerHTML = `<option>Đang tải khoa...</option>`;
-                const list = await ApiService.fetchKhoaPhong();
-                const current = String(getSelectedKhoa('551'));
-                select.innerHTML = '';
-                list.forEach(k => {
-                    const opt = document.createElement('option');
-                    opt.value = String(k.id);
-                    opt.textContent = k.name || k.id;
-                    if (opt.value === current) opt.selected = true;
-                    select.appendChild(opt);
+                await refreshKhoaSelectByAccess({
+                    reloadDataIfChanged: false,
+                    forceReloadList: !Array.isArray(khoaSelectOptionsCache) || !khoaSelectOptionsCache.length
                 });
-                select.disabled = false;
-                select.addEventListener('change', (e) => {
+                select.addEventListener('change', async (e) => {
                     const val = e.target.value;
+                    lastManualKhoaId = String(val || '').trim();
+                    const selectedOpt = e.target.options[e.target.selectedIndex];
+                    const selectedName = (selectedOpt && selectedOpt.textContent) || val;
                     try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
-                    // reload dashboard data by simply reloading the page or re-running init
-                    window.location.reload();
+                    await reloadDashboardForSelectedKhoa(selectedName);
                 });
             } catch (e) {
                 console.warn('Load khoa for bottom bar failed', e);
@@ -1944,13 +2103,10 @@ function showDashboardBenhNhanIfNeeded() {
     async function initializeDashboard() {
         applyCardHoverTooltipSetting();
 
-        const [cloudData, data] = await Promise.all([
-            SettingsService.getOrCreateSettings().catch((e) => {
-                console.warn('Load dashboard cloud settings failed', e);
-                return null;
-            }),
-            PatientService.loadPatientDataWithErrorHandling()
-        ]);
+        const cloudData = await SettingsService.getOrCreateSettings().catch((e) => {
+            console.warn('Load dashboard cloud settings failed', e);
+            return null;
+        });
 
         if (cloudData && cloudData.settings) {
             applyDashboardSettingsToLocalStorage(cloudData.settings.dashboard || {});
@@ -1974,10 +2130,22 @@ function showDashboardBenhNhanIfNeeded() {
                 cloudAccounts: Array.isArray(cloudAccounts) ? cloudAccounts : [],
                 bootstrapLoaded: true
             };
+
+            const allowedIds = getAccessibleKhoaIds(dashboardCloudContext.settings || {});
+            if (allowedIds.length) {
+                const currentKhoa = String(getSelectedKhoa('551'));
+                if (!allowedIds.includes(currentKhoa)) {
+                    try {
+                        localStorage.setItem('bsnt_khoa_dashboard', allowedIds[0]);
+                    } catch (_) {}
+                }
+            }
         }
 
+        const data = await PatientService.loadPatientDataWithErrorHandling();
+
         if (data) {
-            renderCards(data);
+            renderCards(filterDataByAccessibleKhoa(data, dashboardCloudContext.settings || {}));
         }
     }
 

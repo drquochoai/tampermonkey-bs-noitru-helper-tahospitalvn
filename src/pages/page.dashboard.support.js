@@ -39,7 +39,7 @@ async function createDirectReportGeneration() {
         const htmlContent = ReportService.generateHTMLReport(sortedPatients, states);
         const textReport = ReportService.generateTextReport(sortedPatients, states);
 
-        // Helpers to filter patients by admission date (ngayvv) using preloaded data only
+        // Helpers to classify new patients using ngayvk + tenkpvv vs current khoa
         function parseAdmitDateToMidnight(dateStr) {
             if (!dateStr) return null;
             try {
@@ -51,7 +51,92 @@ async function createDirectReportGeneration() {
             } catch (_) { return null; }
         }
 
-        function filterByAdmitDay(patientsArr, statesArr, targetDate) {
+        function normalizeDeptName(name) {
+            return String(name || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toUpperCase();
+        }
+
+        function getCurrentKhoaName() {
+            try {
+                const khoaSelect = document.getElementById('ddlKhoa');
+                if (!khoaSelect) return '';
+                const selected = khoaSelect.options && khoaSelect.selectedIndex >= 0
+                    ? khoaSelect.options[khoaSelect.selectedIndex]
+                    : null;
+                return (selected && selected.textContent ? selected.textContent : '').trim();
+            } catch (_) {
+                return '';
+            }
+        }
+
+        function formatDateVN(d) {
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+        }
+
+        function filterNewPatientsTodayFlow(patientsArr, statesArr, targetDate) {
+            const target = new Date(targetDate);
+            target.setHours(0, 0, 0, 0);
+            const currentKhoaName = getCurrentKhoaName();
+            const normalizedCurrentKhoa = normalizeDeptName(currentKhoaName);
+            const normalizedGmhs = normalizeDeptName('KHOA GÂY MÊ - HỒI SỨC');
+            const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
+
+            const grouped = {
+                newAtDeptPatients: [],
+                newAtDeptStates: [],
+                receivedPatients: [],
+                receivedStates: []
+            };
+
+            const filtered = [];
+
+            zipped.forEach(({ p, s }) => {
+                const ngayVaoKhoa = parseAdmitDateToMidnight(p && p.ngayvk);
+                if (!ngayVaoKhoa || ngayVaoKhoa.getTime() !== target.getTime()) {
+                    return;
+                }
+
+                const normalizedTenKpvv = normalizeDeptName(p && p.tenkpvv);
+                const normalizedTenKhoaChuyen = normalizeDeptName(p && p.tenkhoachuyen);
+                const isReceivedFromOtherDept = Boolean(
+                    normalizedCurrentKhoa &&
+                    normalizedTenKpvv &&
+                    normalizedCurrentKhoa !== normalizedTenKpvv
+                );
+
+                if (!isReceivedFromOtherDept && normalizedTenKhoaChuyen === normalizedGmhs) {
+                    const ngayVaoVien = parseAdmitDateToMidnight(p && p.ngayvv);
+                    if (!ngayVaoVien || ngayVaoVien.getTime() !== target.getTime()) {
+                        return;
+                    }
+                }
+
+                filtered.push({ p, s });
+
+                if (isReceivedFromOtherDept) {
+                    grouped.receivedPatients.push(p);
+                    grouped.receivedStates.push(s);
+                } else {
+                    grouped.newAtDeptPatients.push(p);
+                    grouped.newAtDeptStates.push(s);
+                }
+            });
+
+            return {
+                patients: filtered.map(z => z.p),
+                states: filtered.map(z => z.s),
+                ...grouped
+            };
+        }
+
+        function filterNewPatientsYesterdayFlow(patientsArr, statesArr, targetDate) {
             const target = new Date(targetDate);
             target.setHours(0, 0, 0, 0);
             const zipped = patientsArr.map((p, i) => ({ p, s: statesArr[i] }));
@@ -59,20 +144,65 @@ async function createDirectReportGeneration() {
                 const d = parseAdmitDateToMidnight(p && p.ngayvv);
                 return d && d.getTime() === target.getTime();
             });
+
             return {
                 patients: filtered.map(z => z.p),
-                states: filtered.map(z => z.s)
+                states: filtered.map(z => z.s),
+                newAtDeptPatients: filtered.map(z => z.p),
+                newAtDeptStates: filtered.map(z => z.s),
+                receivedPatients: [],
+                receivedStates: []
             };
+        }
+
+        function formatGroupedTextSection(patients, sectionStates) {
+            let text = '';
+            patients.forEach((patient, idx) => {
+                const data = ReportService.formatPatientData(patient, idx, sectionStates[idx] || {});
+                const locationText = data.room ? `${data.room} ${data.bed}`.trim() : data.bed;
+                text += `${data.index}. ${locationText} - ${data.name} - ${data.mabn} - ${data.dob} (${data.age}) - ${data.gender}\n`;
+                text += `   Chẩn đoán: ${data.diagnosis}\n`;
+                if (data.ppptDisplay) text += `   PPPT: ${data.ppptDisplay}\n`;
+                if (data.ngayPtDisplay) text += `   Ngày PT: ${data.ngayPtDisplay}\n`;
+                if (data.hxt) text += `   HXT: ${data.hxt}\n`;
+            });
+            return text;
+        }
+
+        function buildGroupedNewPatientReport({ title, grouped }) {
+            const total = grouped.patients.length;
+
+            let html = `<div style='margin:0 0 10px 0;'><h2 style='font-size:1.25em; margin:0; color:#0f172a;'>${title}</h2><div style='color:#334155;'>Tổng số bệnh nhân mới: <b>${total}</b></div></div>`;
+            let text = `${title}\nTổng số bệnh nhân mới: ${total}\n\n`;
+
+            html += `<div style='margin:0 0 6px 0; font-weight:700; color:#14532d;'>Bệnh mới của khoa (${grouped.newAtDeptPatients.length})</div>`;
+            html += ReportService.generateHTMLReport(grouped.newAtDeptPatients, grouped.newAtDeptStates);
+            text += `Bệnh mới của khoa (${grouped.newAtDeptPatients.length})\n`;
+            text += formatGroupedTextSection(grouped.newAtDeptPatients, grouped.newAtDeptStates);
+            text += `\n`;
+
+            html += `<div style='margin:8px 0 6px 0; font-weight:700; color:#9a3412;'>Nhận từ khoa khác (${grouped.receivedPatients.length})</div>`;
+            html += ReportService.generateHTMLReport(grouped.receivedPatients, grouped.receivedStates);
+            text += `Nhận từ khoa khác (${grouped.receivedPatients.length})\n`;
+            text += formatGroupedTextSection(grouped.receivedPatients, grouped.receivedStates);
+
+            return { html, text };
         }
 
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-        const { patients: todayPatients, states: todayStates } = filterByAdmitDay(sortedPatients, states, today);
-        const { patients: yesterdayPatients, states: yesterdayStates } = filterByAdmitDay(sortedPatients, states, yesterday);
-        const htmlToday = ReportService.generateHTMLReport(todayPatients, todayStates);
-        const textToday = ReportService.generateTextReport(todayPatients, todayStates);
-        const htmlYesterday = ReportService.generateHTMLReport(yesterdayPatients, yesterdayStates);
-        const textYesterday = ReportService.generateTextReport(yesterdayPatients, yesterdayStates);
+        const todayGrouped = filterNewPatientsTodayFlow(sortedPatients, states, today);
+        const yesterdayGrouped = filterNewPatientsYesterdayFlow(sortedPatients, states, yesterday);
+        const todayPatients = todayGrouped.patients;
+        const yesterdayPatients = yesterdayGrouped.patients;
+        const { html: htmlToday, text: textToday } = buildGroupedNewPatientReport({
+            title: `BỆNH MỚI ${formatDateVN(today)}`,
+            grouped: todayGrouped
+        });
+        const { html: htmlYesterday, text: textYesterday } = buildGroupedNewPatientReport({
+            title: `BỆNH MỚI ${formatDateVN(yesterday)}`,
+            grouped: yesterdayGrouped
+        });
 
         // Filter by surgery date (latest surgery in state.phauThuatLog[0])
         function filterBySurgeryDay(patientsArr, statesArr, targetDate) {

@@ -19,6 +19,10 @@ const PatientDataMapper = {
             maicdvk: item.maicdvk,
             kehoach: item.kehoach,
             ngayvv: item.ngayvv,
+            ngayvk: item.ngayvk,
+            tenkpvv: item.tenkpvv,
+            tenkhoachuyen: item.tenkhoachuyen,
+            makp: item.makp,
             maql: item.maql,
             tungay: item.tungay
         };

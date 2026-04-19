@@ -2,6 +2,7 @@
 const DialogManager = require('./dialogManager');
 const SettingsService = require('../services/settingsService');
 const { showToast } = require('../utils/uiUtils');
+const { mountUserInfoSettingsTab } = require('./userInfoSettingsTab');
 
 let _dialogEl = null;
 
@@ -51,6 +52,7 @@ async function showSettingsDialog(initialTab = 'display') {
     const tabs = [
         { id: 'display',       icon: 'fa-desktop',      label: 'Hiển thị' },
         { id: 'discharge',     icon: 'fa-file-medical',  label: 'Dặn dò ra viện' },
+        { id: 'user-info',     icon: 'fa-hospital-user', label: 'Thông tin người dùng' },
         { id: 'account',       icon: 'fa-user-lock',     label: 'Account' },
         { id: 'account-cloud', icon: 'fa-cloud',         label: 'Account Cloud' },
     ];
@@ -84,6 +86,11 @@ async function showSettingsDialog(initialTab = 'display') {
             <p style="margin:0 0 16px;font-size:13px;color:#6b7280;">Danh sách lời dặn mặc định khi xuất viện. Lưu tự động.</p>
             <div id="dr-sd-discharge-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
             <button id="dr-sd-add-discharge" style="appearance:none;border:1px dashed #94a3b8;background:none;padding:8px 14px;border-radius:8px;cursor:pointer;color:#64748b;font-size:13px;">+ Thêm mục</button>
+        </div>
+
+        <!-- User info tab -->
+        <div id="dr-sd-tab-user-info" class="dr-sd-tab-panel" style="display:${initialTab==='user-info'?'block':'none'}">
+            <div id="dr-sd-user-info-container"></div>
         </div>
 
         <!-- Account tab -->
@@ -148,6 +155,9 @@ async function showSettingsDialog(initialTab = 'display') {
             content.querySelectorAll('.dr-sd-tab-panel').forEach(p => p.style.display = 'none');
             const panel = content.querySelector(`#dr-sd-tab-${tabId}`);
             if (panel) panel.style.display = 'block';
+            if (tabId === 'user-info') {
+                ensureUserInfoMounted();
+            }
         });
     });
 
@@ -235,6 +245,7 @@ async function showSettingsDialog(initialTab = 'display') {
     const statusEl = header.querySelector('#dr-sd-save-status');
     let _settings = null, _checklistObj = null, _doctorName = '', _chungThuSo = '';
     let _cloudAccounts = [];
+    let _userInfoMounted = false;
     const DASHBOARD_STORAGE_KEYS = [
         'dr-card-view',
         'dr-view-mode',
@@ -447,6 +458,19 @@ async function showSettingsDialog(initialTab = 'display') {
         cloudGrid.appendChild(addBox);
     }
 
+    async function ensureUserInfoMounted() {
+        if (_userInfoMounted) return;
+        const mountEl = content.querySelector('#dr-sd-user-info-container');
+        if (!mountEl) return;
+        _userInfoMounted = true;
+        await mountUserInfoSettingsTab({
+            container: mountEl,
+            getSettings: () => _settings,
+            setSettings: (next) => { _settings = next; },
+            scheduleAutoSave
+        });
+    }
+
     // Load API data
     statusEl.textContent = 'Đang tải...';
     statusEl.style.color = '#3b82f6';
@@ -466,6 +490,7 @@ async function showSettingsDialog(initialTab = 'display') {
         // Render account grids
         renderAccGrid();
         renderCloudGrid();
+        if (initialTab === 'user-info') await ensureUserInfoMounted();
 
         // Auto-login toggle
         try {

@@ -44,13 +44,7 @@ const PatientService = {
 
         console.log('Starting to enrich patient data with checklist information for', patients.length, 'patients');
 
-        // DEBUG: Check tungay format in the first few patients
-        console.log('DEBUG - Sample patient data tungay format:');
-        patients.slice(0, 3).forEach((patient, index) => {
-            console.log(`Patient ${index + 1} - mabn: ${patient.mabn}, tungay: ${patient.tungay}, typeof: ${typeof patient.tungay}`);
-        });
-
-        // Process patients in batches to avoid overwhelming the server
+        const ChecklistAPIModule = require('./checklistAPIModule');
         const batchSize = 5;
         const enrichedPatients = [...patients]; // Copy array to avoid mutation
 
@@ -61,31 +55,20 @@ const PatientService = {
             const batchPromises = batch.map(async (patient, batchIndex) => {
                 const actualIndex = i + batchIndex;
                 try {
-                    // Create checklist object for this patient
-                    // Use patient's ngayvv (actual admission date) instead of old tungay
-                    console.log('DEBUG - Patient ngayvv:', patient.ngayvv);
-                    console.log('DEBUG - Background enrichment patient object:', JSON.stringify(patient, null, 2));
-
-                    const checklistObj = {
-                        mabn: patient.mabn,
-                        mavaovien: patient.mavaovien,
-                        tungay: patient.ngayvv // Use ngayvv (admission date) instead of tungay
-                    };
-
                     console.log('Loading checklist for patient:', patient.mabn, 'with ngayvv:', patient.ngayvv);
 
-                    // Load checklist state
-                    const checklistState = await ChecklistService.loadChecklistState(checklistObj);
-                    if (checklistState) {
-                        console.log('Checklist state loaded for patient:', patient.mabn, checklistState);
+                    // Use unified ChecklistAPIModule for consistent mabn handling
+                    const result = await ChecklistAPIModule.getChecklistData(patient);
+                    if (result && result.state) {
+                        console.log('Checklist state loaded for patient:', patient.mabn);
 
                         // Store checklist state for y lệnh tags
-                        enrichedPatients[actualIndex].checklistState = checklistState;
+                        enrichedPatients[actualIndex].checklistState = result.state;
 
                         // Map surgery data from checklist
-                        const surgeryData = PatientDataMapper.mapPhauThuatData(checklistState);
+                        const surgeryData = PatientDataMapper.mapPhauThuatData(result.state);
                         if (surgeryData) {
-                            console.log('Surgery data mapped for patient:', patient.mabn, surgeryData);
+                            console.log('Surgery data mapped for patient:', patient.mabn);
                             enrichedPatients[actualIndex].phauThuatInfo = surgeryData;
                         } else {
                             console.log('No surgery data found for patient:', patient.mabn);

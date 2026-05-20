@@ -441,15 +441,15 @@ function showDashboardBenhNhanIfNeeded() {
         try {
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
 
-            const res = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
+            // Use unified ChecklistAPIModule for consistent mabn handling
+            const ChecklistAPIModule = require('../services/checklistAPIModule');
+            const result = await ChecklistAPIModule.getChecklistData(patient, { forceRefresh: true });
             checklistUl.innerHTML = '';
 
-            let checklistObj = ChecklistService.findChecklistObject(res);
-
-            if (!checklistObj) {
+            if (!result || !result.checklistObj) {
                 checklistUl.innerHTML = '<li>Không có dữ liệu</li>';
-                const created = await ChecklistService.createNewChecklist(patient);
-                if (created) {
+                const createResult = await ChecklistAPIModule.createChecklist(patient);
+                if (createResult.ok) {
                     loadChecklist(patient, checklistUl, checklistType, retryCount + 1);
                 } else {
                     checklistUl.innerHTML = '<li>Lỗi tạo mới checklist phiếu!</li>';
@@ -467,10 +467,11 @@ function showDashboardBenhNhanIfNeeded() {
                 return;
             }
 
+            const checklistObj = result.checklistObj;
+
             window.checklistObj = checklistObj;
             // Parse into a fresh object; avoid leaking prior patient's HXT into others
-            const parsedState = ChecklistService.parseChecklistState(checklistObj) || {};
-            window.checklistState = { ...parsedState };
+            window.checklistState = { ...result.state };
             // Merge standardized OTM surgeries (if any) for this patient into state (append-only)
             try {
                 const otmLogs = Array.isArray(patient && patient._otmPhauThuatLog) ? patient._otmPhauThuatLog : [];
@@ -491,8 +492,8 @@ function showDashboardBenhNhanIfNeeded() {
                         const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
                         const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
                         window.checklistState.phauThuatLog.sort((a, b) => toTs(b) - toTs(a));
-                        // Persist silently in background
-                        try { ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) { }
+                        // Persist silently in background using unified module
+                        try { ChecklistAPIModule.saveChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) { }
                     }
                 }
             } catch (e) { console.warn('OTM merge into checklistState failed', e); }
@@ -1028,6 +1029,74 @@ function showDashboardBenhNhanIfNeeded() {
         try {
             window.addEventListener('online', toggleOffline, { once: true });
         } catch (_) { }
+
+        // ─── Auto-sync checklist data every 800ms ───
+        // This ensures sidebar data stays in sync if other users are updating the same patient
+        const ChecklistAPIModule = require('../services/checklistAPIModule');
+        let autoSyncInterval = null;
+        const startAutoSync = () => {
+            autoSyncInterval = setInterval(async () => {
+                // Check if sidebar session is still active
+                if (!SidebarSession.isActive(sessionId)) {
+                    clearInterval(autoSyncInterval);
+                    return;
+                }
+
+                try {
+                    const freshData = await ChecklistAPIModule.getChecklistData(patient, { skipCache: true });
+                    if (!freshData || !freshData.state) return;
+
+                    // Compare and update if state changed
+                    const oldStateStr = JSON.stringify(window.checklistState || {});
+                    const newStateStr = JSON.stringify(freshData.state);
+                    
+                    if (oldStateStr !== newStateStr) {
+                        console.log('Sidebar auto-sync: detected state change for patient', patient.mabn);
+                        window.checklistObj = freshData.checklistObj;
+                        window.checklistState = { ...freshData.state };
+                        
+                        // Update UI elements that may have changed (y lệnh, phẫu thuật)
+                        try {
+                            // Re-render y lệnh section if it exists
+                            const yLenhList = document.querySelector('#dr-sidebar #dr-y-lenh-list');
+                            if (yLenhList && typeof window.currentRenderYLenh === 'function') {
+                                window.currentRenderYLenh(window.checklistState);
+                            }
+                        } catch (e) { console.warn('Sidebar auto-sync: failed to update y-lenh', e); }
+
+                        try {
+                            // Re-render phẫu thuật section if it exists
+                            const phauThuatList = document.querySelector('#dr-sidebar #dr-phau-thuat-log-list');
+                            if (phauThuatList && typeof window.currentRenderPhauThuatLog === 'function') {
+                                window.currentRenderPhauThuatLog(window.checklistState);
+                            }
+                        } catch (e) { console.warn('Sidebar auto-sync: failed to update phau-thuat', e); }
+                    }
+                } catch (e) {
+                    console.warn('Sidebar auto-sync error:', e);
+                }
+            }, 800);
+        };
+
+        // Start auto-sync when sidebar is fully rendered and visible
+        startAutoSync();
+
+        // Clean up auto-sync when sidebar closes
+        const originalEndSession = SidebarSession.endSession;
+        window.__drSidebarAutoSyncCleanup = () => {
+            if (autoSyncInterval) {
+                clearInterval(autoSyncInterval);
+                autoSyncInterval = null;
+            }
+        };
+        // Hook into modal close to stop auto-sync
+        const origHideModal = ModalManager.hideModal;
+        if (origHideModal) {
+            ModalManager.hideModal = function(...args) {
+                window.__drSidebarAutoSyncCleanup && window.__drSidebarAutoSyncCleanup();
+                return origHideModal.apply(this, args);
+            };
+        }
     }
 
 

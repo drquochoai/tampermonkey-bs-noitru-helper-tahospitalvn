@@ -1,23 +1,15 @@
-// checklistService.js - Centralized checklist management
+// checklistService.js - Compatibility wrapper around ChecklistAPIModule
+// Delegates to ChecklistAPIModule for core operations; maintains backward compatibility
 
-const DateUtils = require('../utils/dateUtils');
 const ApiService = require('./apiService');
 const SaveQueue = require('./saveQueue');
-
-// In-memory cache to dedupe checklist fetches per patient and date range
-const _checklistCache = new Map();
-function _makeCacheKey(mabn, tungay, denngay) {
-    return `${String(mabn)}|${String(tungay)}|${String(denngay)}`;
-}
+const ChecklistAPIModule = require('./checklistAPIModule');
 
 const ChecklistService = {
-    // Expose small helpers for cache invalidation (internal use)
+    // Delegate to ChecklistAPIModule for cache invalidation
     _invalidateCacheForMabn(mabn) {
         try {
-            const prefix = `${String(mabn)}|`;
-            for (const key of _checklistCache.keys()) {
-                if (key.startsWith(prefix)) _checklistCache.delete(key);
-            }
+            ChecklistAPIModule.invalidateCache(mabn);
         } catch (_) {}
     },
 
@@ -48,127 +40,34 @@ const ChecklistService = {
     },
     /**
      * Load checklist data for a patient
+     * DELEGATION: Delegates to ChecklistAPIModule for unified mabn handling
      */
     async loadChecklistData(patient, options = {}) {
-        const originalMabn = patient.mabn;
-        const mabnWith9898 = patient.mabn + 9898;
-        const { tungay, denngay } = DateUtils.getChecklistDateRange(patient.ngayvv);
-        console.log('DEBUG - DateUtils.getChecklistDateRange result:', {
-            inputNgayvv: patient.ngayvv,
-            outputTungay: tungay,
-            outputDenngay: denngay
-        });
-        console.log('DEBUG - Trying both mabn formats:', { originalMabn, mabnWith9898 });
-
-        const cacheKey = _makeCacheKey(originalMabn, tungay, denngay);
-        if (options && options.forceRefresh) {
-            _checklistCache.delete(cacheKey);
+        const result = await ChecklistAPIModule.getChecklistData(patient, options);
+        if (!result) {
+            return { data: [] };
         }
-        if (_checklistCache.has(cacheKey)) {
-            console.log('DEBUG - Returning cached/inflight checklist response for', cacheKey);
-            return _checklistCache.get(cacheKey);
-        }
-
-        const inflight = (async () => {
-            // First try with 9898 suffix
-            const formData = new FormData();
-            formData.append('mabn', mabnWith9898);
-            formData.append('tungay', tungay);
-            formData.append('denngay', denngay);
-            const response = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
-                method: 'POST',
-                credentials: 'include',
-                body: formData
-            });
-            const result = await response.json();
-            console.log('DEBUG - ChecklistService.loadChecklistData API response (with 9898):', result);
-            if (!result.data || result.data.length === 0) {
-                // Fallback without 9898
-                const fallbackFormData = new FormData();
-                fallbackFormData.append('mabn', originalMabn);
-                fallbackFormData.append('tungay', tungay);
-                fallbackFormData.append('denngay', denngay);
-                const fallbackResponse = await fetch('/DanhSachBenhNhan/DSPhieuCCThongTinVaCamKetNhapVien', {
-                    method: 'POST',
-                    credentials: 'include',
-                    body: fallbackFormData
-                });
-                const fallbackResult = await fallbackResponse.json();
-                console.log('DEBUG - ChecklistService.loadChecklistData API response (original mabn):', fallbackResult);
-                return fallbackResult;
-            }
-            return result;
-        })();
-
-        _checklistCache.set(cacheKey, inflight);
-        try {
-            const finalRes = await inflight;
-            // Store resolved promise for subsequent reuse
-            _checklistCache.set(cacheKey, Promise.resolve(finalRes));
-            return finalRes;
-        } catch (e) {
-            _checklistCache.delete(cacheKey);
-            throw e;
-        }
+        // Return in legacy format: { data: [checklistObj, ...] }
+        return {
+            isValid: true,
+            data: result.checklistObj ? [result.checklistObj] : []
+        };
     },
 
     /**
      * Find existing checklist object from response data
+     * DELEGATION: Uses ChecklistAPIModule's improved matching logic
      */
     findChecklistObject(responseData) {
-        console.log('DEBUG - findChecklistObject input:', responseData);
-
-        if (!responseData || !responseData.data || !Array.isArray(responseData.data) || responseData.data.length === 0) {
-            console.log('DEBUG - No data array or empty array');
-            return null;
-        }
-
-        const items = responseData.data;
-        console.log('DEBUG - Searching through', items.length, 'checklist objects');
-
-        // Prefer an explicitly-marked checklist (hoten ends with "%")
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            console.log(`DEBUG - Checklist object ${i}:`, item);
-            if (item && typeof item.hoten === 'string' && item.hoten.trim().endsWith('%')) {
-                console.log('DEBUG - Found matching checklist object with hoten ending with %');
-                return item;
-            }
-        }
-
-        // If only one candidate was returned, it's almost certainly the right one — accept it as a fallback.
-        if (items.length === 1) {
-            console.log('DEBUG - Only one checklist object present — using it as fallback');
-            return items[0];
-        }
-
-        // As a last resort, try to return the first item that looks valid (has mabn)
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item && (item.mabn || item.MABN || item.MaBN)) {
-                console.log('DEBUG - Using first checklist object with mabn as fallback');
-                return item;
-            }
-        }
-
-        console.log('DEBUG - No matching checklist object found');
-        return null;
+        return ChecklistAPIModule._findChecklistObject(responseData);
     },
 
     /**
      * Parse checklist state from checklist object
+     * DELEGATION: Uses ChecklistAPIModule's logic
      */
     parseChecklistState(checklistObj) {
-        let state = {};
-        if (checklistObj && checklistObj.chuky) {
-            try {
-                state = JSON.parse(checklistObj.chuky);
-            } catch (e) {
-                console.warn('Failed to parse checklist state:', e);
-                state = {};
-            }
-        }
-        return state;
+        return ChecklistAPIModule._parseChecklistState(checklistObj);
     },
 
     /**

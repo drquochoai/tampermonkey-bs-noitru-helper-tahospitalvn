@@ -235,10 +235,21 @@ const ApiService = {
         try {
             const formData = new FormData();
             
-            // Add all old data fields
+            // Add all old data fields, preserving non-empty values
             for (const key in oldData) {
                 if (Object.prototype.hasOwnProperty.call(oldData, key)) {
-                    formData.append(key.toLowerCase(), oldData[key] == null ? '' : oldData[key]);
+                    let value = oldData[key];
+                    
+                    // Handle required fields that cannot be empty
+                    if (key.toLowerCase() === 'dieukhoancamket' && (value == null || String(value).trim() === '')) {
+                        // Default value for commitment clause if not set
+                        value = 'true';
+                    }
+                    
+                    // Only append if value exists, otherwise skip to preserve API constraints
+                    if (value != null && String(value).trim() !== '') {
+                        formData.append(key.toLowerCase(), value);
+                    }
                 }
             }
             

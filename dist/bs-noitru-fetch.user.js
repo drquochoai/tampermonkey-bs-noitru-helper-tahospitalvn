@@ -14378,24 +14378,40 @@ const ChecklistService = {
      */
     findChecklistObject(responseData) {
         console.log('DEBUG - findChecklistObject input:', responseData);
-        
-        if (!responseData.data || !Array.isArray(responseData.data) || responseData.data.length === 0) {
+
+        if (!responseData || !responseData.data || !Array.isArray(responseData.data) || responseData.data.length === 0) {
             console.log('DEBUG - No data array or empty array');
             return null;
         }
 
-        console.log('DEBUG - Searching through', responseData.data.length, 'checklist objects');
-        
-        for (let i = 0; i < responseData.data.length; i++) {
-            const item = responseData.data[i];
+        const items = responseData.data;
+        console.log('DEBUG - Searching through', items.length, 'checklist objects');
+
+        // Prefer an explicitly-marked checklist (hoten ends with "%")
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
             console.log(`DEBUG - Checklist object ${i}:`, item);
-            
-            if (typeof item.hoten === 'string' && item.hoten.trim().endsWith('%')) {
+            if (item && typeof item.hoten === 'string' && item.hoten.trim().endsWith('%')) {
                 console.log('DEBUG - Found matching checklist object with hoten ending with %');
                 return item;
             }
         }
-        
+
+        // If only one candidate was returned, it's almost certainly the right one — accept it as a fallback.
+        if (items.length === 1) {
+            console.log('DEBUG - Only one checklist object present — using it as fallback');
+            return items[0];
+        }
+
+        // As a last resort, try to return the first item that looks valid (has mabn)
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            if (item && (item.mabn || item.MABN || item.MaBN)) {
+                console.log('DEBUG - Using first checklist object with mabn as fallback');
+                return item;
+            }
+        }
+
         console.log('DEBUG - No matching checklist object found');
         return null;
     },
@@ -15774,7 +15790,11 @@ const SettingsService = {
         const result = await resp.json();
         const data = (result && result.data) || [];
         // Pick first item that matches mabn==chungThuSo and hoten endsWith %
-        const found = data.find(item => item && item.mabn === chungThuSo && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        let found = data.find(item => item && item.mabn === chungThuSo && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        // Fallback: if API returned exactly one candidate for this chungThuSo, accept it even without the '%' marker
+        if (!found && data.length === 1 && data[0] && data[0].mabn === chungThuSo) {
+            found = data[0];
+        }
         return found;
     },
 
@@ -15987,7 +16007,10 @@ async function loadRecordForKhoa(khoaId) {
     });
     const result = await resp.json();
     const data = (result && result.data) || [];
-    const found = data.find(item => item && item.mabn === key && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+    let found = data.find(item => item && item.mabn === key && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+    if (!found && data.length === 1 && data[0] && data[0].mabn === key) {
+        found = data[0];
+    }
     return found;
 }
 
@@ -16081,7 +16104,11 @@ const TrackedPatientService = {
         });
         const result = await resp.json();
         const data = (result && result.data) || [];
-        const found = data.find(item => item && item.mabn === mabn && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        let found = data.find(item => item && item.mabn === mabn && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        if (!found && data.length === 1 && data[0] && data[0].mabn === mabn) {
+            // Accept single returned item as fallback even if it lacks the '%' marker
+            found = data[0];
+        }
         return found;
     },
 

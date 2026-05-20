@@ -20,7 +20,10 @@ async function loadRecordForKhoa(khoaId) {
     });
     const result = await resp.json();
     const data = (result && result.data) || [];
-    const found = data.find(item => item && item.mabn === key && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+    let found = data.find(item => item && item.mabn === key && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+    if (!found && data.length === 1 && data[0] && data[0].mabn === key) {
+        found = data[0];
+    }
     return found;
 }
 

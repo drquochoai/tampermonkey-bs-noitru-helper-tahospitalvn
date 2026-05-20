@@ -19,7 +19,11 @@ const TrackedPatientService = {
         });
         const result = await resp.json();
         const data = (result && result.data) || [];
-        const found = data.find(item => item && item.mabn === mabn && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        let found = data.find(item => item && item.mabn === mabn && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        if (!found && data.length === 1 && data[0] && data[0].mabn === mabn) {
+            // Accept single returned item as fallback even if it lacks the '%' marker
+            found = data[0];
+        }
         return found;
     },
 

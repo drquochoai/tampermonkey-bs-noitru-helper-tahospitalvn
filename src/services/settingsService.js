@@ -160,7 +160,11 @@ const SettingsService = {
         const result = await resp.json();
         const data = (result && result.data) || [];
         // Pick first item that matches mabn==chungThuSo and hoten endsWith %
-        const found = data.find(item => item && item.mabn === chungThuSo && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        let found = data.find(item => item && item.mabn === chungThuSo && typeof item.hoten === 'string' && item.hoten.endsWith('%')) || null;
+        // Fallback: if API returned exactly one candidate for this chungThuSo, accept it even without the '%' marker
+        if (!found && data.length === 1 && data[0] && data[0].mabn === chungThuSo) {
+            found = data[0];
+        }
         return found;
     },
 

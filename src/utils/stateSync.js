@@ -9,8 +9,44 @@
 function syncPatientStateToGlobal(mabn, newState) {
     try {
         if (!window.dr_data || !mabn) return;
-        const p = window.dr_data.find(p => p.mabn === mabn);
-        if (p) p.checklistState = { ...newState };
+        const key = String(mabn || '').trim();
+        const p = window.dr_data.find(p => {
+            if (!p) return false;
+            const candidates = [p.mabn, p.pid, p.maBN, p.ma_benh_nhan];
+            for (let i = 0; i < candidates.length; i++) {
+                const v = candidates[i];
+                if (v != null && String(v).trim() === key) return true;
+            }
+            return false;
+        });
+
+        if (!p) return;
+
+        p.checklistState = { ...newState };
+
+        try {
+            if (typeof window.updatePatientCardTags === 'function') {
+                window.updatePatientCardTags(key);
+            }
+        } catch (_) { }
+
+        try {
+            if (typeof window.updatePatientCardPhauThuat === 'function') {
+                window.updatePatientCardPhauThuat(p, p.checklistState);
+            }
+        } catch (_) { }
+
+        try {
+            if (typeof window.updatePatientCardHXT === 'function') {
+                window.updatePatientCardHXT(p);
+            }
+        } catch (_) { }
+
+        try {
+            if (typeof window.updatePatientCardCDKT === 'function') {
+                window.updatePatientCardCDKT(p);
+            }
+        } catch (_) { }
     } catch (_) { }
 }
 

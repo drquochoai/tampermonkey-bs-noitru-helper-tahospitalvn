@@ -108,6 +108,7 @@ function showDashboardBenhNhanIfNeeded() {
     let khoaSelectRefreshToken = 0;
     let khoaSelectOptionsCache = null;
     let lastManualKhoaId = '';
+    let dashboardAutoRefreshBusy = false;
 
     function applyCardHoverTooltipSetting() {
         if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
@@ -472,6 +473,7 @@ function showDashboardBenhNhanIfNeeded() {
             window.checklistObj = checklistObj;
             // Parse into a fresh object; avoid leaking prior patient's HXT into others
             window.checklistState = { ...result.state };
+            try { patient.checklistState = { ...result.state }; } catch (_) {}
             // Merge standardized OTM surgeries (if any) for this patient into state (append-only)
             try {
                 const otmLogs = Array.isArray(patient && patient._otmPhauThuatLog) ? patient._otmPhauThuatLog : [];
@@ -497,6 +499,8 @@ function showDashboardBenhNhanIfNeeded() {
                     }
                 }
             } catch (e) { console.warn('OTM merge into checklistState failed', e); }
+
+            try { require('../utils/stateSync').syncPatientStateToGlobal(patient.mabn, window.checklistState); } catch (_) { }
 
             // Load y lệnh log if exists
             const yLenhLogContainer = document.getElementById('dr-y-lenh-log');
@@ -629,6 +633,17 @@ function showDashboardBenhNhanIfNeeded() {
         // Make function available for reuse
         window.renderChecklistXuatVien = renderChecklistXuatVien;
     }
+
+    // Public refresh to update checklist xuất viện after sync
+    window.dr_refreshChecklistXuatVien = function () {
+        try {
+            const ul = document.querySelector('#checklist-xuatvien');
+            const activePatient = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.patient) || patient;
+            if (ul && window.checklistState && activePatient) {
+                renderChecklistXuatVien(ul, activePatient);
+            }
+        } catch (_) { }
+    };
 
 
 
@@ -973,14 +988,9 @@ function showDashboardBenhNhanIfNeeded() {
         leftColumn.appendChild(sidebarActions);
 
         // Provide sidebar context for children (ctx id + abort signal)
-        window.dr_sidebar_ctx = { id: sessionId, signal: SidebarSession.getSignal() };
-        const info = createPatientInfoSection(patient, quickYLenhActions);
-        leftColumn.appendChild(info);
+        window.dr_sidebar_ctx = { id: sessionId, signal: SidebarSession.getSignal(), patient };
 
-        // Setup phẫu thuật handlers for the info section
-        setupPhauThuatHandlers(info, patient);
-
-        // Right column: Checklist section
+        // Right column: Checklist section - load checklist first so patient check state is fresh
         const rightColumn = document.createElement('div');
         rightColumn.className = 'dr-sidebar-right';
         rightColumn.style.cssText = `
@@ -989,7 +999,18 @@ function showDashboardBenhNhanIfNeeded() {
         `;
 
         const checklistDiv = await createChecklistSectionAsync(patient);
+        // Ensure the freshly loaded checklist state is merged into the patient object
+        try { if (window.checklistState) patient.checklistState = { ...window.checklistState }; } catch (_) {}
         rightColumn.appendChild(checklistDiv);
+
+        // Left column: Patient info with surgery and y lệnh (create after checklist so inputs reflect latest state)
+        const info = createPatientInfoSection(patient, quickYLenhActions);
+        leftColumn.appendChild(info);
+
+        // Setup phẫu thuật handlers for the info section
+        setupPhauThuatHandlers(info, patient);
+
+        
         // Add HSBA Data tab into the same tabs bar
         try {
             const { addHSBATab } = require('../components/hsbaDataFetcher');
@@ -1030,10 +1051,87 @@ function showDashboardBenhNhanIfNeeded() {
             window.addEventListener('online', toggleOffline, { once: true });
         } catch (_) { }
 
-        // ─── Auto-sync checklist data every 800ms ───
+        // ─── Auto-sync checklist data every 1100ms ───
         // This ensures sidebar data stays in sync if other users are updating the same patient
         const ChecklistAPIModule = require('../services/checklistAPIModule');
         let autoSyncInterval = null;
+        const refreshSidebarFromChecklistState = () => {
+            try {
+                if (typeof window.dr_refreshChecklistBadges === 'function') {
+                    window.dr_refreshChecklistBadges();
+                }
+                if (typeof window.dr_refreshChecklistXuatVien === 'function') {
+                    window.dr_refreshChecklistXuatVien();
+                }
+
+                const yLenhLog = (window.checklistState && Array.isArray(window.checklistState.yLenhLog))
+                    ? window.checklistState.yLenhLog
+                    : [];
+                if (typeof window.currentRenderYLenh === 'function') {
+                    window.currentRenderYLenh(yLenhLog);
+                }
+                if (typeof window.currentUpdateQuickYLenhStates === 'function') {
+                    window.currentUpdateQuickYLenhStates();
+                }
+                if (typeof window.currentEnsureDischargeTimeEditor === 'function') {
+                    window.currentEnsureDischargeTimeEditor();
+                }
+
+                const phauThuatLog = (window.checklistState && Array.isArray(window.checklistState.phauThuatLog))
+                    ? window.checklistState.phauThuatLog
+                    : [];
+                if (typeof window.currentRenderPhauThuatLog === 'function') {
+                    window.currentRenderPhauThuatLog(phauThuatLog);
+                }
+
+                const hxtTextarea = document.querySelector('#dr-sidebar #dr-hxt-textarea');
+                const nextHxt = (window.checklistState && typeof window.checklistState.huongXuTri === 'string')
+                    ? window.checklistState.huongXuTri
+                    : '';
+                if (hxtTextarea && document.activeElement !== hxtTextarea && hxtTextarea.value !== nextHxt) {
+                    hxtTextarea.value = nextHxt;
+                }
+
+                const cdktTextarea = document.querySelector('#dr-sidebar #dr-chandoan-kemtheo');
+                const nextCdkt = (window.checklistState && typeof window.checklistState.chanDoanKemTheo === 'string')
+                    ? window.checklistState.chanDoanKemTheo
+                    : '';
+                if (cdktTextarea && document.activeElement !== cdktTextarea && cdktTextarea.value !== nextCdkt) {
+                    cdktTextarea.value = nextCdkt;
+                }
+            } catch (e) {
+                console.warn('Sidebar auto-sync: failed to refresh sidebar sections', e);
+            }
+        };
+        const syncPatientCardFromChecklistState = (freshState) => {
+            try {
+                if (!patient || !patient.mabn) return;
+
+                const mergedState = { ...(freshState || {}) };
+                patient.checklistState = mergedState;
+
+                if (window.dr_data && Array.isArray(window.dr_data)) {
+                    const patientInData = window.dr_data.find(p => p && p.mabn === patient.mabn);
+                    if (patientInData) {
+                        patientInData.checklistState = { ...mergedState };
+                        if (typeof window.updatePatientCardTags === 'function') {
+                            window.updatePatientCardTags(patient.mabn);
+                        }
+                        if (typeof window.updatePatientCardPhauThuat === 'function') {
+                            window.updatePatientCardPhauThuat(patientInData);
+                        }
+                        if (typeof window.updatePatientCardHXT === 'function') {
+                            window.updatePatientCardHXT(patientInData);
+                        }
+                        if (typeof window.updatePatientCardCDKT === 'function') {
+                            window.updatePatientCardCDKT(patientInData);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Sidebar auto-sync: failed to sync dashboard card', e);
+            }
+        };
         const startAutoSync = () => {
             autoSyncInterval = setInterval(async () => {
                 // Check if sidebar session is still active
@@ -1054,32 +1152,21 @@ function showDashboardBenhNhanIfNeeded() {
                         console.log('Sidebar auto-sync: detected state change for patient', patient.mabn);
                         window.checklistObj = freshData.checklistObj;
                         window.checklistState = { ...freshData.state };
-                        
-                        // Update UI elements that may have changed (y lệnh, phẫu thuật)
-                        try {
-                            // Re-render y lệnh section if it exists
-                            const yLenhList = document.querySelector('#dr-sidebar #dr-y-lenh-list');
-                            if (yLenhList && typeof window.currentRenderYLenh === 'function') {
-                                window.currentRenderYLenh(window.checklistState);
-                            }
-                        } catch (e) { console.warn('Sidebar auto-sync: failed to update y-lenh', e); }
-
-                        try {
-                            // Re-render phẫu thuật section if it exists
-                            const phauThuatList = document.querySelector('#dr-sidebar #dr-phau-thuat-log-list');
-                            if (phauThuatList && typeof window.currentRenderPhauThuatLog === 'function') {
-                                window.currentRenderPhauThuatLog(window.checklistState);
-                            }
-                        } catch (e) { console.warn('Sidebar auto-sync: failed to update phau-thuat', e); }
+                        syncPatientCardFromChecklistState(window.checklistState);
+                        refreshSidebarFromChecklistState();
                     }
                 } catch (e) {
                     console.warn('Sidebar auto-sync error:', e);
                 }
-            }, 800);
+            }, 1100);
         };
 
         // Start auto-sync when sidebar is fully rendered and visible
         startAutoSync();
+
+        // One-time initial sync now that helper functions are defined
+        try { if (typeof syncPatientCardFromChecklistState === 'function') syncPatientCardFromChecklistState(window.checklistState); } catch (_) {}
+        try { if (typeof refreshSidebarFromChecklistState === 'function') refreshSidebarFromChecklistState(); } catch (_) {}
 
         // Clean up auto-sync when sidebar closes
         const originalEndSession = SidebarSession.endSession;
@@ -1662,6 +1749,11 @@ function showDashboardBenhNhanIfNeeded() {
             const card = renderer(item);
             decoratePatientFilterTarget(card, item, index);
             container.appendChild(card);
+            try {
+                if (item && item.mabn && typeof updatePatientCardTags === 'function') {
+                    updatePatientCardTags(item.mabn);
+                }
+            } catch (_) { }
         });
 
         // Introduce a generalized wrapper for ALL views so layout padding/margins apply consistently
@@ -2215,6 +2307,60 @@ function showDashboardBenhNhanIfNeeded() {
 
         if (data) {
             renderCards(filterDataByAccessibleKhoa(data, dashboardCloudContext.settings || {}));
+
+            // Unified dashboard refresh flow: reload data every 60s without reloading page.
+            try {
+                if (window.__drDashboardAutoRefreshInterval) {
+                    clearInterval(window.__drDashboardAutoRefreshInterval);
+                }
+                window.__drDashboardAutoRefreshInterval = setInterval(async () => {
+                    if (dashboardAutoRefreshBusy) return;
+                    dashboardAutoRefreshBusy = true;
+                    try {
+                        const basicFresh = await PatientService.fetchPatientData();
+                        if (!basicFresh || !Array.isArray(basicFresh)) return;
+
+                        const enrichedFresh = await PatientService.enrichPatientDataWithChecklist(basicFresh);
+                        if (!enrichedFresh || !Array.isArray(enrichedFresh)) return;
+
+                        window.dr_data = enrichedFresh;
+                        window.dr_data_khoa_id = String(getSelectedKhoa('551') || '551');
+
+                        const filteredFresh = filterDataByAccessibleKhoa(enrichedFresh, dashboardCloudContext.settings || {});
+                        const refreshFn = (typeof globalThis.refreshPatientCards === 'function')
+                            ? globalThis.refreshPatientCards
+                            : null;
+                        if (refreshFn) {
+                            refreshFn(filteredFresh);
+                        }
+
+                        // Re-render only when card set changed and no active sidebar is being edited.
+                        const domEls = Array.from(document.querySelectorAll('.dr-card[data-mabn], .dr-list-row[data-mabn]'));
+                        const domSet = new Set(domEls.map(el => String(el.getAttribute('data-mabn') || '').trim()).filter(Boolean));
+                        const dataSet = new Set(filteredFresh.map(p => String((p && p.mabn) || '').trim()).filter(Boolean));
+                        let sameSet = domSet.size === dataSet.size;
+                        if (sameSet) {
+                            for (const mabn of dataSet) {
+                                if (!domSet.has(mabn)) {
+                                    sameSet = false;
+                                    break;
+                                }
+                            }
+                        }
+
+                        const sidebarActive = !!(SidebarSession.getCurrent && SidebarSession.getCurrent().id);
+                        if (!sameSet && !sidebarActive) {
+                            renderCards(filteredFresh);
+                        }
+                    } catch (e) {
+                        console.warn('Dashboard 60s refresh failed:', e);
+                    } finally {
+                        dashboardAutoRefreshBusy = false;
+                    }
+                }, 60000);
+            } catch (e) {
+                console.warn('Failed to start dashboard auto refresh:', e);
+            }
         }
     }
 

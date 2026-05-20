@@ -211,10 +211,16 @@ function formatSurgeryInfo(item) {
  * @param {object} customChecklistState - Custom checklist state
  */
 function updatePatientCardPhauThuat(patient, customChecklistState = null) {
-    const cards = document.querySelectorAll('.dr-card');
+    const ids = [patient && patient.mabn, patient && patient.pid, patient && patient.maBN, patient && patient.ma_benh_nhan]
+        .map(v => (v == null ? '' : String(v).trim()))
+        .filter(Boolean);
+    const cards = document.querySelectorAll('.dr-card, .dr-list-row');
     for (let card of cards) {
+        const cardMabn = String(card.getAttribute('data-mabn') || '').trim();
         const cardTitle = card.querySelector('h2');
-        if (cardTitle && cardTitle.textContent.includes(patient.mabn)) {
+        const cardText = cardTitle ? cardTitle.textContent : (card.textContent || '');
+        const matched = (cardMabn && ids.includes(cardMabn)) || (cardText && ids.some((id) => cardText.includes(id)));
+        if (matched) {
             const checklistState = customChecklistState || window.checklistState;
             
             // Create patient object with updated checklist state for formatSurgeryInfo

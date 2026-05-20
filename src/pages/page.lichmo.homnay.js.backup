@@ -1,7 +1,0 @@
-// Backup of original page.lichmo.homnay.js before OTMTokenService integration
-// Created on: 2024-12-19
-// This file is kept as backup before replacing with OTMTokenService version
-
-// NOTE: Original content was complex tab-opening mechanism
-// New version uses direct OTMTokenService API calls
-// Original file was 592 lines with complex GM message handling

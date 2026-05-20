@@ -4,12 +4,39 @@ const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
 const { addSurgeryStatusIcon, formatSurgeryInfo } = require('./surgeryUtils');
 const { escapeHtml } = require('./htmlUtils');
 
-function findPatientElement(mabn) {
-    if (!mabn) return null;
-    return (
-        document.querySelector(`.dr-card[data-mabn="${mabn}"]`) ||
-        document.querySelector(`.dr-list-row[data-mabn="${mabn}"]`)
-    );
+function getPatientIdentifiers(patientOrId) {
+    const ids = [];
+    if (patientOrId == null) return ids;
+    if (typeof patientOrId === 'object') {
+        [patientOrId.mabn, patientOrId.pid, patientOrId.maBN, patientOrId.ma_benh_nhan].forEach((v) => {
+            const s = v == null ? '' : String(v).trim();
+            if (s && !ids.includes(s)) ids.push(s);
+        });
+    } else {
+        const s = String(patientOrId).trim();
+        if (s) ids.push(s);
+    }
+    return ids;
+}
+
+function findPatientElement(patientOrId) {
+    const ids = getPatientIdentifiers(patientOrId);
+    if (!ids.length) return null;
+
+    for (const id of ids) {
+        const direct = document.querySelector(`.dr-card[data-mabn="${id}"]`) || document.querySelector(`.dr-list-row[data-mabn="${id}"]`);
+        if (direct) return direct;
+    }
+
+    const allCards = Array.from(document.querySelectorAll('.dr-card, .dr-list-row'));
+    for (const card of allCards) {
+        const cardId = String(card.getAttribute('data-mabn') || '').trim();
+        if (cardId && ids.includes(cardId)) return card;
+        const text = (card.textContent || card.innerText || '').trim();
+        if (text && ids.some((id) => text.includes(id))) return card;
+    }
+
+    return null;
 }
 
 function updateHXT(patient) {

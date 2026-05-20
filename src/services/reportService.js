@@ -28,6 +28,16 @@ const ReportService = {
             }
         }
 
+        // If a sidebar is currently open, prefer its live checklistState for that patient.
+        // This prevents direct-report copies from lagging behind the latest unsaved UI state.
+        if (preferInMemory && typeof window !== 'undefined' && window.dr_sidebar_ctx && window.dr_sidebar_ctx.patient && window.checklistState) {
+            const activePatient = window.dr_sidebar_ctx.patient;
+            const activeKey = activePatient && activePatient.mabn ? String(activePatient.mabn).trim() : '';
+            if (activeKey) {
+                inMemoryMap[activeKey] = { ...window.checklistState };
+            }
+        }
+
         const promises = sortedPatients.map(async (patient) => {
             // Use in-memory state if available (real-time updated by sidebar)
             if (preferInMemory && patient && patient.mabn && inMemoryMap[patient.mabn]) {

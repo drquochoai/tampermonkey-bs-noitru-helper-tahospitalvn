@@ -5,6 +5,7 @@ const PatientDataMapper = require('../utils/patientDataMapper');
 const LoginHandler = require('../components/loginHandler');
 const ChecklistService = require('./checklistService');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
 
 const PatientService = {
     /**
@@ -64,6 +65,7 @@ const PatientService = {
 
                         // Store checklist state for y lệnh tags
                         enrichedPatients[actualIndex].checklistState = result.state;
+                        syncPatientStateToGlobal(patient.mabn, result.state);
 
                         // Map surgery data from checklist
                         const surgeryData = PatientDataMapper.mapPhauThuatData(result.state);

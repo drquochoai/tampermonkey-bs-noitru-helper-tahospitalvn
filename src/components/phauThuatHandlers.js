@@ -236,6 +236,8 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 return;
             }
 
+            syncPatientStateToGlobal(patient.mabn, window.checklistState);
+
             // Persist and update card silently
             savePhauThuatLog();
             renderPhauThuatLog(window.checklistState.phauThuatLog);
@@ -406,6 +408,8 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 window.checklistState.phauThuatLog.unshift(newEntry);
             }
 
+            syncPatientStateToGlobal(patient.mabn, window.checklistState);
+
             savePhauThuatLog();
             renderPhauThuatLog(window.checklistState.phauThuatLog);
             updatePatientCardPhauThuatLocal(patient);
@@ -480,6 +484,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
     function removePhauThuat(index) {
         if (window.checklistState.phauThuatLog && Array.isArray(window.checklistState.phauThuatLog)) {
             window.checklistState.phauThuatLog.splice(index, 1);
+            syncPatientStateToGlobal(patient.mabn, window.checklistState);
             savePhauThuatLog();
             renderPhauThuatLog(window.checklistState.phauThuatLog);
             updatePatientCardPhauThuatLocal(patient);
@@ -496,8 +501,18 @@ function setupPhauThuatHandlers(infoElement, patient) {
     }
 
     function updatePatientCardPhauThuatLocal(patient) {
-        updatePatientCardPhauThuat(patient);
-        callGlobalFn('updatePatientCardPhauThuat', patient);
+        try {
+            // Prefer the patient object from window.dr_data to ensure card updaters operate on canonical data
+            let patientInData = null;
+            if (window.dr_data && Array.isArray(window.dr_data)) {
+                patientInData = window.dr_data.find(p => (p && (p.mabn === patient.mabn || p.pid === patient.mabn || p.mabn === patient.pid)));
+            }
+            const target = patientInData || patient;
+            updatePatientCardPhauThuat(target);
+            callGlobalFn('updatePatientCardPhauThuat', target);
+        } catch (e) {
+            try { updatePatientCardPhauThuat(patient); callGlobalFn('updatePatientCardPhauThuat', patient); } catch (_) {}
+        }
     }
 
     showFormBtn.addEventListener('click', () => createPhauThuatPopup(null));

@@ -145,10 +145,12 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                         setTimeout(() => { el.style.boxShadow = prev || ''; }, 400);
                     };
                     if (changedKeys.includes('hxt')) {
+                        try { callGlobalFn('updatePatientCardHXT', patient); } catch (_) { }
                         flash(hxtTextarea);
                         if (hxtSaved) { hxtSaved.style.display = 'block'; setTimeout(() => hxtSaved.style.display = 'none', 600); }
                     }
                     if (changedKeys.includes('cdkt')) {
+                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
                         flash(cdktTextarea);
                         if (cdktSaved) { cdktSaved.style.display = 'block'; setTimeout(() => cdktSaved.style.display = 'none', 600); }
                         // Update card diagnosis after saving CDKT to keep cards in sync

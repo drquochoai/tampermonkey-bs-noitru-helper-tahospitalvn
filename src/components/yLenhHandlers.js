@@ -448,6 +448,9 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Store reference to removeYLenh for use in loadYLenhLogFromState
     window.currentRemoveYLenh = removeYLenh;
+    window.currentRenderYLenh = renderYLenhLog;
+    window.currentUpdateQuickYLenhStates = updateQuickActionButtonStates;
+    window.currentEnsureDischargeTimeEditor = ensureDischargeTimeEditor;
 
     // Return functions that might be needed externally
     return {

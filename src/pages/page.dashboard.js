@@ -109,6 +109,102 @@ function showDashboardBenhNhanIfNeeded() {
     let khoaSelectOptionsCache = null;
     let lastManualKhoaId = '';
     let dashboardAutoRefreshBusy = false;
+    const DASHBOARD_AUTO_REFRESH_MS = 45000;
+    let dashboardAutoRefreshDeadline = 0;
+    let dashboardAutoRefreshTickInterval = null;
+
+    function getActiveDashboardKhoaId() {
+        return String(getSelectedKhoa('551') || window.dr_data_khoa_id || '551').trim();
+    }
+
+    function setDashboardAutoRefreshStatus(text, isBusy) {
+        const el = document.getElementById('dr-dashboard-refresh-countdown');
+        if (!el) return;
+        el.textContent = text || '';
+        el.dataset.busy = isBusy ? '1' : '0';
+    }
+
+    function resetDashboardAutoRefreshCountdown() {
+        dashboardAutoRefreshDeadline = Date.now() + DASHBOARD_AUTO_REFRESH_MS;
+        const remaining = Math.max(0, dashboardAutoRefreshDeadline - Date.now());
+        setDashboardAutoRefreshStatus(`↻ ${Math.max(1, Math.ceil(remaining / 1000))}s`, false);
+    }
+
+    async function runDashboardAutoRefresh() {
+        if (dashboardAutoRefreshBusy) return;
+        dashboardAutoRefreshBusy = true;
+        setDashboardAutoRefreshStatus('Đang làm mới...', true);
+
+        try {
+            const activeKhoaId = getActiveDashboardKhoaId();
+            if (activeKhoaId) {
+                window.dr_data_khoa_id = activeKhoaId;
+                try { localStorage.setItem('bsnt_khoa_dashboard', activeKhoaId); } catch (_) {}
+            }
+
+            const basicFresh = await PatientService.fetchPatientData();
+            if (!basicFresh || !Array.isArray(basicFresh)) return;
+
+            const enrichedFresh = await PatientService.enrichPatientDataWithChecklist(basicFresh);
+            if (!enrichedFresh || !Array.isArray(enrichedFresh)) return;
+
+            window.dr_data = enrichedFresh;
+            window.dr_data_khoa_id = activeKhoaId;
+
+            const filteredFresh = filterDataByAccessibleKhoa(enrichedFresh, dashboardCloudContext.settings || {});
+            const refreshFn = (typeof globalThis.refreshPatientCards === 'function')
+                ? globalThis.refreshPatientCards
+                : null;
+            if (refreshFn) {
+                refreshFn(filteredFresh);
+            }
+
+            const domEls = Array.from(document.querySelectorAll('.dr-card[data-mabn], .dr-list-row[data-mabn]'));
+            const domSet = new Set(domEls.map(el => String(el.getAttribute('data-mabn') || '').trim()).filter(Boolean));
+            const dataSet = new Set(filteredFresh.map(p => String((p && p.mabn) || '').trim()).filter(Boolean));
+            let sameSet = domSet.size === dataSet.size;
+            if (sameSet) {
+                for (const mabn of dataSet) {
+                    if (!domSet.has(mabn)) {
+                        sameSet = false;
+                        break;
+                    }
+                }
+            }
+
+            const sidebarActive = !!(SidebarSession.getCurrent && SidebarSession.getCurrent().id);
+            if (!sameSet && !sidebarActive) {
+                renderCards(filteredFresh);
+                return;
+            }
+        } catch (e) {
+            console.warn('Dashboard auto refresh failed:', e);
+        } finally {
+            dashboardAutoRefreshBusy = false;
+            resetDashboardAutoRefreshCountdown();
+        }
+    }
+
+    function ensureDashboardAutoRefreshLoop() {
+        if (!dashboardAutoRefreshTickInterval) {
+            dashboardAutoRefreshTickInterval = setInterval(() => {
+                if (dashboardAutoRefreshBusy) {
+                    setDashboardAutoRefreshStatus('↻ ...', true);
+                    return;
+                }
+
+                const remaining = dashboardAutoRefreshDeadline - Date.now();
+                if (remaining <= 0) {
+                    runDashboardAutoRefresh();
+                    return;
+                }
+
+                setDashboardAutoRefreshStatus(`↻ ${Math.max(1, Math.ceil(remaining / 1000))}s`, false);
+            }, 1000);
+        }
+
+        resetDashboardAutoRefreshCountdown();
+    }
 
     function applyCardHoverTooltipSetting() {
         if (localStorage.getItem(CARD_HOVER_TOOLTIP_KEY) === null) {
@@ -163,12 +259,39 @@ function showDashboardBenhNhanIfNeeded() {
         return data.filter((item) => allowSet.has(String((item && item.makp) || '').trim()));
     }
 
-    async function refreshKhoaSelectByAccess({ reloadDataIfChanged = false, forceReloadList = false } = {}) {
+    function getDashboardPreferredKhoaId() {
+        try {
+            const stored = String(localStorage.getItem('bsnt_khoa_dashboard') || '').trim();
+            if (stored) return stored;
+        } catch (_) {}
+
+        const userInfo = ((dashboardCloudContext.settings || {}).userInfo) || {};
+        const preferred = String(userInfo.workingKhoaId || userInfo.defaultKhoaId || '').trim();
+        if (preferred) return preferred;
+
+        return String(getSelectedKhoa('551') || '551').trim();
+    }
+
+    async function initializeKhoaSelect(preferredKhoaId) {
+        const select = document.getElementById('dr-khoa-select');
+        if (!select) return '';
+
+        select.innerHTML = '<option value="">Đang tải khoa...</option>';
+        await refreshKhoaSelectByAccess({
+            reloadDataIfChanged: false,
+            forceReloadList: !Array.isArray(khoaSelectOptionsCache) || !khoaSelectOptionsCache.length,
+            preferredKhoaId: preferredKhoaId
+        });
+
+        return String(select.value || preferredKhoaId || '').trim();
+    }
+
+    async function refreshKhoaSelectByAccess({ reloadDataIfChanged = false, forceReloadList = false, preferredKhoaId = '' } = {}) {
         const select = document.getElementById('dr-khoa-select');
         if (!select) return;
 
         const requestId = ++khoaSelectRefreshToken;
-        const previousValue = String(select.value || getSelectedKhoa('551'));
+        const previousValue = String(select.value || preferredKhoaId || getSelectedKhoa('551'));
 
         try {
             select.disabled = true;
@@ -225,9 +348,14 @@ function showDashboardBenhNhanIfNeeded() {
                 select.appendChild(opt);
             });
 
-            let nextValue = String(lastManualKhoaId || previousValue || '').trim();
+            let nextValue = String(lastManualKhoaId || preferredKhoaId || previousValue || '').trim();
             if (!filteredList.some((k) => String(k.id) === nextValue)) {
-                nextValue = String(filteredList[0].id || '');
+                const fallbackPreferred = String(preferredKhoaId || previousValue || '').trim();
+                if (filteredList.some((k) => String(k.id) === fallbackPreferred)) {
+                    nextValue = fallbackPreferred;
+                } else {
+                    nextValue = String(filteredList[0].id || '');
+                }
             }
 
             if (nextValue) {
@@ -442,29 +570,14 @@ function showDashboardBenhNhanIfNeeded() {
         try {
             checklistUl.innerHTML = '<li>Đang tải checklist...</li>';
 
-            // Use unified ChecklistAPIModule for consistent mabn handling
-            const ChecklistAPIModule = require('../services/checklistAPIModule');
-            const result = await ChecklistAPIModule.getChecklistData(patient, { forceRefresh: true });
+            const result = await ChecklistService.loadChecklistBundle(patient, {
+                forceRefresh: true,
+                createIfMissing: true
+            });
             checklistUl.innerHTML = '';
 
             if (!result || !result.checklistObj) {
-                checklistUl.innerHTML = '<li>Không có dữ liệu</li>';
-                const createResult = await ChecklistAPIModule.createChecklist(patient);
-                if (createResult.ok) {
-                    loadChecklist(patient, checklistUl, checklistType, retryCount + 1);
-                } else {
-                    checklistUl.innerHTML = '<li>Lỗi tạo mới checklist phiếu!</li>';
-                    if (retryCount < 1) {
-                        setTimeout(() => {
-                            const sidebar = document.getElementById('dr-sidebar');
-                            const backdrop = document.getElementById('dr-sidebar-backdrop');
-                            ModalManager.hideModal(sidebar, backdrop);
-                            setTimeout(() => {
-                                showSidebar(patient);
-                            }, 300);
-                        }, 500);
-                    }
-                }
+                checklistUl.innerHTML = '<li>Không có dữ liệu checklist bệnh nhân</li>';
                 return;
             }
 
@@ -494,8 +607,8 @@ function showDashboardBenhNhanIfNeeded() {
                         const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
                         const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
                         window.checklistState.phauThuatLog.sort((a, b) => toTs(b) - toTs(a));
-                        // Persist silently in background using unified module
-                        try { ChecklistAPIModule.saveChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) }); } catch (_) { }
+                        // Persist silently in background using the unified checklist flow.
+                        try { persistCurrentChecklistState(); } catch (_) { }
                     }
                 }
             } catch (e) { console.warn('OTM merge into checklistState failed', e); }
@@ -523,6 +636,14 @@ function showDashboardBenhNhanIfNeeded() {
             console.error('Error loading checklist:', error);
             checklistUl.innerHTML = '<li>Lỗi tải checklist</li>';
         }
+    }
+
+    async function persistCurrentChecklistState() {
+        if (!window.checklistObj || !window.checklistState) return { ok: false, queued: false };
+        return await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, {
+            enqueueOnOffline: true,
+            signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal)
+        });
     }
 
     // Helper function to load checklist xuất viện
@@ -622,7 +743,7 @@ function showDashboardBenhNhanIfNeeded() {
 
                     window.checklistState[key] = this.checked;
 
-                    const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                    const res = await persistCurrentChecklistState();
                     if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist xuất viện thất bại!');
                     }
@@ -681,7 +802,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 renderYLenhLog(window.checklistState.yLenhLog);
                                 // Save to server
                                 if (window.checklistObj) {
-                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                                    persistCurrentChecklistState();
                                 }
                             }
                         }
@@ -738,7 +859,7 @@ function showDashboardBenhNhanIfNeeded() {
                                 renderPhauThuatLog(window.checklistState.phauThuatLog);
                                 // Save to server
                                 if (window.checklistObj) {
-                                    ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                                    persistCurrentChecklistState();
                                 }
                             }
                         }
@@ -813,7 +934,7 @@ function showDashboardBenhNhanIfNeeded() {
                 cb.addEventListener('change', async function () {
                     const itemText = checklistItems[idx]; // Use original item text, not display text
                     window.checklistState[itemText] = this.checked;
-                    const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                    const res = await persistCurrentChecklistState();
                     if (!res || (!res.ok && !res.queued)) {
                         console.error('Lưu checklist thất bại!');
                     }
@@ -1052,8 +1173,7 @@ function showDashboardBenhNhanIfNeeded() {
         } catch (_) { }
 
         // ─── Auto-sync checklist data every 1100ms ───
-        // This ensures sidebar data stays in sync if other users are updating the same patient
-        const ChecklistAPIModule = require('../services/checklistAPIModule');
+        // This ensures sidebar data stays in sync if other users are updating the same patient.
         let autoSyncInterval = null;
         const refreshSidebarFromChecklistState = () => {
             try {
@@ -1103,6 +1223,17 @@ function showDashboardBenhNhanIfNeeded() {
                 console.warn('Sidebar auto-sync: failed to refresh sidebar sections', e);
             }
         };
+        window.__drSyncActiveSidebarState = (mabn, nextState) => {
+            try {
+                if (!patient || !patient.mabn) return;
+                if (String(patient.mabn).trim() !== String(mabn || '').trim()) return;
+                window.checklistState = { ...(nextState || {}) };
+                patient.checklistState = { ...(nextState || {}) };
+                refreshSidebarFromChecklistState();
+            } catch (e) {
+                console.warn('Sidebar sync bridge failed', e);
+            }
+        };
         const syncPatientCardFromChecklistState = (freshState) => {
             try {
                 if (!patient || !patient.mabn) return;
@@ -1141,7 +1272,7 @@ function showDashboardBenhNhanIfNeeded() {
                 }
 
                 try {
-                    const freshData = await ChecklistAPIModule.getChecklistData(patient, { skipCache: true });
+                    const freshData = await ChecklistService.loadChecklistBundle(patient, { forceRefresh: true });
                     if (!freshData || !freshData.state) return;
 
                     // Compare and update if state changed
@@ -1158,7 +1289,7 @@ function showDashboardBenhNhanIfNeeded() {
                 } catch (e) {
                     console.warn('Sidebar auto-sync error:', e);
                 }
-            }, 1100);
+            }, 4321);
         };
 
         // Start auto-sync when sidebar is fully rendered and visible
@@ -1174,6 +1305,9 @@ function showDashboardBenhNhanIfNeeded() {
             if (autoSyncInterval) {
                 clearInterval(autoSyncInterval);
                 autoSyncInterval = null;
+            }
+            if (window.__drSyncActiveSidebarState) {
+                window.__drSyncActiveSidebarState = null;
             }
         };
         // Hook into modal close to stop auto-sync
@@ -1766,13 +1900,17 @@ function showDashboardBenhNhanIfNeeded() {
         document.body.appendChild(topBar);
         document.body.appendChild(wrapper);
 
-        // Add bottom bar
-        createBottomBar();
-
         try {
             const displaySettings = require('../components/displaySettings');
             displaySettings.createIcon(topBar);
         } catch(e) { console.warn('Lỗi init display settings', e); }
+
+        // Bottom bar is intentionally rendered after the main dashboard content.
+        createBottomBar();
+        initializeKhoaSelect(getDashboardPreferredKhoaId()).catch((e) => {
+            console.warn('Initialize khoa select after render failed', e);
+        });
+        ensureDashboardAutoRefreshLoop();
 
         // Setup Advanced Filter
         setupAdvancedFilter(topBar, () => applyFilter());
@@ -2021,6 +2159,12 @@ function showDashboardBenhNhanIfNeeded() {
                     // Update surgery status icon
                     DomUpdaters.updateSurgeryIcon(card, item);
 
+                    try {
+                        if (typeof window.__drSyncActiveSidebarState === 'function') {
+                            window.__drSyncActiveSidebarState(item && item.mabn, item && item.checklistState);
+                        }
+                    } catch (_) { }
+
                     // Re-evaluate filter visibility and layout after updates
                     // Delay to allow DOM/class updates done elsewhere
                     setTimeout(() => {
@@ -2157,10 +2301,9 @@ function showDashboardBenhNhanIfNeeded() {
                 DomUpdaters.updateHXT(item);
                 return;
             }
-            const res = await ChecklistService.loadChecklistData(item);
-            const obj = ChecklistService.findChecklistObject(res);
-            if (!obj) return;
-            const state = ChecklistService.parseChecklistState(obj) || {};
+            const bundle = await ChecklistService.loadChecklistBundle(item, { forceRefresh: false });
+            if (!bundle || !bundle.checklistObj) return;
+            const state = bundle.state || {};
             const hxt = typeof state.huongXuTri === 'string' ? state.huongXuTri.trim() : '';
             if (!hxt) return;
             // Update dr_data entry
@@ -2226,6 +2369,11 @@ function showDashboardBenhNhanIfNeeded() {
                 <select id="dr-khoa-select" class="dr-khoa-select" title="Chọn khoa"></select>
                 <span id="dr-khoa-loading-status" style="font-size:12px;color:#475569;white-space:nowrap;"></span>
             </div>
+            <div class="dr-bottom-bar-right">
+                <button id="dr-dashboard-refresh-countdown" type="button" class="dr-dashboard-refresh-countdown" title="Tự làm mới ngay">
+                    ↻ 45s
+                </button>
+            </div>
         `;
         document.body.appendChild(bottomBar);
 
@@ -2234,29 +2382,26 @@ function showDashboardBenhNhanIfNeeded() {
 
         // Bottom bar styles come from addGlobalStyles()
 
+        const select = document.getElementById('dr-khoa-select');
+        if (select) {
+            select.addEventListener('change', async (e) => {
+                const val = e.target.value;
+                lastManualKhoaId = String(val || '').trim();
+                const selectedOpt = e.target.options[e.target.selectedIndex];
+                const selectedName = (selectedOpt && selectedOpt.textContent) || val;
+                try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
+                await reloadDashboardForSelectedKhoa(selectedName);
+            });
+        }
 
-        // Populate khoa dropdown and wire change
-        (async () => {
-            try {
-                const select = document.getElementById('dr-khoa-select');
-                if (!select) return;
-                select.innerHTML = `<option>Đang tải khoa...</option>`;
-                await refreshKhoaSelectByAccess({
-                    reloadDataIfChanged: false,
-                    forceReloadList: !Array.isArray(khoaSelectOptionsCache) || !khoaSelectOptionsCache.length
-                });
-                select.addEventListener('change', async (e) => {
-                    const val = e.target.value;
-                    lastManualKhoaId = String(val || '').trim();
-                    const selectedOpt = e.target.options[e.target.selectedIndex];
-                    const selectedName = (selectedOpt && selectedOpt.textContent) || val;
-                    try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
-                    await reloadDashboardForSelectedKhoa(selectedName);
-                });
-            } catch (e) {
-                console.warn('Load khoa for bottom bar failed', e);
-            }
-        })();
+        const refreshBtn = document.getElementById('dr-dashboard-refresh-countdown');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await runDashboardAutoRefresh();
+            });
+        }
     }
 
     // Bottom bar styling helper removed (centralized in dashboard.support.js)
@@ -2291,76 +2436,16 @@ function showDashboardBenhNhanIfNeeded() {
                 cloudAccounts: Array.isArray(cloudAccounts) ? cloudAccounts : [],
                 bootstrapLoaded: true
             };
-
-            const allowedIds = getAccessibleKhoaIds(dashboardCloudContext.settings || {});
-            if (allowedIds.length) {
-                const currentKhoa = String(getSelectedKhoa('551'));
-                if (!allowedIds.includes(currentKhoa)) {
-                    try {
-                        localStorage.setItem('bsnt_khoa_dashboard', allowedIds[0]);
-                    } catch (_) {}
-                }
-            }
         }
+
+        const preferredKhoaId = getDashboardPreferredKhoaId();
+        try { localStorage.setItem('bsnt_khoa_dashboard', preferredKhoaId); } catch (_) {}
+        window.dr_data_khoa_id = preferredKhoaId;
 
         const data = await PatientService.loadPatientDataWithErrorHandling();
 
         if (data) {
             renderCards(filterDataByAccessibleKhoa(data, dashboardCloudContext.settings || {}));
-
-            // Unified dashboard refresh flow: reload data every 60s without reloading page.
-            try {
-                if (window.__drDashboardAutoRefreshInterval) {
-                    clearInterval(window.__drDashboardAutoRefreshInterval);
-                }
-                window.__drDashboardAutoRefreshInterval = setInterval(async () => {
-                    if (dashboardAutoRefreshBusy) return;
-                    dashboardAutoRefreshBusy = true;
-                    try {
-                        const basicFresh = await PatientService.fetchPatientData();
-                        if (!basicFresh || !Array.isArray(basicFresh)) return;
-
-                        const enrichedFresh = await PatientService.enrichPatientDataWithChecklist(basicFresh);
-                        if (!enrichedFresh || !Array.isArray(enrichedFresh)) return;
-
-                        window.dr_data = enrichedFresh;
-                        window.dr_data_khoa_id = String(getSelectedKhoa('551') || '551');
-
-                        const filteredFresh = filterDataByAccessibleKhoa(enrichedFresh, dashboardCloudContext.settings || {});
-                        const refreshFn = (typeof globalThis.refreshPatientCards === 'function')
-                            ? globalThis.refreshPatientCards
-                            : null;
-                        if (refreshFn) {
-                            refreshFn(filteredFresh);
-                        }
-
-                        // Re-render only when card set changed and no active sidebar is being edited.
-                        const domEls = Array.from(document.querySelectorAll('.dr-card[data-mabn], .dr-list-row[data-mabn]'));
-                        const domSet = new Set(domEls.map(el => String(el.getAttribute('data-mabn') || '').trim()).filter(Boolean));
-                        const dataSet = new Set(filteredFresh.map(p => String((p && p.mabn) || '').trim()).filter(Boolean));
-                        let sameSet = domSet.size === dataSet.size;
-                        if (sameSet) {
-                            for (const mabn of dataSet) {
-                                if (!domSet.has(mabn)) {
-                                    sameSet = false;
-                                    break;
-                                }
-                            }
-                        }
-
-                        const sidebarActive = !!(SidebarSession.getCurrent && SidebarSession.getCurrent().id);
-                        if (!sameSet && !sidebarActive) {
-                            renderCards(filteredFresh);
-                        }
-                    } catch (e) {
-                        console.warn('Dashboard 60s refresh failed:', e);
-                    } finally {
-                        dashboardAutoRefreshBusy = false;
-                    }
-                }, 60000);
-            } catch (e) {
-                console.warn('Failed to start dashboard auto refresh:', e);
-            }
         }
     }
 
@@ -2643,16 +2728,8 @@ function dr_integrateOTMSurgeryData(otmList) {
 
 async function dr_fetchChecklistObjForPatient(patient) {
     try {
-        const res = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
-        let obj = ChecklistService.findChecklistObject(res);
-        if (!obj) {
-            const created = await ChecklistService.createNewChecklist(patient);
-            if (created) {
-                const res2 = await ChecklistService.loadChecklistData(patient, { forceRefresh: true });
-                obj = ChecklistService.findChecklistObject(res2);
-            }
-        }
-        return obj || null;
+        const bundle = await ChecklistService.loadChecklistBundle(patient, { forceRefresh: true, createIfMissing: true });
+        return bundle && bundle.checklistObj ? bundle.checklistObj : null;
     } catch (_) { return null; }
 }
 

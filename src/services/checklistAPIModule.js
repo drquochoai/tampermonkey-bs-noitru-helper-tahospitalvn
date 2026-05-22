@@ -8,6 +8,7 @@ const ApiService = require('./apiService');
 // In-memory single-result cache for the most recently fetched checklist
 // Key: mabn, Value: { checklistObj, state, timestamp }
 const _cache = new Map();
+const _inflight = new Map();
 
 const ChecklistAPIModule = {
     /**
@@ -23,6 +24,7 @@ const ChecklistAPIModule = {
 
         const { forceRefresh = false, skipCache = false } = options;
         const originalMabn = String(patient.mabn).trim();
+        const inflightKey = originalMabn;
         
         // Check cache first
         if (!forceRefresh && !skipCache && _cache.has(originalMabn)) {
@@ -37,48 +39,67 @@ const ChecklistAPIModule = {
             }
         }
 
+        if (!forceRefresh && _inflight.has(inflightKey)) {
+            return await _inflight.get(inflightKey);
+        }
+
         // Clear cache if force refresh
         if (forceRefresh) {
             _cache.delete(originalMabn);
         }
 
         try {
-            // Fetch checklist data (tries +9898 first, fallback to plain mabn internally)
-            const responseData = await this._fetchChecklistDataInternal(patient);
+            const fetchPromise = (async () => {
+                // Fetch checklist data (tries +9898 first, fallback to plain mabn internally)
+                const responseData = await this._fetchChecklistDataInternal(patient);
             
-            if (!responseData) {
-                console.warn('ChecklistAPIModule.getChecklistData: no response data for', originalMabn);
-                return null;
+                if (!responseData) {
+                    console.warn('ChecklistAPIModule.getChecklistData: no response data for', originalMabn);
+                    return null;
+                }
+
+                // Find matching checklist object in response
+                const checklistObj = this._findChecklistObject(responseData);
+            
+                if (!checklistObj) {
+                    console.warn('ChecklistAPIModule.getChecklistData: no matching checklist object for', originalMabn);
+                    return null;
+                }
+
+                // Parse checklist state from the object
+                const state = this._parseChecklistState(checklistObj);
+
+                // Cache the result
+                _cache.set(originalMabn, {
+                    checklistObj,
+                    state,
+                    timestamp: Date.now()
+                });
+
+                console.log('ChecklistAPIModule.getChecklistData: loaded for', originalMabn);
+
+                return {
+                    mabn: originalMabn,
+                    checklistObj,
+                    state
+                };
+            })();
+
+            if (!forceRefresh) {
+                _inflight.set(inflightKey, fetchPromise.finally(() => {
+                    _inflight.delete(inflightKey);
+                }));
+                return await _inflight.get(inflightKey);
             }
 
-            // Find matching checklist object in response
-            const checklistObj = this._findChecklistObject(responseData);
-            
-            if (!checklistObj) {
-                console.warn('ChecklistAPIModule.getChecklistData: no matching checklist object for', originalMabn);
-                return null;
-            }
-
-            // Parse checklist state from the object
-            const state = this._parseChecklistState(checklistObj);
-
-            // Cache the result
-            _cache.set(originalMabn, {
-                checklistObj,
-                state,
-                timestamp: Date.now()
-            });
-
-            console.log('ChecklistAPIModule.getChecklistData: loaded for', originalMabn);
-
-            return {
-                mabn: originalMabn,
-                checklistObj,
-                state
-            };
+            return await fetchPromise;
         } catch (error) {
             console.error('ChecklistAPIModule.getChecklistData error:', error);
             return null;
+        } finally {
+            if (forceRefresh) {
+                _inflight.delete(inflightKey);
+            }
         }
     },
 
@@ -254,9 +275,12 @@ const ChecklistAPIModule = {
      */
     invalidateCache(mabn) {
         if (mabn) {
-            _cache.delete(String(mabn).trim());
+            const key = String(mabn).trim();
+            _cache.delete(key);
+            _inflight.delete(key);
         } else {
             _cache.clear();
+            _inflight.clear();
         }
     }
 };

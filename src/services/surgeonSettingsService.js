@@ -32,6 +32,7 @@ async function createRecordForKhoa(khoaId) {
     const formData = new FormData();
     formData.append('status', '1');
     formData.append('thebaohiemyte', 'Không');
+    formData.append('dieukhoancamket', 'true');
     // Initialize with empty list
     formData.append('chuky', JSON.stringify({ otm: { dsbacsi: [] } }));
     formData.append('khac', '--*--');

@@ -252,6 +252,8 @@ const ApiService = {
                     }
                 }
             }
+
+            formData.set('dieukhoancamket', 'true');
             
             // Update checklist state
             formData.set('chuky', JSON.stringify(checklistState));
@@ -278,6 +280,7 @@ const ApiService = {
             const formData = new FormData();
             formData.append('status', '1');
             formData.append('thebaohiemyte', patient.thebaohiemyte || 'Không');
+            formData.append('dieukhoancamket', 'true');
             formData.append('chuky', '{}');
             formData.append('khac', '--*--');
             formData.append('khu', patient.khu || '1');

@@ -806,6 +806,43 @@ function addGlobalStyles() {
         }
         /* Bottom bar left cluster */
         .dr-bottom-bar-left { display:flex; align-items:center; gap: 10px; }
+        .dr-bottom-bar-right {
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
+            margin-left:auto;
+            min-width: 120px;
+        }
+        .dr-dashboard-refresh-countdown {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(25,118,210,0.18);
+            background: #f8fbff;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 700;
+            white-space: nowrap;
+            letter-spacing: 0.01em;
+            cursor: pointer;
+            appearance: none;
+            -webkit-appearance: none;
+            outline: none;
+        }
+        .dr-dashboard-refresh-countdown[data-busy="1"] {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-color: rgba(25,118,210,0.25);
+        }
+        .dr-dashboard-refresh-countdown:hover {
+            filter: brightness(1.02);
+            box-shadow: 0 0 0 2px rgba(25,118,210,0.08) inset;
+        }
+        .dr-dashboard-refresh-countdown:active {
+            transform: translateY(1px);
+        }
 
         /* Khoa select (pretty) */
         .dr-khoa-select {
@@ -848,6 +885,12 @@ function addGlobalStyles() {
                 flex-direction: column; 
                 height: auto; 
                 padding: 8px 8px; 
+            }
+            .dr-bottom-bar-right {
+                margin-left: 0;
+                width: 100%;
+                justify-content: flex-end;
+                padding-top: 6px;
             }
             .dr-card-list { 
                 flex-direction: column; 

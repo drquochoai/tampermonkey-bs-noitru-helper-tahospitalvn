@@ -289,6 +289,7 @@ const SettingsService = {
         const formData = new FormData();
         formData.append('status', '1');
         formData.append('thebaohiemyte', 'Không');
+        formData.append('dieukhoancamket', 'true');
         formData.append('chuky', '{}');
         formData.append('khac', '--*--');
         formData.append('khu', '1');

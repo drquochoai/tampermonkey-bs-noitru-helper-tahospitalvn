@@ -94,6 +94,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
     var formData = new FormData();
     formData.append('status', '1');
     formData.append('thebaohiemyte', 'Không');
+    formData.append('dieukhoancamket', 'true');
     formData.append('chuky', JSON.stringify(window.dr_data || {}));
     formData.append('khac', '--*--');
     formData.append('khu', '1');

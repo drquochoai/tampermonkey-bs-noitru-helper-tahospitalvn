@@ -1,9 +1,14 @@
-// checklistService.js - Compatibility wrapper around ChecklistAPIModule
-// Delegates to ChecklistAPIModule for core operations; maintains backward compatibility
+// checklistService.js - Unified checklist workflow service
+// Single entrypoint for checklist load/create/save + local state sync.
 
-const ApiService = require('./apiService');
 const SaveQueue = require('./saveQueue');
 const ChecklistAPIModule = require('./checklistAPIModule');
+const { syncPatientStateToGlobal } = require('../utils/stateSync');
+
+function getMabn(input) {
+    if (!input || typeof input !== 'object') return '';
+    return String(input.mabn || input.MABN || input.MaBN || '').trim();
+}
 
 const ChecklistService = {
     // Delegate to ChecklistAPIModule for cache invalidation
@@ -16,23 +21,15 @@ const ChecklistService = {
     async drainSaveQueue() {
         return await SaveQueue.drain(async ({ checklistObj, checklistState }) => {
             try {
-                const res = await ApiService.updateChecklistData(checklistObj, checklistState);
-                const ok = res && (res.Status == 1 || res.isValid);
-                if (ok) {
-                    try {
-                        const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
-                        let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
-                        if (mabn) {
-                            if (ngayvv) {
-                                const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
-                                const key = _makeCacheKey(mabn, tungay, denngay);
-                                _checklistCache.delete(key);
-                            }
-                            this._invalidateCacheForMabn(mabn);
-                        }
-                    } catch (_) {}
+                const res = await ChecklistAPIModule.saveChecklistState(checklistObj, checklistState);
+                if (res && res.ok) {
+                    const mabn = getMabn(checklistObj);
+                    if (mabn) {
+                        try { syncPatientStateToGlobal(mabn, checklistState); } catch (_) {}
+                        this._invalidateCacheForMabn(mabn);
+                    }
                 }
-                return ok;
+                return !!(res && res.ok);
             } catch (_) {
                 return false;
             }
@@ -68,6 +65,35 @@ const ChecklistService = {
      */
     parseChecklistState(checklistObj) {
         return ChecklistAPIModule._parseChecklistState(checklistObj);
+    },
+
+    /**
+     * Unified loader for dashboard/sidebar: load checklist bundle and create if missing.
+     * Returns { checklistObj, state, created } or null.
+     */
+    async loadChecklistBundle(patient, options = {}) {
+        const { forceRefresh = false, createIfMissing = false } = options || {};
+        const fetched = await ChecklistAPIModule.getChecklistData(patient, { forceRefresh });
+        if (fetched && fetched.checklistObj) {
+            return {
+                checklistObj: fetched.checklistObj,
+                state: fetched.state || {},
+                created: false
+            };
+        }
+
+        if (!createIfMissing) return null;
+
+        const created = await this.createNewChecklist(patient);
+        if (!created) return null;
+
+        const afterCreate = await ChecklistAPIModule.getChecklistData(patient, { forceRefresh: true, skipCache: true });
+        if (!afterCreate || !afterCreate.checklistObj) return null;
+        return {
+            checklistObj: afterCreate.checklistObj,
+            state: afterCreate.state || {},
+            created: true
+        };
     },
 
     /**
@@ -109,16 +135,17 @@ const ChecklistService = {
     _locks: new Map(), // mabn -> Promise chain for serialization
 
     async updateChecklistState(checklistObj, checklistState, options = {}) {
-        const { enqueueOnOffline = true, signal, ctxId, clientVersion = Date.now() } = options || {};
-        const mabn = checklistObj && (checklistObj.mabn || checklistObj.MABN || checklistObj.MaBN);
+        const { enqueueOnOffline = true, signal, clientVersion = Date.now() } = options || {};
+        const mabn = getMabn(checklistObj);
         // If offline, queue and return
         if (enqueueOnOffline && typeof navigator !== 'undefined' && navigator && navigator.onLine === false) {
             SaveQueue.enqueueUpdate(checklistObj, checklistState);
+            try { if (mabn) syncPatientStateToGlobal(mabn, checklistState); } catch (_) {}
             return { ok: false, queued: true, clientVersion };
         }
         const send = async () => {
-            const result = await ApiService.updateChecklistData(checklistObj, checklistState, { signal });
-            const ok = result && (result.Status == 1 || result.isValid);
+            const result = await ChecklistAPIModule.saveChecklistState(checklistObj, checklistState, { signal });
+            const ok = !!(result && result.ok);
             return { ok, queued: false, clientVersion };
         };
         // Serialize per patient to avoid races
@@ -129,15 +156,8 @@ const ChecklistService = {
             try {
                 const res = await next;
                 if (res.ok) {
-                    // Invalidate cache when saved
                     try {
-                        let ngayvv = (checklistObj && (checklistObj.tungay || checklistObj.ngayvv || checklistObj.NgayVV)) || null;
-                        if (ngayvv) {
-                            const { tungay, denngay } = DateUtils.getChecklistDateRange(ngayvv);
-                            const key = _makeCacheKey(mabn, tungay, denngay);
-                            _checklistCache.delete(key);
-                        }
-                        this._invalidateCacheForMabn(mabn);
+                        if (mabn) syncPatientStateToGlobal(mabn, checklistState);
                     } catch (_) {}
                 }
                 return res;
@@ -146,6 +166,7 @@ const ChecklistService = {
                 // Network error: queue if allowed
                 if (enqueueOnOffline) {
                     SaveQueue.enqueueUpdate(checklistObj, checklistState);
+                    try { if (mabn) syncPatientStateToGlobal(mabn, checklistState); } catch (_) {}
                     return { ok: false, queued: true, clientVersion };
                 }
                 return { ok: false, queued: false, clientVersion };
@@ -157,6 +178,7 @@ const ChecklistService = {
                 console.error('Failed to update checklist state:', error);
                 if (enqueueOnOffline) {
                     SaveQueue.enqueueUpdate(checklistObj, checklistState);
+                    try { if (mabn) syncPatientStateToGlobal(mabn, checklistState); } catch (_) {}
                     return { ok: false, queued: true, clientVersion };
                 }
                 return { ok: false, queued: false, clientVersion };
@@ -169,8 +191,8 @@ const ChecklistService = {
      */
     async createNewChecklist(patient) {
         try {
-            const result = await ApiService.createChecklistForPatient(patient);
-            return result && result.isValid;
+            const result = await ChecklistAPIModule.createChecklist(patient);
+            return !!(result && result.ok);
         } catch (error) {
             console.error('Failed to create new checklist:', error);
             return false;

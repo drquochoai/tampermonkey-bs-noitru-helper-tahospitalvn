@@ -47,6 +47,12 @@ function syncPatientStateToGlobal(mabn, newState) {
                 window.updatePatientCardCDKT(p);
             }
         } catch (_) { }
+
+        try {
+            if (typeof window.__drSyncActiveSidebarState === 'function') {
+                window.__drSyncActiveSidebarState(key, p.checklistState);
+            }
+        } catch (_) { }
     } catch (_) { }
 }
 

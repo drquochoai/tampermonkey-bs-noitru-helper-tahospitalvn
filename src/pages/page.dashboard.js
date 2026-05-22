@@ -155,9 +155,6 @@ function showDashboardBenhNhanIfNeeded() {
             const refreshFn = (typeof globalThis.refreshPatientCards === 'function')
                 ? globalThis.refreshPatientCards
                 : null;
-            if (refreshFn) {
-                refreshFn(filteredFresh);
-            }
 
             const domEls = Array.from(document.querySelectorAll('.dr-card[data-mabn], .dr-list-row[data-mabn]'));
             const domSet = new Set(domEls.map(el => String(el.getAttribute('data-mabn') || '').trim()).filter(Boolean));
@@ -175,7 +172,14 @@ function showDashboardBenhNhanIfNeeded() {
             const sidebarActive = !!(SidebarSession.getCurrent && SidebarSession.getCurrent().id);
             if (!sameSet && !sidebarActive) {
                 renderCards(filteredFresh);
+                if (refreshFn) {
+                    refreshFn(filteredFresh);
+                }
                 return;
+            }
+
+            if (refreshFn) {
+                refreshFn(filteredFresh);
             }
         } catch (e) {
             console.warn('Dashboard auto refresh failed:', e);

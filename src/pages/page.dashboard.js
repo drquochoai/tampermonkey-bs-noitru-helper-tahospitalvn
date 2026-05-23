@@ -295,7 +295,7 @@ function showDashboardBenhNhanIfNeeded() {
         if (!select) return;
 
         const requestId = ++khoaSelectRefreshToken;
-        const previousValue = String(select.value || preferredKhoaId || getSelectedKhoa('551'));
+        const previousValue = String(select.value || preferredKhoaId || window.dr_data_khoa_id || getSelectedKhoa('551'));
 
         try {
             select.disabled = true;
@@ -352,9 +352,9 @@ function showDashboardBenhNhanIfNeeded() {
                 select.appendChild(opt);
             });
 
-            let nextValue = String(lastManualKhoaId || preferredKhoaId || previousValue || '').trim();
+            let nextValue = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || getSelectedKhoa('551') || '').trim();
             if (!filteredList.some((k) => String(k.id) === nextValue)) {
-                const fallbackPreferred = String(preferredKhoaId || previousValue || '').trim();
+                const fallbackPreferred = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || '').trim();
                 if (filteredList.some((k) => String(k.id) === fallbackPreferred)) {
                     nextValue = fallbackPreferred;
                 } else {
@@ -364,6 +364,7 @@ function showDashboardBenhNhanIfNeeded() {
 
             if (nextValue) {
                 select.value = nextValue;
+                window.dr_data_khoa_id = nextValue;
                 try { localStorage.setItem('bsnt_khoa_dashboard', nextValue); } catch (_) {}
             }
             select.disabled = false;
@@ -2393,6 +2394,7 @@ function showDashboardBenhNhanIfNeeded() {
                 lastManualKhoaId = String(val || '').trim();
                 const selectedOpt = e.target.options[e.target.selectedIndex];
                 const selectedName = (selectedOpt && selectedOpt.textContent) || val;
+                window.dr_data_khoa_id = String(val || '').trim();
                 try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
                 await reloadDashboardForSelectedKhoa(selectedName);
             });

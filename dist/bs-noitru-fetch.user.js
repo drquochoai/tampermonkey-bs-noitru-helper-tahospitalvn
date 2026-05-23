@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.1.1
+// @version      2.1.2
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -8244,7 +8244,7 @@ function showDashboardBenhNhanIfNeeded() {
         if (!select) return;
 
         const requestId = ++khoaSelectRefreshToken;
-        const previousValue = String(select.value || preferredKhoaId || getSelectedKhoa('551'));
+        const previousValue = String(select.value || preferredKhoaId || window.dr_data_khoa_id || getSelectedKhoa('551'));
 
         try {
             select.disabled = true;
@@ -8301,9 +8301,9 @@ function showDashboardBenhNhanIfNeeded() {
                 select.appendChild(opt);
             });
 
-            let nextValue = String(lastManualKhoaId || preferredKhoaId || previousValue || '').trim();
+            let nextValue = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || getSelectedKhoa('551') || '').trim();
             if (!filteredList.some((k) => String(k.id) === nextValue)) {
-                const fallbackPreferred = String(preferredKhoaId || previousValue || '').trim();
+                const fallbackPreferred = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || '').trim();
                 if (filteredList.some((k) => String(k.id) === fallbackPreferred)) {
                     nextValue = fallbackPreferred;
                 } else {
@@ -8313,6 +8313,7 @@ function showDashboardBenhNhanIfNeeded() {
 
             if (nextValue) {
                 select.value = nextValue;
+                window.dr_data_khoa_id = nextValue;
                 try { localStorage.setItem('bsnt_khoa_dashboard', nextValue); } catch (_) {}
             }
             select.disabled = false;
@@ -10342,6 +10343,7 @@ function showDashboardBenhNhanIfNeeded() {
                 lastManualKhoaId = String(val || '').trim();
                 const selectedOpt = e.target.options[e.target.selectedIndex];
                 const selectedName = (selectedOpt && selectedOpt.textContent) || val;
+                window.dr_data_khoa_id = String(val || '').trim();
                 try { localStorage.setItem('bsnt_khoa_dashboard', String(val)); } catch (_) { }
                 await reloadDashboardForSelectedKhoa(selectedName);
             });

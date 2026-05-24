@@ -87,7 +87,10 @@ function addSurgeryStatusIcon(card, item) {
     
     const surgeryInfo = getSurgeryDateInfo(surgeryDate);
     if (!surgeryInfo) return;
-    
+
+    // Keep the icon only for surgeries done today.
+    if (surgeryInfo.status !== 'today') return;
+
     // Create icon element
     const iconDiv = document.createElement('div');
     iconDiv.className = 'dr-surgery-status-icon';
@@ -104,29 +107,9 @@ function addSurgeryStatusIcon(card, item) {
         z-index: 10;
         pointer-events: none;
     `;
-    
-    // Set icon and title based on status
-    switch (surgeryInfo.status) {
-        case 'past':
-            iconDiv.textContent = '⬅️';
-            iconDiv.title = `Phẫu thuật đã qua - HPN${surgeryInfo.postOpDay}`;
-            break;
-        case 'today':
-            iconDiv.textContent = '⏸️';
-            iconDiv.title = 'Hôm nay PT';
-            break;
-        case 'future':
-            const daysUntil = Math.abs(surgeryInfo.daysDiff);
-            iconDiv.textContent = '➡️';
-            if (daysUntil === 1) {
-                iconDiv.title = 'Ngày mai';
-            } else if (daysUntil === 2) {
-                iconDiv.title = 'Ngày mốt PT';
-            } else {
-                iconDiv.title = `Còn ${daysUntil} ngày nữa PT`;
-            }
-            break;
-    }
+
+    iconDiv.textContent = '⏸️';
+    iconDiv.title = 'Hôm nay PT';
     
     // Add to card
     card.style.position = 'relative';

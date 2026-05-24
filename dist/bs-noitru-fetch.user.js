@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.2.1
+// @version      2.2.3
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -267,6 +267,40 @@ if (typeof window !== 'undefined') {
 }
 
 },{}],2:[function(require,module,exports){
+// BS_CAI_DAT_GPB_CAT_LANH.js
+// Cấu hình cho copy GPB cắt lạnh
+
+const BS_CAI_DAT_GPB_CAT_LANH = {
+    defaultExpectedMinutes: 90,
+    defaultMongMuonBiet: 'lành/ác',
+    defaultFallbackSpecimen: 'Mẫu bệnh phẩm theo chẩn đoán',
+    rules: [
+        {
+            label: 'Giáp',
+            keywords: 'giáp',
+            matchMode: 'OR',
+            mau_benh_pham: 'nhân giáp {laterality}',
+            mong_muon_biet: 'Lành/ác, xâm lấn vỏ bao không'
+        },
+        {
+            label: 'U phổi',
+            keywords: 'u phổi|phổi',
+            matchMode: 'OR',
+            mau_benh_pham: 'u {laterality}',
+            mong_muon_biet: 'Lành/ác'
+        }
+    ]
+};
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = BS_CAI_DAT_GPB_CAT_LANH;
+}
+
+if (typeof window !== 'undefined') {
+    window.BS_CAI_DAT_GPB_CAT_LANH = BS_CAI_DAT_GPB_CAT_LANH;
+}
+
+},{}],3:[function(require,module,exports){
 // DanhSachBenhNhan.js
 function DanhSachBenhNhan() {
     this.danhSach = null;
@@ -398,7 +432,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":52}],3:[function(require,module,exports){
+},{"./utils/khoaUtils":55}],4:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -900,7 +934,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":2,"./components/autoLoginToggle":6,"./components/copyDienTienAI":9,"./components/hsbaDataFetcher":13,"./googleAppsScript":25,"./pages/otm-entry":26,"./pages/page.dashboard":28,"./pages/page.lichmo.homnay":30,"./pages/page.settings":32,"./services/checklistService":36,"./utils":45,"./utils/hsbaV2Download":50}],4:[function(require,module,exports){
+},{"./DanhSachBenhNhan":3,"./components/autoLoginToggle":7,"./components/copyDienTienAI":10,"./components/hsbaDataFetcher":14,"./googleAppsScript":27,"./pages/otm-entry":28,"./pages/page.dashboard":30,"./pages/page.lichmo.homnay":32,"./pages/page.settings":34,"./services/checklistService":38,"./utils":47,"./utils/hsbaV2Download":53}],5:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -1023,12 +1057,13 @@ function createHsbaV1Button(item) {
     return btn;
 }
 
-},{"../pages/page.dashboard.support":29,"../services/checklistService":36,"../services/reportService":39}],5:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41}],6:[function(require,module,exports){
 // advancedFilter.js - Logic for advanced dashboard filtering
 const DialogManager = require('./dialogManager');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const Utils = require('../utils');
 const DateUtils = require('../utils/dateUtils');
+const { createResponsiveDropdownController } = require('./responsiveDropdown');
 
 /**
  * Trích xuất tên gốc của bác sĩ, loại bỏ các chức danh (BS, TS, ThS...)
@@ -1043,11 +1078,24 @@ function getBaseName(name) {
         .join(' ');
 }
 
+function hasMedsDoneBadgeForItem(item) {
+    if (!item) return false;
+    const ids = [item.mabn, item.pid, item.maBN, item.ma_benh_nhan]
+        .map(v => (v == null ? '' : String(v).trim()))
+        .filter(Boolean);
+    const selectors = ids.flatMap(id => [
+        `.dr-card[data-mabn="${id}"] .dr-badge-meds-done`,
+        `.dr-list-row[data-mabn="${id}"] .dr-badge-meds-row-corner`
+    ]);
+    return selectors.some(selector => !!document.querySelector(selector));
+}
+
 
 let advancedFilterState = {
     active: false,
     onlyXuatVien: false,  // Lọc BN xuất viện
     onlyCanLamSang: false, // Lọc BN cần cận lâm sàng
+    onlyChuaDanhThuoc: false, // Lọc BN chưa đánh thuốc hôm nay
     yLenhTags: [],      // Array of strings
     yLenhTagsLogic: 'OR', // 'OR' | 'AND'
     surgeryName: '',     // %like% search
@@ -1062,6 +1110,7 @@ let advancedFilterState = {
 function setupAdvancedFilter(topBar, onApply) {
     const topbarRight = topBar.querySelector('.dr-topbar-right');
     if (!topbarRight) return;
+    const dropdownController = createResponsiveDropdownController({ breakpoint: 1180 });
 
     const filterDropdown = document.createElement('div');
     filterDropdown.id = 'dr-advanced-filter-container';
@@ -1072,7 +1121,7 @@ function setupAdvancedFilter(topBar, onApply) {
     filterBtn.type = 'button';
     filterBtn.id = 'dr-advanced-filter-btn';
     filterBtn.className = 'dr-topbar-control-btn dr-dropdown-toggle';
-    filterBtn.title = 'Click để mở bộ lọc nâng cao. Hover để dùng lọc nhanh.';
+    filterBtn.title = 'Click để mở bộ lọc nâng cao; trên màn nhỏ sẽ mở lọc nhanh.';
     filterBtn.style.cssText = `
         height: 38px;
         padding: 0 12px;
@@ -1095,7 +1144,20 @@ function setupAdvancedFilter(topBar, onApply) {
     quickMenu.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px 10px; border-bottom:1px solid #e2e8f0; margin-bottom:6px;">
             <span style="font-size:12px; font-weight:700; color:#475569;">Lọc nhanh</span>
-            <span style="font-size:11px; color:#94a3b8;">Hover menu</span>
+            <span style="font-size:11px; color:#94a3b8;">Click menu</span>
+        </div>
+        <div class="dr-dropdown-item dr-filter-open-dialog" role="button">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-sliders-h"></i>
+                <span>Bộ lọc nâng cao</span>
+            </span>
+        </div>
+        <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="chuadanhthuoc" role="button" aria-pressed="false">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-pills"></i>
+                <span>Chưa đánh thuốc</span>
+            </span>
+            <i class="fas fa-check dr-filter-quick-indicator"></i>
         </div>
         <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="xuatvien" role="button" aria-pressed="false">
             <span style="display:flex; align-items:center; gap:10px;">
@@ -1155,19 +1217,57 @@ function setupAdvancedFilter(topBar, onApply) {
         topbarRight.appendChild(filterDropdown);
     }
 
+    dropdownController.register({
+        id: 'dr-advanced-filter-container',
+        container: filterDropdown,
+        toggle: filterBtn,
+        menu: quickMenu,
+        align: 'auto',
+        bindToggle: false
+    });
+
     filterBtn.onclick = (e) => {
         e.stopPropagation();
+        const isCompact = dropdownController.shouldUseCompactMode('dr-advanced-filter-container');
+        if (isCompact) {
+            dropdownController.toggle('dr-advanced-filter-container');
+            return;
+        }
+        dropdownController.closeAll();
         openFilterDialog(onApply);
     };
 
-    filterDropdown.addEventListener('mouseenter', () => filterDropdown.classList.add('open'));
-    filterDropdown.addEventListener('mouseleave', () => filterDropdown.classList.remove('open'));
+    const submenu = quickMenu.querySelector('.dr-filter-submenu');
+    const submenuTrigger = quickMenu.querySelector('.dr-filter-submenu-trigger');
+    const submenuMenu = quickMenu.querySelector('.dr-filter-submenu-menu');
+    if (submenuTrigger && submenu && submenuMenu) {
+        dropdownController.registerSubmenu({
+            id: 'dr-filter-surgery-date-submenu',
+            container: submenu,
+            toggle: submenuTrigger,
+            trigger: submenuTrigger,
+            menu: submenuMenu,
+            align: 'auto',
+            bindToggle: true
+        });
+    }
+
+    const openDialogItem = quickMenu.querySelector('.dr-filter-open-dialog');
+    if (openDialogItem) {
+        openDialogItem.onclick = (e) => {
+            e.stopPropagation();
+            dropdownController.closeAll();
+            openFilterDialog(onApply);
+        };
+    }
 
     quickMenu.querySelectorAll('[data-quick-filter]').forEach(item => {
         item.onclick = (e) => {
             e.stopPropagation();
             const filterType = item.getAttribute('data-quick-filter');
-            if (filterType === 'xuatvien') {
+            if (filterType === 'chuadanhthuoc') {
+                advancedFilterState.onlyChuaDanhThuoc = !advancedFilterState.onlyChuaDanhThuoc;
+            } else if (filterType === 'xuatvien') {
                 advancedFilterState.onlyXuatVien = !advancedFilterState.onlyXuatVien;
             } else if (filterType === 'canlamsang') {
                 advancedFilterState.onlyCanLamSang = !advancedFilterState.onlyCanLamSang;
@@ -1191,6 +1291,7 @@ function setupAdvancedFilter(topBar, onApply) {
     if (clearQuickBtn) {
         clearQuickBtn.onclick = (e) => {
             e.stopPropagation();
+            advancedFilterState.onlyChuaDanhThuoc = false;
             advancedFilterState.onlyXuatVien = false;
             advancedFilterState.onlyCanLamSang = false;
             advancedFilterState.surgeryDate = null;
@@ -1211,6 +1312,7 @@ function updateFilterBadge(btn) {
     if (!badge) return;
 
     let count = 0;
+    if (advancedFilterState.onlyChuaDanhThuoc) count++;
     if (advancedFilterState.onlyXuatVien) count++;
     if (advancedFilterState.onlyCanLamSang) count++;
     if (advancedFilterState.yLenhTags.length > 0) count++;
@@ -1250,9 +1352,11 @@ function refreshAdvancedFilterUI() {
 
     filterDropdown.querySelectorAll('[data-quick-filter]').forEach(item => {
         const filterType = item.getAttribute('data-quick-filter');
-        const isActive = filterType === 'xuatvien'
-            ? !!advancedFilterState.onlyXuatVien
-            : !!advancedFilterState.onlyCanLamSang;
+        const isActive = filterType === 'chuadanhthuoc'
+            ? !!advancedFilterState.onlyChuaDanhThuoc
+            : filterType === 'xuatvien'
+                ? !!advancedFilterState.onlyXuatVien
+                : !!advancedFilterState.onlyCanLamSang;
 
         item.classList.toggle('active', isActive);
         item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -1275,7 +1379,7 @@ function refreshAdvancedFilterUI() {
 
     const clearQuickBtn = filterDropdown.querySelector('[data-quick-filter-action="clear"]');
     if (clearQuickBtn) {
-        const hasQuickFilter = !!(advancedFilterState.onlyXuatVien || advancedFilterState.onlyCanLamSang || advancedFilterState.surgeryDate);
+        const hasQuickFilter = !!(advancedFilterState.onlyChuaDanhThuoc || advancedFilterState.onlyXuatVien || advancedFilterState.onlyCanLamSang || advancedFilterState.surgeryDate);
         clearQuickBtn.style.opacity = hasQuickFilter ? '1' : '0.5';
         clearQuickBtn.style.pointerEvents = hasQuickFilter ? 'auto' : 'none';
     }
@@ -1322,6 +1426,10 @@ function openFilterDialog(onApply) {
                     <i class="fas fa-bolt" style="color:#f59e0b;"></i> Lọc nhanh
                 </h3>
                 <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyChuaDanhThuoc?'#fff7ed':'#fff'};color:${advancedFilterState.onlyChuaDanhThuoc?'#c2410c':'#374151'};transition:all 0.15s;">
+                        <input type="checkbox" id="filter-chuadanhthuoc" ${advancedFilterState.onlyChuaDanhThuoc ? 'checked' : ''}>
+                        <i class="fas fa-pills"></i> Chưa đánh thuốc
+                    </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyXuatVien?'#dcfce7':'#fff'};color:${advancedFilterState.onlyXuatVien?'#16a34a':'#374151'};transition:all 0.15s;">
                         <input type="checkbox" id="filter-xuatvien" ${advancedFilterState.onlyXuatVien ? 'checked' : ''}>
                         <i class="fas fa-sign-out-alt"></i> Xuất viện
@@ -1511,6 +1619,8 @@ function openFilterDialog(onApply) {
     // Quick filter checkbox listeners
     const xuatVienCb = inner.querySelector('#filter-xuatvien');
     const canLamSangCb = inner.querySelector('#filter-canlamsang');
+    const chuaDanhThuocCb = inner.querySelector('#filter-chuadanhthuoc');
+    if (chuaDanhThuocCb) chuaDanhThuocCb.onchange = triggerUpdate;
     if (xuatVienCb) xuatVienCb.onchange = triggerUpdate;
     if (canLamSangCb) canLamSangCb.onchange = triggerUpdate;
 
@@ -1534,6 +1644,8 @@ function openFilterDialog(onApply) {
         // Quick filters
         const xuatVienCb = inner.querySelector('#filter-xuatvien');
         const canLamSangCb = inner.querySelector('#filter-canlamsang');
+        const chuaDanhThuocCb = inner.querySelector('#filter-chuadanhthuoc');
+        if (chuaDanhThuocCb) advancedFilterState.onlyChuaDanhThuoc = chuaDanhThuocCb.checked;
         if (xuatVienCb) advancedFilterState.onlyXuatVien = xuatVienCb.checked;
         if (canLamSangCb) advancedFilterState.onlyCanLamSang = canLamSangCb.checked;
 
@@ -1558,6 +1670,7 @@ function openFilterDialog(onApply) {
 
         // CRITICAL FIX: Update active state immediately
         advancedFilterState.active = !!(
+            advancedFilterState.onlyChuaDanhThuoc ||
             advancedFilterState.onlyXuatVien ||
             advancedFilterState.onlyCanLamSang ||
             advancedFilterState.surgeryName || 
@@ -1569,6 +1682,7 @@ function openFilterDialog(onApply) {
 
     function resetFilter() {
         advancedFilterState.active = false;
+        advancedFilterState.onlyChuaDanhThuoc = false;
         advancedFilterState.onlyXuatVien = false;
         advancedFilterState.onlyCanLamSang = false;
         advancedFilterState.yLenhTags = [];
@@ -1615,6 +1729,12 @@ function matchesAdvancedFilter(item) {
     const logEntry = getLatestSurgeryLog(item);
     
     // 1. Filter by Surgery Name (PPPT)
+    if (advancedFilterState.onlyChuaDanhThuoc) {
+        hasCondition = true;
+        if (hasMedsDoneBadgeForItem(item)) return false;
+    }
+
+    // 1b. Quick filter by patients that have not been medicated today
     if (advancedFilterState.surgeryName.trim()) {
         hasCondition = true;
         if (!logEntry) return false;
@@ -1724,7 +1844,7 @@ module.exports = {
     advancedFilterState
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":45,"../utils/dateUtils":47,"./dialogManager":11}],6:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../utils":47,"../utils/dateUtils":50,"./dialogManager":12,"./responsiveDropdown":21}],7:[function(require,module,exports){
 // autoLoginToggle.js - Shared toggle UI for Auto Login
 
 function applyToggleStyles(a, enabled) {
@@ -1767,7 +1887,7 @@ function createAutoLoginToggle({ enabled, onToggle, onDblClick, title }) {
 
 module.exports = { createAutoLoginToggle, applyToggleStyles };
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 // cardTooltip.js - Global hover tooltip for patient cards
 
 const STORAGE_KEY = 'dr-card-hover-preview';
@@ -1886,9 +2006,11 @@ module.exports = {
     STORAGE_KEY
 };
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 // contextMenu.js
 const { copyToClipboard } = require('../utils/uiUtils');
+const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
+const { buildLichMoPtvCopy, buildGpbCatLanhCopy } = require('../utils/contextMenuCopyBuilders');
 
 // Define global showToast if not pulled from uiUtils properly due to scoping
 const showToastFallback = (msg) => {
@@ -1926,6 +2048,12 @@ class ContextMenu {
             <div class="dr-context-menu-item" id="ctx-copy">
                 <span>📋</span> Copy báo cáo (1 BN)
             </div>
+            <div class="dr-context-menu-item" id="ctx-copy-lichmo-ptv">
+                <span>📋</span> Copy báo Lịch mổ (PTV)
+            </div>
+            <div class="dr-context-menu-item" id="ctx-copy-gpb-cat-lanh">
+                <span>🧊</span> Copy GPB cắt lạnh
+            </div>
             <div class="dr-context-menu-item" id="ctx-tdt">
                 <span>📄</span> Mở Tờ Điều Trị
             </div>
@@ -1945,6 +2073,8 @@ class ContextMenu {
         document.body.appendChild(menu);
         this.menu = menu;
 
+        // No submenu for specialized copy; items are top-level entries now.
+
         // Try adjusting position if it goes out of bounds
         setTimeout(() => {
             const rect = menu.getBoundingClientRect();
@@ -1962,17 +2092,60 @@ class ContextMenu {
             try {
                 const ChecklistService = require('../services/checklistService');
                 const ReportService = require('../services/reportService');
-                const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
                 
                 const res = await ChecklistService.loadChecklistData(patient);
                 const obj = ChecklistService.findChecklistObject(res);
                 const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
                 const html = ReportService.generateSingleHTML(patient, state);
-                const text = ReportService.generateSingleText(patient, state);
+                let text = ReportService.generateSingleText(patient, state);
+                // Strip leading room/bed prefix from first line for single-patient text copies
+                try {
+                    const lines = String(text || '').split('\n');
+                    if (lines.length > 0 && lines[0].includes(' - ')) {
+                        const parts = lines[0].split(' - ');
+                        const firstPart = (parts[0] || '').toLowerCase();
+                        if (/phòng|giường|^\d+/.test(firstPart)) {
+                            lines[0] = parts.slice(1).join(' - ');
+                            text = lines.join('\n');
+                        }
+                    }
+                } catch (_) {}
                 await copyReportToClipboardRich(html, text);
             } catch (err) {
                 console.error('Copy single-patient report failed:', err);
                 showToastFallback('Lỗi khi copy báo cáo bệnh nhân');
+            }
+        };
+
+        menu.querySelector('#ctx-copy-lichmo-ptv').onclick = async (evt) => {
+            evt.stopPropagation();
+            this.hide();
+            try {
+                const result = await buildLichMoPtvCopy(patient, { includeLocation: false });
+                if (!result) {
+                    showToastFallback('Không có dữ liệu phẫu thuật để copy');
+                    return;
+                }
+                await copyReportToClipboardRich(result.html, result.text);
+            } catch (err) {
+                console.error('Copy Lịch mổ (PTV) failed:', err);
+                showToastFallback('Lỗi khi copy báo Lịch mổ (PTV)');
+            }
+        };
+
+        menu.querySelector('#ctx-copy-gpb-cat-lanh').onclick = async (evt) => {
+            evt.stopPropagation();
+            this.hide();
+            try {
+                const result = await buildGpbCatLanhCopy(patient, { includeLocation: false });
+                if (!result) {
+                    showToastFallback('Không có dữ liệu phẫu thuật để copy');
+                    return;
+                }
+                await copyReportToClipboardRich(result.html, result.text);
+            } catch (err) {
+                console.error('Copy GPB cắt lạnh failed:', err);
+                showToastFallback('Lỗi khi copy GPB cắt lạnh');
             }
         };
 
@@ -2021,7 +2194,7 @@ class ContextMenu {
 const contextMenu = new ContextMenu();
 module.exports = contextMenu;
 
-},{"../pages/page.dashboard.support":29,"../services/checklistService":36,"../services/reportService":39,"../utils/uiUtils":58,"./actionButtons":4}],9:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils/contextMenuCopyBuilders":49,"../utils/uiUtils":61,"./actionButtons":5}],10:[function(require,module,exports){
 // copyDienTienAI.js
 // Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
 
@@ -2295,7 +2468,7 @@ module.exports = {
     setStatus
 };
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 // copyMenu.js - Dropdown menu for quick report copying
 const DialogManager = require('./dialogManager');
 const ReportService = require('../services/reportService');
@@ -2686,7 +2859,7 @@ function setupCopyMenu(bottomBar) {
 
 module.exports = { setupCopyMenu };
 
-},{"../pages/page.dashboard.support":29,"../services/checklistService":36,"../services/reportService":39,"../utils/dateUtils":47,"./dialogManager":11}],11:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils/dateUtils":50,"./dialogManager":12}],12:[function(require,module,exports){
 // dialogManager.js - Manager for dialogs and modals
 
 const DialogManager = {
@@ -2805,7 +2978,7 @@ const DialogManager = {
 
 module.exports = DialogManager;
 
-},{}],12:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 // displaySettings.js
 
 class DisplaySettings {
@@ -2894,7 +3067,7 @@ class DisplaySettings {
 const displaySettings = new DisplaySettings();
 module.exports = displaySettings;
 
-},{"./settingsDialog":20}],13:[function(require,module,exports){
+},{"./settingsDialog":22}],14:[function(require,module,exports){
 // hsbaDataFetcher.js - Fetch HSBA V2 data via background tab and GraphQL
 
 /*
@@ -3692,7 +3865,7 @@ try { hsbaBackgroundFetcherIfNeeded(); } catch(_) {}
 module.exports = { addHSBATab };
 
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":36,"./dialogManager":11}],14:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"./dialogManager":12}],15:[function(require,module,exports){
 // components/khoaSelect.js - Reusable khoa selection button with dropdown
 
 const ApiService = require('../services/apiService');
@@ -3797,7 +3970,7 @@ function createKhoaSelect(opts) {
 
 module.exports = { createKhoaSelect };
 
-},{"../services/apiService":34}],15:[function(require,module,exports){
+},{"../services/apiService":36}],16:[function(require,module,exports){
 // components/listView.js - Rendering for list view rows and actions
 const Utils = require('../utils');
 const PatientDataMapper = require('../utils/patientDataMapper');
@@ -3877,7 +4050,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":29,"../services/checklistService":36,"../services/reportService":39,"../utils":45,"../utils/domUpdaters":48,"../utils/htmlUtils":51,"../utils/patientDataMapper":53,"../utils/tagUtils":56,"./actionButtons":4}],16:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils":47,"../utils/domUpdaters":51,"../utils/htmlUtils":54,"../utils/patientDataMapper":56,"../utils/tagUtils":59,"./actionButtons":5}],17:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -3906,7 +4079,7 @@ const LoginHandler = {
 
 module.exports = LoginHandler;
 
-},{}],17:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 // modalManager.js - Centralized modal/sidebar management
 let SidebarSession = null;
 try { SidebarSession = require('./sidebarSession'); } catch(_) {}
@@ -3983,7 +4156,7 @@ const ModalManager = {
 
 module.exports = ModalManager;
 
-},{"./sidebarSession":21}],18:[function(require,module,exports){
+},{"./sidebarSession":23}],19:[function(require,module,exports){
 // patientInfoSection.js
 const { setupYLenhHandlers } = require('./yLenhHandlers');
 const { setupPhauThuatHandlers } = require('./phauThuatHandlers');
@@ -4215,7 +4388,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":36,"../services/reportService":39,"../utils":45,"../utils/globalFnUtils":49,"../utils/stateSync":54,"../utils/uiUtils":58,"./displaySettings":12,"./phauThuatHandlers":19,"./yLenhHandlers":24}],19:[function(require,module,exports){
+},{"../services/checklistService":38,"../services/reportService":41,"../utils":47,"../utils/globalFnUtils":52,"../utils/stateSync":57,"../utils/uiUtils":61,"./displaySettings":13,"./phauThuatHandlers":20,"./yLenhHandlers":26}],20:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4670,7 +4843,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
                 <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}${sourceMarker}</div>
                 <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
-                <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
+                <div id="dr-bs-PTV-${index}" data-field-id="dr-bs-PTV" style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
             </div>
             `;
         }).join('');
@@ -4762,7 +4935,357 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":36,"../utils/globalFnUtils":49,"../utils/stateSync":54,"../utils/surgeryUtils":55}],20:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"../utils/globalFnUtils":52,"../utils/stateSync":57,"../utils/surgeryUtils":58}],21:[function(require,module,exports){
+// responsiveDropdown.js - Shared dropdown controller for top bar menus
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function isCompactViewport(breakpoint) {
+    try {
+        const maxWidthQuery = window.matchMedia(`(max-width: ${breakpoint}px)`);
+        const coarsePointerQuery = window.matchMedia('(pointer: coarse)');
+        return maxWidthQuery.matches || coarsePointerQuery.matches;
+    } catch (_) {
+        return false;
+    }
+}
+
+class ResponsiveDropdownController {
+    constructor(options = {}) {
+        this.breakpoint = Number.isFinite(Number(options.breakpoint)) ? Number(options.breakpoint) : 1180;
+        this.zIndex = Number.isFinite(Number(options.zIndex)) ? Number(options.zIndex) : 10050;
+        this.entriesById = new Map();
+        this.openEntryIds = new Set();
+        this.boundDocumentClick = this.handleDocumentClick.bind(this);
+        this.boundWindowResize = this.handleViewportChange.bind(this);
+        this.boundWindowScroll = this.handleViewportChange.bind(this);
+        this.boundKeyDown = this.handleKeyDown.bind(this);
+        this.documentListenersAttached = false;
+        this.documentClickCapture = true;
+        this.windowScrollCapture = true;
+    }
+
+    register(config) {
+        if (!config || !config.id || !config.container || !config.toggle || !config.menu) return null;
+
+        const entry = {
+            id: config.id,
+            type: config.type || 'dropdown',
+            container: config.container,
+            toggle: config.toggle,
+            menu: config.menu,
+            trigger: config.trigger || config.toggle,
+            align: config.align || 'auto',
+            breakpoint: Number.isFinite(Number(config.breakpoint)) ? Number(config.breakpoint) : this.breakpoint,
+            zIndex: Number.isFinite(Number(config.zIndex)) ? Number(config.zIndex) : this.zIndex,
+            openClass: config.openClass || 'open',
+            menuPortalParent: null,
+            menuPortalNextSibling: null,
+            isOpen: false,
+            closeTimer: null,
+            hoverEnabled: config.hoverEnabled !== false
+        };
+
+        this.entriesById.set(entry.id, entry);
+
+        if (entry.toggle && config.bindToggle !== false) {
+            entry.toggle.addEventListener('click', (event) => {
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                this.toggle(entry.id);
+            });
+        }
+
+        return entry;
+    }
+
+    registerSubmenu(config) {
+        const entry = this.register({
+            ...config,
+            type: 'submenu',
+            trigger: config.trigger || config.toggle || config.menu
+        });
+
+        if (!entry) return entry;
+
+        const openOnHover = () => {
+            if (!this.shouldUseCompactMode(entry)) {
+                this.cancelCloseTimer(entry);
+                this.open(entry.id);
+            }
+        };
+
+        const scheduleClose = () => {
+            if (this.shouldUseCompactMode(entry)) return;
+            this.scheduleCloseTimer(entry);
+        };
+
+        if (entry.trigger && entry.hoverEnabled) {
+            entry.trigger.addEventListener('pointerenter', openOnHover);
+            entry.trigger.addEventListener('pointerleave', scheduleClose);
+            entry.trigger.addEventListener('click', (event) => {
+                if (!this.shouldUseCompactMode(entry)) return;
+                if (event) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                }
+                this.toggle(entry.id);
+            });
+        }
+
+        if (entry.menu && entry.hoverEnabled) {
+            entry.menu.addEventListener('pointerenter', () => this.cancelCloseTimer(entry));
+            entry.menu.addEventListener('pointerleave', scheduleClose);
+        }
+
+        return entry;
+    }
+
+    shouldUseCompactMode(entryOrId) {
+        const entry = typeof entryOrId === 'string' ? this.entriesById.get(entryOrId) : entryOrId;
+        if (!entry) return isCompactViewport(this.breakpoint);
+        return isCompactViewport(entry.breakpoint);
+    }
+
+    isOpen(id) {
+        const entry = this.entriesById.get(id);
+        return !!(entry && entry.isOpen);
+    }
+
+    toggle(id) {
+        const entry = this.entriesById.get(id);
+        if (!entry) return;
+        if (entry.isOpen) this.close(id);
+        else this.open(id);
+    }
+
+    open(id) {
+        const entry = this.entriesById.get(id);
+        if (!entry) return;
+
+        this.cancelCloseTimer(entry);
+        this.closeAll(entry.id);
+
+        if (!entry.menuPortalParent) {
+            entry.menuPortalParent = entry.menu.parentNode;
+            entry.menuPortalNextSibling = entry.menu.nextSibling;
+        }
+
+        if (entry.menu.parentNode !== document.body) {
+            document.body.appendChild(entry.menu);
+        }
+
+        entry.container.classList.add(entry.openClass);
+        entry.menu.style.display = 'block';
+        entry.menu.style.position = 'fixed';
+        entry.menu.style.visibility = 'hidden';
+        entry.menu.style.opacity = '0';
+        entry.menu.style.transform = 'translateY(10px)';
+        entry.menu.style.left = '0px';
+        entry.menu.style.top = '0px';
+        entry.menu.style.right = 'auto';
+        entry.menu.style.bottom = 'auto';
+        entry.menu.style.zIndex = String(entry.zIndex);
+        entry.menu.style.maxHeight = 'calc(100vh - 16px)';
+        entry.menu.style.overflowY = 'auto';
+        entry.menu.style.overflowX = 'hidden';
+        entry.menu.style.boxSizing = 'border-box';
+
+        entry.isOpen = true;
+        this.openEntryIds.add(entry.id);
+        this.ensureGlobalListeners();
+
+        window.requestAnimationFrame(() => {
+            if (!entry.isOpen) return;
+            this.position(entry);
+            entry.menu.style.opacity = '1';
+            entry.menu.style.transform = 'translateY(0)';
+            entry.menu.style.visibility = 'visible';
+        });
+    }
+
+    close(id) {
+        const entry = this.entriesById.get(id);
+        if (!entry || !entry.isOpen) return;
+
+        this.cancelCloseTimer(entry);
+        entry.isOpen = false;
+        this.openEntryIds.delete(entry.id);
+        entry.container.classList.remove(entry.openClass);
+        entry.menu.style.display = 'none';
+        entry.menu.style.visibility = '';
+        entry.menu.style.opacity = '';
+        entry.menu.style.transform = '';
+        entry.menu.style.position = '';
+        entry.menu.style.left = '';
+        entry.menu.style.top = '';
+        entry.menu.style.right = '';
+        entry.menu.style.bottom = '';
+        entry.menu.style.zIndex = '';
+        entry.menu.style.maxHeight = '';
+        entry.menu.style.overflowY = '';
+        entry.menu.style.overflowX = '';
+        entry.menu.style.boxSizing = '';
+
+        this.restoreMenu(entry);
+        this.cleanupGlobalListeners();
+    }
+
+    closeAll(exceptId = null) {
+        Array.from(this.openEntryIds).forEach((openId) => {
+            if (exceptId && openId === exceptId) return;
+            this.close(openId);
+        });
+    }
+
+    position(entry) {
+        const anchor = entry.type === 'submenu' ? entry.trigger : entry.toggle;
+        if (!anchor || !entry.menu) return;
+
+        const anchorRect = anchor.getBoundingClientRect();
+        const menuRect = entry.menu.getBoundingClientRect();
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const margin = 8;
+        const gap = entry.type === 'submenu' ? 6 : 8;
+        const compact = this.shouldUseCompactMode(entry);
+
+        let left = anchorRect.left;
+        let top = anchorRect.bottom + gap;
+
+        if (entry.type === 'submenu') {
+            if (compact) {
+                left = anchorRect.left;
+                top = anchorRect.bottom + 6;
+            } else {
+                left = anchorRect.right + gap;
+                if (left + menuRect.width > viewportWidth - margin) {
+                    left = anchorRect.left - menuRect.width - gap;
+                }
+                if (left < margin) {
+                    left = margin;
+                }
+                if (top + menuRect.height > viewportHeight - margin) {
+                    top = Math.max(margin, viewportHeight - menuRect.height - margin);
+                }
+            }
+        } else {
+            if (entry.align === 'right' || (entry.align === 'auto' && left + menuRect.width > viewportWidth - margin)) {
+                left = anchorRect.right - menuRect.width;
+            }
+            if (left + menuRect.width > viewportWidth - margin) {
+                left = viewportWidth - menuRect.width - margin;
+            }
+            if (left < margin) {
+                left = margin;
+            }
+            if (top + menuRect.height > viewportHeight - margin) {
+                top = anchorRect.top - menuRect.height - gap;
+                if (top < margin) {
+                    top = Math.max(margin, viewportHeight - menuRect.height - margin);
+                }
+            }
+        }
+
+        left = clamp(left, margin, Math.max(margin, viewportWidth - menuRect.width - margin));
+        top = clamp(top, margin, Math.max(margin, viewportHeight - menuRect.height - margin));
+
+        entry.menu.style.left = `${Math.round(left)}px`;
+        entry.menu.style.top = `${Math.round(top)}px`;
+
+        if (compact) {
+            entry.menu.style.minWidth = entry.type === 'submenu' ? '180px' : '220px';
+            entry.menu.style.maxWidth = `${Math.max(180, viewportWidth - 16)}px`;
+        }
+    }
+
+    restoreMenu(entry) {
+        if (!entry.menuPortalParent) return;
+
+        const parent = entry.menuPortalParent;
+        const nextSibling = entry.menuPortalNextSibling;
+        if (nextSibling && nextSibling.parentNode === parent) {
+            parent.insertBefore(entry.menu, nextSibling);
+        } else {
+            parent.appendChild(entry.menu);
+        }
+    }
+
+    handleDocumentClick(event) {
+        const target = event.target;
+        const openEntries = Array.from(this.openEntryIds)
+            .map((id) => this.entriesById.get(id))
+            .filter(Boolean);
+
+        const clickedInside = openEntries.some((entry) => {
+            return entry.container.contains(target) || entry.menu.contains(target) || entry.toggle.contains(target) || (entry.trigger && entry.trigger.contains(target));
+        });
+
+        if (!clickedInside) {
+            this.closeAll();
+        }
+    }
+
+    handleViewportChange() {
+        Array.from(this.openEntryIds).forEach((id) => {
+            const entry = this.entriesById.get(id);
+            if (entry) this.position(entry);
+        });
+    }
+
+    handleKeyDown(event) {
+        if (event.key === 'Escape') {
+            this.closeAll();
+        }
+    }
+
+    scheduleCloseTimer(entry) {
+        this.cancelCloseTimer(entry);
+        entry.closeTimer = window.setTimeout(() => {
+            entry.closeTimer = null;
+            this.close(entry.id);
+        }, 120);
+    }
+
+    cancelCloseTimer(entry) {
+        if (entry && entry.closeTimer) {
+            window.clearTimeout(entry.closeTimer);
+            entry.closeTimer = null;
+        }
+    }
+
+    ensureGlobalListeners() {
+        if (this.documentListenersAttached) return;
+        document.addEventListener('click', this.boundDocumentClick, this.documentClickCapture);
+        window.addEventListener('resize', this.boundWindowResize, { passive: true });
+        window.addEventListener('scroll', this.boundWindowScroll, this.windowScrollCapture);
+        document.addEventListener('keydown', this.boundKeyDown, true);
+        this.documentListenersAttached = true;
+    }
+
+    cleanupGlobalListeners() {
+        if (this.openEntryIds.size > 0 || !this.documentListenersAttached) return;
+        document.removeEventListener('click', this.boundDocumentClick, this.documentClickCapture);
+        window.removeEventListener('resize', this.boundWindowResize);
+        window.removeEventListener('scroll', this.boundWindowScroll, this.windowScrollCapture);
+        document.removeEventListener('keydown', this.boundKeyDown, true);
+        this.documentListenersAttached = false;
+    }
+}
+
+function createResponsiveDropdownController(options = {}) {
+    return new ResponsiveDropdownController(options);
+}
+
+module.exports = {
+    createResponsiveDropdownController
+};
+
+},{}],22:[function(require,module,exports){
 // settingsDialog.js - Dialog component for settings (reusable, mirrors ?caidat page)
 const DialogManager = require('./dialogManager');
 const SettingsService = require('../services/settingsService');
@@ -5287,7 +5810,7 @@ async function showSettingsDialog(initialTab = 'display') {
 
 module.exports = { showSettingsDialog };
 
-},{"../services/settingsService":41,"../utils/uiUtils":58,"./autoLoginToggle":6,"./cardTooltip":7,"./dialogManager":11,"./displaySettings":12,"./userInfoSettingsTab":23}],21:[function(require,module,exports){
+},{"../services/settingsService":43,"../utils/uiUtils":61,"./autoLoginToggle":7,"./cardTooltip":8,"./dialogManager":12,"./displaySettings":13,"./userInfoSettingsTab":25}],23:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -5322,7 +5845,7 @@ const SidebarSession = {
 
 module.exports = SidebarSession;
 
-},{}],22:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 // components/trackingUI.js
 
 const ApiService = require('../services/apiService');
@@ -5964,7 +6487,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
 
 module.exports = { setupTrackingUI };
 
-},{"../pages/page.dashboard.support":29,"../services/apiService":34,"../services/patientService":38,"../services/reportService":39,"../services/trackedPatientService":43,"../utils":45,"../utils/khoaUtils":52,"./cardTooltip":7,"./dialogManager":11}],23:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/apiService":36,"../services/patientService":40,"../services/reportService":41,"../services/trackedPatientService":45,"../utils":47,"../utils/khoaUtils":55,"./cardTooltip":8,"./dialogManager":12}],25:[function(require,module,exports){
 const ApiService = require('../services/apiService');
 
 function ensureMarkup(container) {
@@ -6282,7 +6805,7 @@ async function mountUserInfoSettingsTab(opts) {
 
 module.exports = { mountUserInfoSettingsTab };
 
-},{"../services/apiService":34}],24:[function(require,module,exports){
+},{"../services/apiService":36}],26:[function(require,module,exports){
 // yLenhHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -6749,7 +7272,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":36,"../utils/dateUtils":47,"../utils/globalFnUtils":49,"../utils/stateSync":54}],25:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"../utils/dateUtils":50,"../utils/globalFnUtils":52,"../utils/stateSync":57}],27:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -6835,7 +7358,7 @@ module.exports = {
     GOOGLE_APPS_SCRIPT_URL: GOOGLE_APPS_SCRIPT_URL
 };
 
-},{}],26:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 // otm-entry.js - Entry point for OTM content script
 (function() {
     'use strict';
@@ -6856,7 +7379,7 @@ module.exports = {
 
 })();
 
-},{"./otm.content.script":27}],27:[function(require,module,exports){
+},{"./otm.content.script":29}],29:[function(require,module,exports){
 // otm.content.js - Content script for OTM surgery data fetching
 (function() {
     'use strict';
@@ -7945,7 +8468,7 @@ module.exports = {
 
 })();
 
-},{}],28:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 (function (global){(function (){
 // dashboard.js
 
@@ -7975,6 +8498,7 @@ const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneB
 const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
 const { setupAdvancedFilter, matchesAdvancedFilter, advancedFilterState } = require('../components/advancedFilter');
 const { setupCopyMenu } = require('../components/copyMenu');
+const { createResponsiveDropdownController } = require('../components/responsiveDropdown');
 
 // Import utility functions
 const { showToast, copyToClipboard } = require('../utils/uiUtils');
@@ -8811,7 +9335,7 @@ function showDashboardBenhNhanIfNeeded() {
                     <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
                     <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}</div>
                     <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
-                    <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
+                    <div id="dr-bs-PTV-${index}" data-field-id="dr-bs-PTV" style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
                 </div>
             `).join('');
 
@@ -9518,6 +10042,30 @@ function showDashboardBenhNhanIfNeeded() {
         const authorsBtn = topBar.querySelector('#dr-authors-btn');
         const authorsReloadBtn = topBar.querySelector('#dr-authors-reload-btn');
         const authorsList = topBar.querySelector('#dr-authors-list');
+        const topbarDropdownController = createResponsiveDropdownController({ breakpoint: 1180 });
+
+        topbarDropdownController.register({
+            id: 'dr-sort-dropdown-container',
+            container: sortDropdownContainer,
+            toggle: sortToggle,
+            menu: sortDropdownContainer ? sortDropdownContainer.querySelector('.dr-dropdown-menu') : null,
+            align: 'auto'
+        });
+        topbarDropdownController.register({
+            id: 'dr-view-dropdown-container',
+            container: dropdownContainer,
+            toggle: topBar.querySelector('#dr-view-toggle-premium'),
+            menu: dropdownContainer ? dropdownContainer.querySelector('.dr-dropdown-menu') : null,
+            align: 'auto'
+        });
+        topbarDropdownController.register({
+            id: 'dr-authors-dropdown-container',
+            container: authorsContainer,
+            toggle: authorsBtn,
+            menu: authorsContainer ? authorsContainer.querySelector('.dr-dropdown-menu') : null,
+            align: 'auto',
+            bindToggle: false
+        });
 
         const SORT_KEY = 'dr-card-sort';
         const validSortKeys = new Set(['default', 'admit-asc', 'admit-desc', 'stay-asc', 'stay-desc']);
@@ -9760,18 +10308,11 @@ function showDashboardBenhNhanIfNeeded() {
             })();
         }
 
-        if (sortToggle) {
-            sortToggle.onclick = (e) => {
-                e.stopPropagation();
-                sortDropdownContainer.classList.toggle('open');
-            };
-        }
-
         if (authorsBtn) {
             authorsBtn.onclick = (e) => {
                 e.stopPropagation();
-                authorsContainer.classList.toggle('open');
-                if (authorsContainer.classList.contains('open') && cloudAccountsLoaded) {
+                topbarDropdownController.toggle('dr-authors-dropdown-container');
+                if (authorsContainer && authorsContainer.classList.contains('open') && cloudAccountsLoaded) {
                     renderAuthorsList();
                 }
             };
@@ -9792,18 +10333,13 @@ function showDashboardBenhNhanIfNeeded() {
             };
         }
 
-        // Close dropdown when clicking outside
-        document.addEventListener('click', () => {
-            if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
-            if (authorsContainer) authorsContainer.classList.remove('open');
-        });
-
         // Handle item selection
         dropdownItems.forEach(item => {
             item.onclick = (e) => {
                 e.stopPropagation();
                 const targetView = item.getAttribute('data-view');
                 if (targetView === view) return;
+                topbarDropdownController.closeAll();
 
                 localStorage.setItem(VIEW_KEY, targetView);
                 localStorage.setItem('dr-view-mode', targetView);
@@ -9830,7 +10366,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const targetSort = item.getAttribute('data-sort') || 'default';
                 const nextSort = targetSort === currentSort ? 'default' : targetSort;
                 setCurrentSort(nextSort);
-                if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
+                topbarDropdownController.closeAll();
                 applyFilter();
             };
         });
@@ -10961,7 +11497,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":4,"../components/advancedFilter":5,"../components/cardTooltip":7,"../components/contextMenu":8,"../components/copyDienTienAI":9,"../components/copyMenu":10,"../components/dialogManager":11,"../components/displaySettings":12,"../components/hsbaDataFetcher":13,"../components/listView":15,"../components/loginHandler":16,"../components/modalManager":17,"../components/patientInfoSection":18,"../components/phauThuatHandlers":19,"../components/sidebarSession":21,"../components/trackingUI":22,"../services/apiService":34,"../services/checklistService":36,"../services/patientService":38,"../services/settingsService":41,"../utils":45,"../utils/checklistUtils":46,"../utils/domUpdaters":48,"../utils/htmlUtils":51,"../utils/khoaUtils":52,"../utils/patientDataMapper":53,"../utils/stateSync":54,"../utils/surgeryUtils":55,"../utils/tagUtils":56,"../utils/textUtils":57,"../utils/uiUtils":58,"./page.dashboard.support":29}],29:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":5,"../components/advancedFilter":6,"../components/cardTooltip":8,"../components/contextMenu":9,"../components/copyDienTienAI":10,"../components/copyMenu":11,"../components/dialogManager":12,"../components/displaySettings":13,"../components/hsbaDataFetcher":14,"../components/listView":16,"../components/loginHandler":17,"../components/modalManager":18,"../components/patientInfoSection":19,"../components/phauThuatHandlers":20,"../components/responsiveDropdown":21,"../components/sidebarSession":23,"../components/trackingUI":24,"../services/apiService":36,"../services/checklistService":38,"../services/patientService":40,"../services/settingsService":43,"../utils":47,"../utils/checklistUtils":48,"../utils/domUpdaters":51,"../utils/htmlUtils":54,"../utils/khoaUtils":55,"../utils/patientDataMapper":56,"../utils/stateSync":57,"../utils/surgeryUtils":58,"../utils/tagUtils":59,"../utils/textUtils":60,"../utils/uiUtils":61,"./page.dashboard.support":31}],31:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -12255,6 +12791,11 @@ function addGlobalStyles() {
             opacity: 1;
             transform: translateX(0);
         }
+        .dr-filter-submenu.open .dr-filter-submenu-menu {
+            display: block;
+            opacity: 1;
+            transform: translateX(0);
+        }
         .dr-filter-submenu-menu::before {
             content: '';
             position: absolute;
@@ -12268,6 +12809,14 @@ function addGlobalStyles() {
             .dr-top-filter-bar {
                 padding: 10px 12px !important;
                 gap: 10px !important;
+                flex-wrap: nowrap !important;
+            }
+            .dr-topbar-left,
+            .dr-topbar-center,
+            .dr-topbar-right {
+                flex: 0 0 auto !important;
+                flex-wrap: nowrap !important;
+                min-width: 0 !important;
             }
             .dr-topbar-right {
                 gap: 8px !important;
@@ -12281,73 +12830,138 @@ function addGlobalStyles() {
             }
             .dr-topbar-btn-text,
             #dr-view-label-text {
-                font-size: 13px !important;
+                display: none !important;
+            }
+            .dr-topbar-checkbox {
+                display: none !important;
             }
             #dr-search-input {
                 height: 34px !important;
+                flex: 0 0 160px !important;
+                min-width: 160px !important;
+                max-width: 220px !important;
+                font-size: 13px !important;
+            }
+            #dr-total-compact {
+                min-width: 88px !important;
+                font-size: 12px !important;
+                padding: 4px 8px !important;
             }
         }
 
         @media (max-width: 960px) {
+            .dr-top-filter-bar {
+                gap: 8px !important;
+            }
             .dr-topbar-left,
             .dr-topbar-center,
             .dr-topbar-right {
-                flex: 1 1 100% !important;
-                justify-content: flex-start !important;
-            }
-            .dr-topbar-center {
-                order: 3;
+                flex: 0 0 auto !important;
+                flex-wrap: nowrap !important;
                 min-width: 0 !important;
             }
-            .dr-topbar-right {
-                order: 2;
-            }
             #dr-search-input {
-                flex: 1 1 100% !important;
-                min-width: 200px !important;
+                flex: 0 0 140px !important;
+                min-width: 140px !important;
+                max-width: 180px !important;
             }
         }
 
         @media (max-width: 680px) {
             .dr-top-filter-bar {
-                padding: 8px 10px !important;
-                gap: 8px !important;
+                padding: 8px 8px !important;
+                gap: 6px !important;
+                flex-wrap: nowrap !important;
             }
             .dr-topbar-left,
             .dr-topbar-right {
-                gap: 6px !important;
+                gap: 4px !important;
             }
             .dr-topbar-control-btn,
             .dr-topbar-dropdown .dr-dropdown-toggle {
-                height: 32px !important;
+                height: 30px !important;
                 padding: 0 8px !important;
                 min-width: 0 !important;
-                gap: 6px !important;
-                border-radius: 8px !important;
-                font-size: 12px !important;
-            }
-            .dr-topbar-btn-text,
-            #dr-view-label-text {
-                font-size: 12px !important;
-            }
-            .dr-topbar-checkbox {
+                gap: 4px !important;
+                border-radius: 9999px !important;
                 font-size: 12px !important;
             }
             #dr-search-input {
-                min-width: 140px !important;
-                height: 32px !important;
+                min-width: 120px !important;
+                height: 30px !important;
                 font-size: 12px !important;
                 padding: 0 8px !important;
             }
             #dr-total-compact {
-                font-size: 12px !important;
-                padding: 4px 8px !important;
-                min-width: 0 !important;
+                font-size: 11px !important;
+                padding: 3px 6px !important;
+                min-width: 72px !important;
             }
             .dr-sort-dropdown .dr-dropdown-menu {
                 min-width: 240px !important;
                 right: auto !important;
                 left: 0 !important;
+            }
+            .dr-filter-submenu-menu {
+                position: static !important;
+                top: auto !important;
+                left: auto !important;
+                right: auto !important;
+                transform: none !important;
+                min-width: 100% !important;
+                margin-top: 6px !important;
+            }
+            .dr-filter-submenu-menu::before {
+                display: none !important;
+            }
+        }
+
+        @media (max-width: 760px) {
+            .dr-top-filter-bar {
+                flex-wrap: nowrap !important;
+                overflow: visible !important;
+            }
+            .dr-topbar-left,
+            .dr-topbar-center,
+            .dr-topbar-right {
+                flex: 0 0 auto !important;
+                flex-wrap: nowrap !important;
+                min-width: 0 !important;
+            }
+            .dr-topbar-left,
+            .dr-topbar-right {
+                gap: 4px !important;
+            }
+            .dr-topbar-control-btn,
+            .dr-topbar-dropdown .dr-dropdown-toggle {
+                height: 30px !important;
+                min-width: 0 !important;
+                padding: 0 8px !important;
+                gap: 4px !important;
+                border-radius: 9999px !important;
+            }
+            .dr-topbar-control-btn .dr-topbar-btn-text,
+            #dr-view-label-text,
+            .dr-topbar-checkbox {
+                display: none !important;
+            }
+            #dr-search-input {
+                flex: 0 0 120px !important;
+                min-width: 120px !important;
+                max-width: 150px !important;
+                height: 30px !important;
+                padding: 0 8px !important;
+                font-size: 12px !important;
+            }
+            #dr-total-compact {
+                min-width: 72px !important;
+                padding: 3px 6px !important;
+                font-size: 11px !important;
+            }
+            .dr-sort-dropdown .dr-dropdown-menu,
+            .dr-filter-dropdown .dr-dropdown-menu,
+            .dr-view-dropdown .dr-dropdown-menu {
+                min-width: 220px !important;
             }
         }
 
@@ -12471,7 +13085,9 @@ function addGlobalStyles() {
             justify-content: flex-start;
             border-radius: 12px !important;
             box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
-            overflow: hidden; /* Prevent content expansion */
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            overscroll-behavior: contain;
             position: relative;
             justify-self: center;
             align-self: center;
@@ -12506,9 +13122,9 @@ function addGlobalStyles() {
             font-size: var(--fit-text-size, 0.9em);
             margin-bottom: 1px;
             line-height: 1.1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+            word-break: break-word;
         }
         .dr-fit-container .dr-card .dr-diagnosis-line,
         .dr-fit-container .dr-card .dr-pt-info,
@@ -12738,7 +13354,7 @@ module.exports = {
     createChecklistPhieu
 };
 
-},{"../components/dialogManager":11,"../services/apiService":34,"../services/reportService":39,"../utils/dateUtils":47}],30:[function(require,module,exports){
+},{"../components/dialogManager":12,"../services/apiService":36,"../services/reportService":41,"../utils/dateUtils":50}],32:[function(require,module,exports){
 // page.lichmo.homnay.js - Refactored surgery schedule using OTMTokenService
 
 const { showToast } = require('../utils/uiUtils');
@@ -13195,7 +13811,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":14,"../services/otm.token":37,"../services/surgeonSettingsService":42,"../utils/khoaUtils":52,"../utils/uiUtils":58}],31:[function(require,module,exports){
+},{"../components/khoaSelect":15,"../services/otm.token":39,"../services/surgeonSettingsService":44,"../utils/khoaUtils":55,"../utils/uiUtils":61}],33:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -13350,7 +13966,7 @@ async function mountOpenWorldTab(opts) {
 
 module.exports = { mountOpenWorldTab };
 
-},{"../services/apiService":34,"../services/settingsService":41}],32:[function(require,module,exports){
+},{"../services/apiService":36,"../services/settingsService":43}],34:[function(require,module,exports){
 // settings.js - Render a settings page similar to dashboard, triggered by ?caidat
 
 const SettingsService = require('../services/settingsService');
@@ -13945,7 +14561,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":6,"../components/userInfoSettingsTab":23,"../pages/page.settings.otm.quanlyphauthuat":33,"../services/settingsService":41,"../settings-open-world":44,"../utils/uiUtils":58,"./page.settings-open-world":31}],33:[function(require,module,exports){
+},{"../components/autoLoginToggle":7,"../components/userInfoSettingsTab":25,"../pages/page.settings.otm.quanlyphauthuat":35,"../services/settingsService":43,"../settings-open-world":46,"../utils/uiUtils":61,"./page.settings-open-world":33}],35:[function(require,module,exports){
 // page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
@@ -14336,7 +14952,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":37,"../services/surgeonSettingsService":42,"../utils/khoaUtils":52}],34:[function(require,module,exports){
+},{"../services/otm.token":39,"../services/surgeonSettingsService":44,"../utils/khoaUtils":55}],36:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -14652,7 +15268,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":52}],35:[function(require,module,exports){
+},{"../utils/khoaUtils":55}],37:[function(require,module,exports){
 // checklistAPIModule.js - Unified, centralized checklist data API
 // Single source of truth for all checklist operations (fetch, save, create)
 // Handles consistent mabn normalization and error recovery
@@ -14942,7 +15558,7 @@ const ChecklistAPIModule = {
 
 module.exports = ChecklistAPIModule;
 
-},{"../utils/dateUtils":47,"./apiService":34}],36:[function(require,module,exports){
+},{"../utils/dateUtils":50,"./apiService":36}],38:[function(require,module,exports){
 // checklistService.js - Unified checklist workflow service
 // Single entrypoint for checklist load/create/save + local state sync.
 
@@ -15147,7 +15763,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/stateSync":54,"./checklistAPIModule":35,"./saveQueue":40}],37:[function(require,module,exports){
+},{"../utils/stateSync":57,"./checklistAPIModule":37,"./saveQueue":42}],39:[function(require,module,exports){
 // otm.token.js - OTM Token management service
 // This service manages OTM authentication tokens and direct API access
 
@@ -15664,7 +16280,7 @@ const OTMTokenService = {
 
 module.exports = OTMTokenService;
 
-},{"./apiService":34}],38:[function(require,module,exports){
+},{"./apiService":36}],40:[function(require,module,exports){
 // patientService.js - Centralized patient data fetching
 
 const { fetchToDieuTriData } = require('../pages/page.dashboard.support');
@@ -15879,7 +16495,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":16,"../pages/page.dashboard.support":29,"../utils/khoaUtils":52,"../utils/patientDataMapper":53,"../utils/stateSync":54,"./checklistAPIModule":35,"./checklistService":36}],39:[function(require,module,exports){
+},{"../components/loginHandler":17,"../pages/page.dashboard.support":31,"../utils/khoaUtils":55,"../utils/patientDataMapper":56,"../utils/stateSync":57,"./checklistAPIModule":37,"./checklistService":38}],41:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -16163,7 +16779,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":47,"../utils/htmlUtils":51,"../utils/patientDataMapper":53,"../utils/surgeryUtils":55,"./checklistService":36}],40:[function(require,module,exports){
+},{"../utils/dateUtils":50,"../utils/htmlUtils":54,"../utils/patientDataMapper":56,"../utils/surgeryUtils":58,"./checklistService":38}],42:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -16227,7 +16843,7 @@ const SaveQueue = {
 
 module.exports = SaveQueue;
 
-},{}],41:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 // settingsService.js - Manage settings stored in a checklist-like phiếu using doctor name as mabn
 
 const ApiService = require('./apiService');
@@ -16585,7 +17201,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":52,"./apiService":34}],42:[function(require,module,exports){
+},{"../utils/khoaUtils":55,"./apiService":36}],44:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -16684,7 +17300,7 @@ const SurgeonSettingsService = {
 
 module.exports = SurgeonSettingsService;
 
-},{"./apiService":34}],43:[function(require,module,exports){
+},{"./apiService":36}],45:[function(require,module,exports){
 // trackedPatientService.js - Manage tracked patients (from other departments)
 
 const ApiService = require('./apiService');
@@ -16783,14 +17399,14 @@ const TrackedPatientService = {
 
 module.exports = TrackedPatientService;
 
-},{"../utils/khoaUtils":52,"./apiService":34}],44:[function(require,module,exports){
+},{"../utils/khoaUtils":55,"./apiService":36}],46:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
 // This allows requiring '../settings-open-world' from files inside src/pages
 module.exports = require('./pages/page.settings-open-world');
 
-},{"./pages/page.settings-open-world":31}],45:[function(require,module,exports){
+},{"./pages/page.settings-open-world":33}],47:[function(require,module,exports){
 // Common utility functions (date formatting, age calculation, etc.)
 const Utils = {
     _normalizeDateInput(dateInput) {
@@ -16885,7 +17501,7 @@ const Utils = {
 
 module.exports = Utils;
 
-},{}],46:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 // checklistUtils.js - Checklist-related utility functions
 
 const { showToast, copyToClipboard } = require('./uiUtils');
@@ -17045,7 +17661,254 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":36,"./uiUtils":58}],47:[function(require,module,exports){
+},{"../services/checklistService":38,"./uiUtils":61}],49:[function(require,module,exports){
+// contextMenuCopyBuilders.js - Builders for specialized context-menu copy variants
+
+const ChecklistService = require('../services/checklistService');
+const ReportService = require('../services/reportService');
+const PatientDataMapper = require('./patientDataMapper');
+const { escapeHtml } = require('./htmlUtils');
+const GPB_CAI_DAT = require('../BS_CAI_DAT_GPB_CAT_LANH');
+
+function normalizeText(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function loadPatientChecklistState(patient) {
+    if (patient && patient.checklistState) {
+        return patient.checklistState;
+    }
+    return ChecklistService.loadChecklistData(patient)
+        .then((res) => {
+            const obj = ChecklistService.findChecklistObject(res);
+            return obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
+        })
+        .catch(() => ({}));
+}
+
+function getPatientSurgeryData(patient, state) {
+    return PatientDataMapper.mapPhauThuatData(state) || patient?.phauThuatInfo || null;
+}
+
+function parseDateDDMMYYYY(dateStr) {
+    if (!dateStr) return null;
+    const match = String(dateStr).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!match) return null;
+    const day = parseInt(match[1], 10);
+    const month = parseInt(match[2], 10) - 1;
+    const year = parseInt(match[3], 10);
+    const date = new Date(year, month, day);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseTimeHHMM(timeStr) {
+    const match = String(timeStr || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+    if (!match) return null;
+    const hour = Math.max(0, Math.min(23, parseInt(match[1], 10)));
+    const minute = Math.max(0, Math.min(59, parseInt(match[2], 10)));
+    return { hour, minute };
+}
+
+function formatDateTimeVN(date) {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    const HH = String(date.getHours()).padStart(2, '0');
+    const MM = String(date.getMinutes()).padStart(2, '0');
+    return { date: `${dd}/${mm}/${yyyy}`, time: `${HH}:${MM}` };
+}
+
+function addMinutesToSurgeryTime(dateStr, timeStr, minutes) {
+    const date = parseDateDDMMYYYY(dateStr);
+    const time = parseTimeHHMM(timeStr);
+    if (!date || !time) return '';
+    date.setHours(time.hour, time.minute, 0, 0);
+    date.setMinutes(date.getMinutes() + minutes);
+    return formatDateTimeVN(date);
+}
+
+function extractLateralityPhrase(diagnosis) {
+    const raw = String(diagnosis || '').trim();
+    if (!raw) return '';
+
+    const phraseMatch = raw.match(/th[ùu]y(?:\s+[^,.;()]+){0,3}\s+(trái|phải|trai|phai)/i);
+    if (phraseMatch) {
+        return phraseMatch[0]
+            .replace(/trai/i, 'trái')
+            .replace(/phai/i, 'phải')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    const normalized = normalizeText(raw);
+    if (normalized.includes('trai')) return 'thùy trái';
+    if (normalized.includes('phai')) return 'thùy phải';
+    return '';
+}
+
+function matchesRule(diagnosis, rule) {
+    const normalizedDiagnosis = normalizeText(diagnosis);
+    const rawKeywords = Array.isArray(rule.keywords)
+        ? rule.keywords
+        : String(rule.keywords || '').split('|');
+    const keywords = rawKeywords.map(item => normalizeText(item)).filter(Boolean);
+
+    if (keywords.length === 0) return false;
+    const mode = String(rule.matchMode || 'OR').toUpperCase();
+    if (mode === 'AND') {
+        return keywords.every(keyword => normalizedDiagnosis.includes(keyword));
+    }
+    return keywords.some(keyword => normalizedDiagnosis.includes(keyword));
+}
+
+function resolveTemplate(template, context) {
+    const source = String(template || '').trim();
+    if (!source) return '';
+    return source.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
+        const value = context[key];
+        return value == null ? '' : String(value);
+    }).replace(/\s+/g, ' ').trim();
+}
+
+function findGpbRule(diagnosis) {
+    const rules = Array.isArray(GPB_CAI_DAT.rules) ? GPB_CAI_DAT.rules : [];
+    return rules.find(rule => matchesRule(diagnosis, rule)) || null;
+}
+
+function buildPatientHeader(data, includeLocation = true) {
+    const locationText = includeLocation && data.room ? `${data.room} ${data.bed}`.trim() : '';
+    const parts = [];
+    if (locationText) parts.push(locationText);
+    if (data.name) parts.push(data.name);
+    if (data.mabn) parts.push(data.mabn);
+    const rest = `${data.dob} (${data.age}) - ${data.gender}`.trim();
+    return parts.join(' - ') + (rest ? ` - ${rest}` : '');
+}
+
+function buildPatientHeaderHtml(data, includeLocation = true) {
+    const parts = [];
+    if (includeLocation && data.room) parts.push(escapeHtml(`${data.room} ${data.bed || ''}`.trim()));
+    parts.push(escapeHtml(data.name || ''));
+    parts.push(escapeHtml(data.mabn || ''));
+    const headerText = parts.filter(Boolean).join(' - ');
+    return `<h3 style='font-size:1.3em; margin:0 0 4px 0; color:#3277d5'><strong>${headerText}</strong></h3>`;
+}
+
+function buildPatientIdentityLines(data) {
+    return {
+        html: `<div style='margin:2px 0;'><b>DOB</b>: ${escapeHtml(data.dob)} (${escapeHtml(data.age)}) - ${escapeHtml(data.gender)} - ${escapeHtml(data.room)} - ${escapeHtml(data.bed)}</div>`,
+        text: `DOB: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}\n`
+    };
+}
+
+async function buildLichMoPtvCopy(patient, { includeLocation = true } = {}) {
+    const state = await loadPatientChecklistState(patient);
+    const data = ReportService.formatPatientData(patient, 0, state);
+    const surgery = getPatientSurgeryData(patient, state);
+    if (!surgery) return null;
+
+    const surgeryDate = surgery.ngayPhauThuat || '';
+    const surgeryTime = surgery.gioPhauThuat || '';
+    const header = buildPatientHeader(data, includeLocation);
+    const surgeryDisplay = surgeryDate && surgeryTime ? `${surgeryDate} ${surgeryTime}` : (surgeryDate || surgeryTime || '');
+
+    const ptvDoctors = surgery.doctors || surgery.bacSi || surgery.bacSiPhauThuat || '';
+
+    const html = [
+        `<div style='margin-bottom:8px; line-height:1.15;'>`,
+        buildPatientHeaderHtml(data, includeLocation),
+        `<div style='margin:2px 0;'><b>DOB</b>: ${escapeHtml(data.dob)} (${escapeHtml(data.age)}) - ${escapeHtml(data.gender)} - ${escapeHtml(data.room)} - ${escapeHtml(data.bed)}</div>`,
+        `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`,
+        `<div style='margin:2px 0;'><b>Ngày PT</b>: ${escapeHtml(surgeryDate)}</div>`,
+        `<div style='margin:2px 0;'><b>Giờ PT</b>: ${escapeHtml(surgeryTime)}</div>`,
+        `<div style='margin:2px 0;'><b>PTV</b>: <span style='color:#d32f2f; font-weight:700;'>${escapeHtml(ptvDoctors || 'Chưa rõ')}</span></div>`,
+        surgery.pppt ? `<div style='margin:2px 0;'><b>PPPT</b>: ${escapeHtml(surgery.pppt)}</div>` : '',
+        `</div>`
+    ].filter(Boolean).join('');
+
+    const text = [
+        header,
+        `DOB: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}`,
+        `Chẩn đoán: ${data.diagnosis}`,
+        `Ngày PT: ${surgeryDate}`,
+        `Giờ PT: ${surgeryTime}`,
+        `PTV: ${ptvDoctors || 'Chưa rõ'}`,
+        surgery.pppt ? `PPPT: ${surgery.pppt}` : ''
+    ].filter(Boolean).join('\n') + '\n';
+
+    return { html, text };
+}
+
+async function buildGpbCatLanhCopy(patient, { includeLocation = true } = {}) {
+    const state = await loadPatientChecklistState(patient);
+    const data = ReportService.formatPatientData(patient, 0, state);
+    const surgery = getPatientSurgeryData(patient, state);
+    if (!surgery) return null;
+
+    const diagnosis = String(data.diagnosis || '').trim();
+    const rule = findGpbRule(diagnosis) || {};
+    const laterality = extractLateralityPhrase(diagnosis);
+    const context = {
+        diagnosis,
+        laterality,
+        room: data.room,
+        bed: data.bed,
+        name: data.name,
+        mabn: data.mabn
+    };
+
+    const specimenTemplate = rule.mau_benh_pham || GPB_CAI_DAT.defaultFallbackSpecimen || 'Mẫu bệnh phẩm';
+    const wantToKnowTemplate = rule.mong_muon_biet || GPB_CAI_DAT.defaultMongMuonBiet || '';
+    const specimen = resolveTemplate(specimenTemplate, context) || diagnosis || 'Mẫu bệnh phẩm';
+    const wantToKnow = resolveTemplate(wantToKnowTemplate, context) || (GPB_CAI_DAT.defaultMongMuonBiet || '');
+
+    const surgeryDate = surgery.ngayPhauThuat || '';
+    const surgeryTime = surgery.gioPhauThuat || '';
+    const expected = addMinutesToSurgeryTime(surgeryDate, surgeryTime, Number(GPB_CAI_DAT.defaultExpectedMinutes || 90)) || '';
+    const expectedText = expected ? `${expected.date} ${expected.time}`.trim() : '';
+
+    const html = [
+        `<div style='margin-bottom:8px; line-height:1.15;'>`,
+        buildPatientHeaderHtml(data, includeLocation),
+        `<div style='margin:2px 0;'><b>DOB</b>: ${escapeHtml(data.dob)} (${escapeHtml(data.age)}) - ${escapeHtml(data.gender)} - ${escapeHtml(data.room)} - ${escapeHtml(data.bed)}</div>`,
+        `<div style='margin:2px 0;'><b>Chẩn đoán</b>: ${escapeHtml(data.diagnosis)}</div>`,
+        `<div style='margin:2px 0;'><b>Ngày PT</b>: ${escapeHtml(surgeryDate)}</div>`,
+        `<div style='margin:2px 0;'><b>Giờ PT</b>: ${escapeHtml(surgeryTime)}</div>`,
+        surgery.pppt ? `<div style='margin:2px 0;'><b>PPPT</b>: ${escapeHtml(surgery.pppt)}</div>` : '',
+        `<div style='margin:2px 0;'><b>Mẫu bệnh phẩm:</b> ${escapeHtml(specimen)}</div>`,
+        `<div style='margin:2px 0;'><b>Mong muốn biết:</b> ${escapeHtml(wantToKnow)}</div>`,
+        `<div style='margin:2px 0;'><b>Giờ có mẫu dự kiến:</b> ${escapeHtml(expectedText)}</div>`,
+        `</div>`
+    ].filter(Boolean).join('');
+
+    const text = [
+        buildPatientHeader(data, includeLocation),
+        `DOB: ${data.dob} (${data.age}) - ${data.gender} - ${data.room} - ${data.bed}`,
+        `Chẩn đoán: ${data.diagnosis}`,
+        `Ngày PT: ${surgeryDate}`,
+        `Giờ PT: ${surgeryTime}`,
+        surgery.pppt ? `PPPT: ${surgery.pppt}` : '',
+        `Mẫu bệnh phẩm: ${specimen}`,
+        `Mong muốn biết: ${wantToKnow}`,
+        `Giờ có mẫu dự kiến: ${expectedText}`
+    ].filter(Boolean).join('\n') + '\n';
+
+    return { html, text, matchedRule: rule.label || '' };
+}
+
+module.exports = {
+    buildLichMoPtvCopy,
+    buildGpbCatLanhCopy,
+    findGpbRule,
+    extractLateralityPhrase
+};
+
+},{"../BS_CAI_DAT_GPB_CAT_LANH":2,"../services/checklistService":38,"../services/reportService":41,"./htmlUtils":54,"./patientDataMapper":56}],50:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -17133,7 +17996,7 @@ const DateUtils = {
 
 module.exports = DateUtils;
 
-},{}],48:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -17277,7 +18140,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":51,"./surgeryUtils":55,"./tagUtils":56}],49:[function(require,module,exports){
+},{"./htmlUtils":54,"./surgeryUtils":58,"./tagUtils":59}],52:[function(require,module,exports){
 // globalFnUtils.js - Helper to call functions that may live on multiple global scopes
 // (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
 
@@ -17309,7 +18172,7 @@ function callGlobalFn(fnName, ...args) {
 
 module.exports = { callGlobalFn };
 
-},{}],50:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -17553,7 +18416,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],51:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -17568,7 +18431,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],52:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -17584,7 +18447,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],53:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -17839,7 +18702,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],54:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 // stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
 
 /**
@@ -17900,7 +18763,7 @@ function syncPatientStateToGlobal(mabn, newState) {
 
 module.exports = { syncPatientStateToGlobal };
 
-},{}],55:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -17990,7 +18853,10 @@ function addSurgeryStatusIcon(card, item) {
     
     const surgeryInfo = getSurgeryDateInfo(surgeryDate);
     if (!surgeryInfo) return;
-    
+
+    // Keep the icon only for surgeries done today.
+    if (surgeryInfo.status !== 'today') return;
+
     // Create icon element
     const iconDiv = document.createElement('div');
     iconDiv.className = 'dr-surgery-status-icon';
@@ -18007,29 +18873,9 @@ function addSurgeryStatusIcon(card, item) {
         z-index: 10;
         pointer-events: none;
     `;
-    
-    // Set icon and title based on status
-    switch (surgeryInfo.status) {
-        case 'past':
-            iconDiv.textContent = '⬅️';
-            iconDiv.title = `Phẫu thuật đã qua - HPN${surgeryInfo.postOpDay}`;
-            break;
-        case 'today':
-            iconDiv.textContent = '⏸️';
-            iconDiv.title = 'Hôm nay PT';
-            break;
-        case 'future':
-            const daysUntil = Math.abs(surgeryInfo.daysDiff);
-            iconDiv.textContent = '➡️';
-            if (daysUntil === 1) {
-                iconDiv.title = 'Ngày mai';
-            } else if (daysUntil === 2) {
-                iconDiv.title = 'Ngày mốt PT';
-            } else {
-                iconDiv.title = `Còn ${daysUntil} ngày nữa PT`;
-            }
-            break;
-    }
+
+    iconDiv.textContent = '⏸️';
+    iconDiv.title = 'Hôm nay PT';
     
     // Add to card
     card.style.position = 'relative';
@@ -18189,7 +19035,7 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],56:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 
@@ -18460,7 +19306,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],57:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1}],60:[function(require,module,exports){
 /**
  * Normalizes Vietnamese text by removing diacritics/accents
  * @param {string} str - The string to normalize
@@ -18494,7 +19340,7 @@ module.exports = {
     hasAccents
 };
 
-},{}],58:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**
@@ -18567,4 +19413,4 @@ module.exports = {
     copyToClipboard
 };
 
-},{}]},{},[3]);
+},{}]},{},[4]);

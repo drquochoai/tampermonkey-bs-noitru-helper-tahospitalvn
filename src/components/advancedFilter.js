@@ -3,6 +3,7 @@ const DialogManager = require('./dialogManager');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const Utils = require('../utils');
 const DateUtils = require('../utils/dateUtils');
+const { createResponsiveDropdownController } = require('./responsiveDropdown');
 
 /**
  * Trích xuất tên gốc của bác sĩ, loại bỏ các chức danh (BS, TS, ThS...)
@@ -17,11 +18,24 @@ function getBaseName(name) {
         .join(' ');
 }
 
+function hasMedsDoneBadgeForItem(item) {
+    if (!item) return false;
+    const ids = [item.mabn, item.pid, item.maBN, item.ma_benh_nhan]
+        .map(v => (v == null ? '' : String(v).trim()))
+        .filter(Boolean);
+    const selectors = ids.flatMap(id => [
+        `.dr-card[data-mabn="${id}"] .dr-badge-meds-done`,
+        `.dr-list-row[data-mabn="${id}"] .dr-badge-meds-row-corner`
+    ]);
+    return selectors.some(selector => !!document.querySelector(selector));
+}
+
 
 let advancedFilterState = {
     active: false,
     onlyXuatVien: false,  // Lọc BN xuất viện
     onlyCanLamSang: false, // Lọc BN cần cận lâm sàng
+    onlyChuaDanhThuoc: false, // Lọc BN chưa đánh thuốc hôm nay
     yLenhTags: [],      // Array of strings
     yLenhTagsLogic: 'OR', // 'OR' | 'AND'
     surgeryName: '',     // %like% search
@@ -36,6 +50,7 @@ let advancedFilterState = {
 function setupAdvancedFilter(topBar, onApply) {
     const topbarRight = topBar.querySelector('.dr-topbar-right');
     if (!topbarRight) return;
+    const dropdownController = createResponsiveDropdownController({ breakpoint: 1180 });
 
     const filterDropdown = document.createElement('div');
     filterDropdown.id = 'dr-advanced-filter-container';
@@ -46,7 +61,7 @@ function setupAdvancedFilter(topBar, onApply) {
     filterBtn.type = 'button';
     filterBtn.id = 'dr-advanced-filter-btn';
     filterBtn.className = 'dr-topbar-control-btn dr-dropdown-toggle';
-    filterBtn.title = 'Click để mở bộ lọc nâng cao. Hover để dùng lọc nhanh.';
+    filterBtn.title = 'Click để mở bộ lọc nâng cao; trên màn nhỏ sẽ mở lọc nhanh.';
     filterBtn.style.cssText = `
         height: 38px;
         padding: 0 12px;
@@ -69,7 +84,20 @@ function setupAdvancedFilter(topBar, onApply) {
     quickMenu.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px 10px; border-bottom:1px solid #e2e8f0; margin-bottom:6px;">
             <span style="font-size:12px; font-weight:700; color:#475569;">Lọc nhanh</span>
-            <span style="font-size:11px; color:#94a3b8;">Hover menu</span>
+            <span style="font-size:11px; color:#94a3b8;">Click menu</span>
+        </div>
+        <div class="dr-dropdown-item dr-filter-open-dialog" role="button">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-sliders-h"></i>
+                <span>Bộ lọc nâng cao</span>
+            </span>
+        </div>
+        <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="chuadanhthuoc" role="button" aria-pressed="false">
+            <span style="display:flex; align-items:center; gap:10px;">
+                <i class="fas fa-pills"></i>
+                <span>Chưa đánh thuốc</span>
+            </span>
+            <i class="fas fa-check dr-filter-quick-indicator"></i>
         </div>
         <div class="dr-dropdown-item dr-filter-quick-item" data-quick-filter="xuatvien" role="button" aria-pressed="false">
             <span style="display:flex; align-items:center; gap:10px;">
@@ -129,19 +157,57 @@ function setupAdvancedFilter(topBar, onApply) {
         topbarRight.appendChild(filterDropdown);
     }
 
+    dropdownController.register({
+        id: 'dr-advanced-filter-container',
+        container: filterDropdown,
+        toggle: filterBtn,
+        menu: quickMenu,
+        align: 'auto',
+        bindToggle: false
+    });
+
     filterBtn.onclick = (e) => {
         e.stopPropagation();
+        const isCompact = dropdownController.shouldUseCompactMode('dr-advanced-filter-container');
+        if (isCompact) {
+            dropdownController.toggle('dr-advanced-filter-container');
+            return;
+        }
+        dropdownController.closeAll();
         openFilterDialog(onApply);
     };
 
-    filterDropdown.addEventListener('mouseenter', () => filterDropdown.classList.add('open'));
-    filterDropdown.addEventListener('mouseleave', () => filterDropdown.classList.remove('open'));
+    const submenu = quickMenu.querySelector('.dr-filter-submenu');
+    const submenuTrigger = quickMenu.querySelector('.dr-filter-submenu-trigger');
+    const submenuMenu = quickMenu.querySelector('.dr-filter-submenu-menu');
+    if (submenuTrigger && submenu && submenuMenu) {
+        dropdownController.registerSubmenu({
+            id: 'dr-filter-surgery-date-submenu',
+            container: submenu,
+            toggle: submenuTrigger,
+            trigger: submenuTrigger,
+            menu: submenuMenu,
+            align: 'auto',
+            bindToggle: true
+        });
+    }
+
+    const openDialogItem = quickMenu.querySelector('.dr-filter-open-dialog');
+    if (openDialogItem) {
+        openDialogItem.onclick = (e) => {
+            e.stopPropagation();
+            dropdownController.closeAll();
+            openFilterDialog(onApply);
+        };
+    }
 
     quickMenu.querySelectorAll('[data-quick-filter]').forEach(item => {
         item.onclick = (e) => {
             e.stopPropagation();
             const filterType = item.getAttribute('data-quick-filter');
-            if (filterType === 'xuatvien') {
+            if (filterType === 'chuadanhthuoc') {
+                advancedFilterState.onlyChuaDanhThuoc = !advancedFilterState.onlyChuaDanhThuoc;
+            } else if (filterType === 'xuatvien') {
                 advancedFilterState.onlyXuatVien = !advancedFilterState.onlyXuatVien;
             } else if (filterType === 'canlamsang') {
                 advancedFilterState.onlyCanLamSang = !advancedFilterState.onlyCanLamSang;
@@ -165,6 +231,7 @@ function setupAdvancedFilter(topBar, onApply) {
     if (clearQuickBtn) {
         clearQuickBtn.onclick = (e) => {
             e.stopPropagation();
+            advancedFilterState.onlyChuaDanhThuoc = false;
             advancedFilterState.onlyXuatVien = false;
             advancedFilterState.onlyCanLamSang = false;
             advancedFilterState.surgeryDate = null;
@@ -185,6 +252,7 @@ function updateFilterBadge(btn) {
     if (!badge) return;
 
     let count = 0;
+    if (advancedFilterState.onlyChuaDanhThuoc) count++;
     if (advancedFilterState.onlyXuatVien) count++;
     if (advancedFilterState.onlyCanLamSang) count++;
     if (advancedFilterState.yLenhTags.length > 0) count++;
@@ -224,9 +292,11 @@ function refreshAdvancedFilterUI() {
 
     filterDropdown.querySelectorAll('[data-quick-filter]').forEach(item => {
         const filterType = item.getAttribute('data-quick-filter');
-        const isActive = filterType === 'xuatvien'
-            ? !!advancedFilterState.onlyXuatVien
-            : !!advancedFilterState.onlyCanLamSang;
+        const isActive = filterType === 'chuadanhthuoc'
+            ? !!advancedFilterState.onlyChuaDanhThuoc
+            : filterType === 'xuatvien'
+                ? !!advancedFilterState.onlyXuatVien
+                : !!advancedFilterState.onlyCanLamSang;
 
         item.classList.toggle('active', isActive);
         item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
@@ -249,7 +319,7 @@ function refreshAdvancedFilterUI() {
 
     const clearQuickBtn = filterDropdown.querySelector('[data-quick-filter-action="clear"]');
     if (clearQuickBtn) {
-        const hasQuickFilter = !!(advancedFilterState.onlyXuatVien || advancedFilterState.onlyCanLamSang || advancedFilterState.surgeryDate);
+        const hasQuickFilter = !!(advancedFilterState.onlyChuaDanhThuoc || advancedFilterState.onlyXuatVien || advancedFilterState.onlyCanLamSang || advancedFilterState.surgeryDate);
         clearQuickBtn.style.opacity = hasQuickFilter ? '1' : '0.5';
         clearQuickBtn.style.pointerEvents = hasQuickFilter ? 'auto' : 'none';
     }
@@ -296,6 +366,10 @@ function openFilterDialog(onApply) {
                     <i class="fas fa-bolt" style="color:#f59e0b;"></i> Lọc nhanh
                 </h3>
                 <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyChuaDanhThuoc?'#fff7ed':'#fff'};color:${advancedFilterState.onlyChuaDanhThuoc?'#c2410c':'#374151'};transition:all 0.15s;">
+                        <input type="checkbox" id="filter-chuadanhthuoc" ${advancedFilterState.onlyChuaDanhThuoc ? 'checked' : ''}>
+                        <i class="fas fa-pills"></i> Chưa đánh thuốc
+                    </label>
                     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;border:1px solid #e2e8f0;border-radius:20px;font-size:0.9em;background:${advancedFilterState.onlyXuatVien?'#dcfce7':'#fff'};color:${advancedFilterState.onlyXuatVien?'#16a34a':'#374151'};transition:all 0.15s;">
                         <input type="checkbox" id="filter-xuatvien" ${advancedFilterState.onlyXuatVien ? 'checked' : ''}>
                         <i class="fas fa-sign-out-alt"></i> Xuất viện
@@ -485,6 +559,8 @@ function openFilterDialog(onApply) {
     // Quick filter checkbox listeners
     const xuatVienCb = inner.querySelector('#filter-xuatvien');
     const canLamSangCb = inner.querySelector('#filter-canlamsang');
+    const chuaDanhThuocCb = inner.querySelector('#filter-chuadanhthuoc');
+    if (chuaDanhThuocCb) chuaDanhThuocCb.onchange = triggerUpdate;
     if (xuatVienCb) xuatVienCb.onchange = triggerUpdate;
     if (canLamSangCb) canLamSangCb.onchange = triggerUpdate;
 
@@ -508,6 +584,8 @@ function openFilterDialog(onApply) {
         // Quick filters
         const xuatVienCb = inner.querySelector('#filter-xuatvien');
         const canLamSangCb = inner.querySelector('#filter-canlamsang');
+        const chuaDanhThuocCb = inner.querySelector('#filter-chuadanhthuoc');
+        if (chuaDanhThuocCb) advancedFilterState.onlyChuaDanhThuoc = chuaDanhThuocCb.checked;
         if (xuatVienCb) advancedFilterState.onlyXuatVien = xuatVienCb.checked;
         if (canLamSangCb) advancedFilterState.onlyCanLamSang = canLamSangCb.checked;
 
@@ -532,6 +610,7 @@ function openFilterDialog(onApply) {
 
         // CRITICAL FIX: Update active state immediately
         advancedFilterState.active = !!(
+            advancedFilterState.onlyChuaDanhThuoc ||
             advancedFilterState.onlyXuatVien ||
             advancedFilterState.onlyCanLamSang ||
             advancedFilterState.surgeryName || 
@@ -543,6 +622,7 @@ function openFilterDialog(onApply) {
 
     function resetFilter() {
         advancedFilterState.active = false;
+        advancedFilterState.onlyChuaDanhThuoc = false;
         advancedFilterState.onlyXuatVien = false;
         advancedFilterState.onlyCanLamSang = false;
         advancedFilterState.yLenhTags = [];
@@ -589,6 +669,12 @@ function matchesAdvancedFilter(item) {
     const logEntry = getLatestSurgeryLog(item);
     
     // 1. Filter by Surgery Name (PPPT)
+    if (advancedFilterState.onlyChuaDanhThuoc) {
+        hasCondition = true;
+        if (hasMedsDoneBadgeForItem(item)) return false;
+    }
+
+    // 1b. Quick filter by patients that have not been medicated today
     if (advancedFilterState.surgeryName.trim()) {
         hasCondition = true;
         if (!logEntry) return false;

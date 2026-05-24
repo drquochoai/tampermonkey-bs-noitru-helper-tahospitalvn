@@ -1,5 +1,7 @@
 // contextMenu.js
 const { copyToClipboard } = require('../utils/uiUtils');
+const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
+const { buildLichMoPtvCopy, buildGpbCatLanhCopy } = require('../utils/contextMenuCopyBuilders');
 
 // Define global showToast if not pulled from uiUtils properly due to scoping
 const showToastFallback = (msg) => {
@@ -37,6 +39,12 @@ class ContextMenu {
             <div class="dr-context-menu-item" id="ctx-copy">
                 <span>📋</span> Copy báo cáo (1 BN)
             </div>
+            <div class="dr-context-menu-item" id="ctx-copy-lichmo-ptv">
+                <span>📋</span> Copy báo Lịch mổ (PTV)
+            </div>
+            <div class="dr-context-menu-item" id="ctx-copy-gpb-cat-lanh">
+                <span>🧊</span> Copy GPB cắt lạnh
+            </div>
             <div class="dr-context-menu-item" id="ctx-tdt">
                 <span>📄</span> Mở Tờ Điều Trị
             </div>
@@ -56,6 +64,8 @@ class ContextMenu {
         document.body.appendChild(menu);
         this.menu = menu;
 
+        // No submenu for specialized copy; items are top-level entries now.
+
         // Try adjusting position if it goes out of bounds
         setTimeout(() => {
             const rect = menu.getBoundingClientRect();
@@ -73,17 +83,60 @@ class ContextMenu {
             try {
                 const ChecklistService = require('../services/checklistService');
                 const ReportService = require('../services/reportService');
-                const { copyReportToClipboardRich } = require('../pages/page.dashboard.support');
                 
                 const res = await ChecklistService.loadChecklistData(patient);
                 const obj = ChecklistService.findChecklistObject(res);
                 const state = obj ? (ChecklistService.parseChecklistState(obj) || {}) : {};
                 const html = ReportService.generateSingleHTML(patient, state);
-                const text = ReportService.generateSingleText(patient, state);
+                let text = ReportService.generateSingleText(patient, state);
+                // Strip leading room/bed prefix from first line for single-patient text copies
+                try {
+                    const lines = String(text || '').split('\n');
+                    if (lines.length > 0 && lines[0].includes(' - ')) {
+                        const parts = lines[0].split(' - ');
+                        const firstPart = (parts[0] || '').toLowerCase();
+                        if (/phòng|giường|^\d+/.test(firstPart)) {
+                            lines[0] = parts.slice(1).join(' - ');
+                            text = lines.join('\n');
+                        }
+                    }
+                } catch (_) {}
                 await copyReportToClipboardRich(html, text);
             } catch (err) {
                 console.error('Copy single-patient report failed:', err);
                 showToastFallback('Lỗi khi copy báo cáo bệnh nhân');
+            }
+        };
+
+        menu.querySelector('#ctx-copy-lichmo-ptv').onclick = async (evt) => {
+            evt.stopPropagation();
+            this.hide();
+            try {
+                const result = await buildLichMoPtvCopy(patient, { includeLocation: false });
+                if (!result) {
+                    showToastFallback('Không có dữ liệu phẫu thuật để copy');
+                    return;
+                }
+                await copyReportToClipboardRich(result.html, result.text);
+            } catch (err) {
+                console.error('Copy Lịch mổ (PTV) failed:', err);
+                showToastFallback('Lỗi khi copy báo Lịch mổ (PTV)');
+            }
+        };
+
+        menu.querySelector('#ctx-copy-gpb-cat-lanh').onclick = async (evt) => {
+            evt.stopPropagation();
+            this.hide();
+            try {
+                const result = await buildGpbCatLanhCopy(patient, { includeLocation: false });
+                if (!result) {
+                    showToastFallback('Không có dữ liệu phẫu thuật để copy');
+                    return;
+                }
+                await copyReportToClipboardRich(result.html, result.text);
+            } catch (err) {
+                console.error('Copy GPB cắt lạnh failed:', err);
+                showToastFallback('Lỗi khi copy GPB cắt lạnh');
             }
         };
 

@@ -26,6 +26,7 @@ const { createYLenhTags, updatePatientCardTags, hasDischargeTag, updateMedsDoneB
 const { setupPhauThuatHandlers } = require('../components/phauThuatHandlers');
 const { setupAdvancedFilter, matchesAdvancedFilter, advancedFilterState } = require('../components/advancedFilter');
 const { setupCopyMenu } = require('../components/copyMenu');
+const { createResponsiveDropdownController } = require('../components/responsiveDropdown');
 
 // Import utility functions
 const { showToast, copyToClipboard } = require('../utils/uiUtils');
@@ -862,7 +863,7 @@ function showDashboardBenhNhanIfNeeded() {
                     <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
                     <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}</div>
                     <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
-                    <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
+                    <div id="dr-bs-PTV-${index}" data-field-id="dr-bs-PTV" style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
                 </div>
             `).join('');
 
@@ -1569,6 +1570,30 @@ function showDashboardBenhNhanIfNeeded() {
         const authorsBtn = topBar.querySelector('#dr-authors-btn');
         const authorsReloadBtn = topBar.querySelector('#dr-authors-reload-btn');
         const authorsList = topBar.querySelector('#dr-authors-list');
+        const topbarDropdownController = createResponsiveDropdownController({ breakpoint: 1180 });
+
+        topbarDropdownController.register({
+            id: 'dr-sort-dropdown-container',
+            container: sortDropdownContainer,
+            toggle: sortToggle,
+            menu: sortDropdownContainer ? sortDropdownContainer.querySelector('.dr-dropdown-menu') : null,
+            align: 'auto'
+        });
+        topbarDropdownController.register({
+            id: 'dr-view-dropdown-container',
+            container: dropdownContainer,
+            toggle: topBar.querySelector('#dr-view-toggle-premium'),
+            menu: dropdownContainer ? dropdownContainer.querySelector('.dr-dropdown-menu') : null,
+            align: 'auto'
+        });
+        topbarDropdownController.register({
+            id: 'dr-authors-dropdown-container',
+            container: authorsContainer,
+            toggle: authorsBtn,
+            menu: authorsContainer ? authorsContainer.querySelector('.dr-dropdown-menu') : null,
+            align: 'auto',
+            bindToggle: false
+        });
 
         const SORT_KEY = 'dr-card-sort';
         const validSortKeys = new Set(['default', 'admit-asc', 'admit-desc', 'stay-asc', 'stay-desc']);
@@ -1811,18 +1836,11 @@ function showDashboardBenhNhanIfNeeded() {
             })();
         }
 
-        if (sortToggle) {
-            sortToggle.onclick = (e) => {
-                e.stopPropagation();
-                sortDropdownContainer.classList.toggle('open');
-            };
-        }
-
         if (authorsBtn) {
             authorsBtn.onclick = (e) => {
                 e.stopPropagation();
-                authorsContainer.classList.toggle('open');
-                if (authorsContainer.classList.contains('open') && cloudAccountsLoaded) {
+                topbarDropdownController.toggle('dr-authors-dropdown-container');
+                if (authorsContainer && authorsContainer.classList.contains('open') && cloudAccountsLoaded) {
                     renderAuthorsList();
                 }
             };
@@ -1843,18 +1861,13 @@ function showDashboardBenhNhanIfNeeded() {
             };
         }
 
-        // Close dropdown when clicking outside
-        document.addEventListener('click', () => {
-            if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
-            if (authorsContainer) authorsContainer.classList.remove('open');
-        });
-
         // Handle item selection
         dropdownItems.forEach(item => {
             item.onclick = (e) => {
                 e.stopPropagation();
                 const targetView = item.getAttribute('data-view');
                 if (targetView === view) return;
+                topbarDropdownController.closeAll();
 
                 localStorage.setItem(VIEW_KEY, targetView);
                 localStorage.setItem('dr-view-mode', targetView);
@@ -1881,7 +1894,7 @@ function showDashboardBenhNhanIfNeeded() {
                 const targetSort = item.getAttribute('data-sort') || 'default';
                 const nextSort = targetSort === currentSort ? 'default' : targetSort;
                 setCurrentSort(nextSort);
-                if (sortDropdownContainer) sortDropdownContainer.classList.remove('open');
+                topbarDropdownController.closeAll();
                 applyFilter();
             };
         });

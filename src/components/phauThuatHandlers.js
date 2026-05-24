@@ -452,7 +452,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
                 <button class="remove-pt-btn" data-index="${index}" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:#d32f2f;color:#fff;border:none;border-radius:3px;padding:2px 6px;font-size:0.8em;cursor:pointer;z-index:1;">Xóa</button>
                 <div style="font-size:0.9em;color:#666;margin-bottom:4px;"><strong>Ngày PT:</strong> ${entry.date} ${entry.time}${sourceMarker}</div>
                 <div style="font-weight:bold;color:#333;margin-bottom:2px;"><strong>PPPT:</strong> ${entry.method}</div>
-                <div style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
+                <div id="dr-bs-PTV-${index}" data-field-id="dr-bs-PTV" style="font-size:0.85em;color:#555;"><strong>BS:</strong> ${entry.doctors}</div>
             </div>
             `;
         }).join('');

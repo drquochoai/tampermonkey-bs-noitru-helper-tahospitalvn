@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.1.2
+// @version      2.2.1
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -8246,6 +8246,17 @@ function showDashboardBenhNhanIfNeeded() {
         const requestId = ++khoaSelectRefreshToken;
         const previousValue = String(select.value || preferredKhoaId || window.dr_data_khoa_id || getSelectedKhoa('551'));
 
+        // Debug instrumentation to help diagnose auto-refresh selection issues
+        try {
+            console.debug('[dr] refreshKhoaSelectByAccess start', {
+                requestId,
+                previousValue,
+                preferredKhoaId: String(preferredKhoaId || ''),
+                window_dr_data_khoa_id: String(window.dr_data_khoa_id || ''),
+                localStorage_bsnt: (function(){ try { return localStorage.getItem('bsnt_khoa_dashboard'); } catch(e){ return '<err>'; } })()
+            });
+        } catch (_) {}
+
         try {
             select.disabled = true;
             let list = khoaSelectOptionsCache;
@@ -8302,6 +8313,10 @@ function showDashboardBenhNhanIfNeeded() {
             });
 
             let nextValue = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || getSelectedKhoa('551') || '').trim();
+            try {
+                const ids = filteredList.map(k => String(k.id));
+                console.debug('[dr] refreshKhoaSelectByAccess candidates', { ids, preferredKhoaId: nextValue, previousValue });
+            } catch (_) {}
             if (!filteredList.some((k) => String(k.id) === nextValue)) {
                 const fallbackPreferred = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || '').trim();
                 if (filteredList.some((k) => String(k.id) === fallbackPreferred)) {
@@ -8310,6 +8325,9 @@ function showDashboardBenhNhanIfNeeded() {
                     nextValue = String(filteredList[0].id || '');
                 }
             }
+            try {
+                console.debug('[dr] refreshKhoaSelectByAccess chose', { nextValue });
+            } catch (_) {}
 
             if (nextValue) {
                 select.value = nextValue;

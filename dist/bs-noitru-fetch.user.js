@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.2.3
+// @version      2.2.4
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -98,16 +98,16 @@ const BS_CAI_DAT = {
 
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
-        { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
-        { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
-        { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a' },
-        { label: 'Thay băng', icon: '👗', color: '#310994ff' },
-        { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
-        { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
-        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' },
-        { label: 'Xquang', icon: '🩺', color: '#2196f3' },
-        { label: 'Đi mổ', icon: '🩹', color: '#ff9800' },
-        { label: 'VLTL', icon: '🩺', color: '#2196f3' }
+        { label: 'Xuất viện', icon: '🏠', color: '#4caf50', status: 3 },
+        { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4', status: 3 },
+        { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a', status: 2 },
+        { label: 'Thay băng', icon: '👗', color: '#310994ff', status: 3 },
+        { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800', status: 3 },
+        { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3', status: 3 },
+        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0', status: 3 },
+        { label: 'Xquang', icon: '🩺', color: '#2196f3', status: 3 },
+        { label: 'Đi mổ', icon: '🩹', color: '#ff9800', status: 3 },
+        { label: 'VLTL', icon: '🩺', color: '#2196f3', status: 3 }
     ],
 
     // ================== CÀI ĐẶT BÁC SĨ ==================
@@ -432,7 +432,7 @@ DanhSachBenhNhan.prototype.uploadChecklistWithDrData = function (mabn, callback)
 
 module.exports = DanhSachBenhNhan;
 
-},{"./utils/khoaUtils":55}],4:[function(require,module,exports){
+},{"./utils/khoaUtils":56}],4:[function(require,module,exports){
 // Global function to open HSBA V2 - Define at top level for global access
 // This needs to be outside any function to be truly global
 // Don't use window.openHSBAV2 as it may not work in Tampermonkey
@@ -934,7 +934,7 @@ unsafeWindow.openHSBAV2 = openHSBAV2;
     TaiToanBoTaiLieuHSBAV2();
     window.triggerDownloadIfDataExists = triggerDownloadIfDataExists;
 })();
-},{"./DanhSachBenhNhan":3,"./components/autoLoginToggle":7,"./components/copyDienTienAI":10,"./components/hsbaDataFetcher":14,"./googleAppsScript":27,"./pages/otm-entry":28,"./pages/page.dashboard":30,"./pages/page.lichmo.homnay":32,"./pages/page.settings":34,"./services/checklistService":38,"./utils":47,"./utils/hsbaV2Download":53}],5:[function(require,module,exports){
+},{"./DanhSachBenhNhan":3,"./components/autoLoginToggle":7,"./components/copyDienTienAI":10,"./components/hsbaDataFetcher":14,"./googleAppsScript":27,"./pages/otm-entry":28,"./pages/page.dashboard":30,"./pages/page.lichmo.homnay":32,"./pages/page.settings":34,"./services/checklistService":38,"./utils":47,"./utils/hsbaV2Download":54}],5:[function(require,module,exports){
 // components/actionButtons.js - shared creators for action buttons
 const ChecklistService = require('../services/checklistService');
 const ReportService = require('../services/reportService');
@@ -2194,7 +2194,7 @@ class ContextMenu {
 const contextMenu = new ContextMenu();
 module.exports = contextMenu;
 
-},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils/contextMenuCopyBuilders":49,"../utils/uiUtils":61,"./actionButtons":5}],10:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils/contextMenuCopyBuilders":49,"../utils/uiUtils":62,"./actionButtons":5}],10:[function(require,module,exports){
 // copyDienTienAI.js
 // Inject a "Copy diễn tiến" button on /to-dieu-tri and copy all PDF text to clipboard using pdf.js
 
@@ -3293,19 +3293,30 @@ function renderResult(container, result, ctx = {}) {
 				};
 			}
 			if (Object.keys(hsbaSynced).length) {
-				// Merge into window.checklistState and persist
+				// Merge into window.checklistState only when the effective mapping changed.
 				if (!window.checklistState) window.checklistState = {};
 				const prev = window.checklistState.hsbaSynced || {};
-				window.checklistState.hsbaSynced = { ...prev, ...hsbaSynced, __lastSyncAt: nowIso };
-				if (window.checklistObj && ChecklistService && typeof ChecklistService.updateChecklistState === 'function') {
-					ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) })
-						.then(() => {
-							// Ask dashboard to refresh checklist badges if function exists
-							try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
-						})
-						.catch(() => {});
-				} else {
-					try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+				const stripMeta = (obj) => {
+					const result = {};
+					Object.keys(obj || {}).forEach((key) => {
+						if (key === '__lastSyncAt') return;
+						result[key] = obj[key];
+					});
+					return result;
+				};
+				const prevComparable = JSON.stringify(stripMeta(prev));
+				const nextComparable = JSON.stringify(stripMeta({ ...prev, ...hsbaSynced }));
+				if (prevComparable !== nextComparable) {
+					window.checklistState.hsbaSynced = { ...prev, ...hsbaSynced, __lastSyncAt: nowIso };
+					if (window.checklistObj && ChecklistService && typeof ChecklistService.updateChecklistState === 'function') {
+						ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) })
+							.then(() => {
+								try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+							})
+							.catch(() => {});
+					} else {
+						try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+					}
 				}
 			}
 		}
@@ -4050,7 +4061,7 @@ module.exports = {
     createListRow
 };
 
-},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils":47,"../utils/domUpdaters":51,"../utils/htmlUtils":54,"../utils/patientDataMapper":56,"../utils/tagUtils":59,"./actionButtons":5}],17:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/checklistService":38,"../services/reportService":41,"../utils":47,"../utils/domUpdaters":52,"../utils/htmlUtils":55,"../utils/patientDataMapper":57,"../utils/tagUtils":60,"./actionButtons":5}],17:[function(require,module,exports){
 // loginHandler.js - Centralized login prompt handling
 
 const LoginHandler = {
@@ -4182,7 +4193,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
             <label for="dr-chandoan-kemtheo" style="margin:0;font-weight:600;line-height:1.4;font-size:12px;color:#555;">Bệnh đi kèm</label>
             <div style="display:flex;flex-direction:column;gap:4px;">
                 <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:6px 8px;border:1px solid #90caf9;border-radius:4px;resize:vertical;font-size:12px;line-height:1.3;min-height:44px;box-shadow:0 0 0 2px rgba(25,118,210,0.12);outline:none;"></textarea>
-                <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;">Đã lưu</div>
             </div>
         </div>
         
@@ -4199,7 +4209,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <div style="margin-top:20px;">
             <h3 style="margin-bottom:10px;">Kế hoạch điều trị / Hướng xử trí</h3>
             <textarea id="dr-hxt-textarea" rows="3" placeholder="VD: Kháng sinh 7 ngày, dự kiến xuất viện 22/08, tái khám sau 1 tuần..." style="width:100%;padding:10px;border:1px solid #eee;border-radius:6px;resize:vertical;"></textarea>
-            <div id="dr-hxt-saved" style="display:none;color:#2e7d32;font-weight:600;margin-top:4px;">Đã lưu</div>
         </div>
         
         <div style="margin-top:20px;">
@@ -4208,7 +4217,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
             <!-- Quick Action Buttons -->
             <div class="quick-ylenh-actions">
                 ${quickYLenhActions.map(action => `
-                    <button class="quick-ylenh-btn" data-action="${action.label}" style="color: ${action.color}; border-color: ${action.color};">
+                    <button class="quick-ylenh-btn" data-action="${action.label}" ${action.label === 'Đã đánh thuốc' ? 'data-no-add-to-hxt="1"' : ''} style="color: ${action.color}; border-color: ${action.color};">
                         <span class="icon">${action.icon}</span>
                         <span class="text">${action.label}</span>
                     </button>
@@ -4223,6 +4232,13 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                 <div style="color:#888;font-style:italic;">Chưa có y lệnh nào...</div>
             </div>
         </div>
+
+        <div style="margin-top:20px;">
+            <h3 style="margin-bottom:10px;">Xuất viện</h3>
+            <div id="dr-xv-log" style="max-height:180px;overflow-y:auto;border:1px solid #e8f5e9;padding:10px;border-radius:4px;background:#f8fff9;word-break: break-word; overflow-wrap: anywhere;">
+                <div style="color:#888;font-style:italic;">Chưa có xuất viện nào...</div>
+            </div>
+        </div>
     `;
 
     // Setup y lệnh functionality
@@ -4233,10 +4249,8 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
     // Setup HXT (kế hoạch điều trị) auto-save and live update
     const hxtTextarea = info.querySelector('#dr-hxt-textarea');
-    const hxtSaved = info.querySelector('#dr-hxt-saved');
     // Setup Chẩn đoán kèm theo auto-save
     const cdktTextarea = info.querySelector('#dr-chandoan-kemtheo');
-    const cdktSaved = info.querySelector('#dr-chandoan-kemtheo-saved');
     // Shared debounced save state
     let pendingSaveTimer = null;
     const SAVE_DEBOUNCE_MS = 700;
@@ -4260,13 +4274,64 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         if (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string') {
             cdktTextarea.value = patient.checklistState.chanDoanKemTheo;
         }
+        if (typeof window.currentSyncHxtFromYLenhLog === 'function') {
+            window.currentSyncHxtFromYLenhLog();
+        }
     }, 50);
+
+    function ensureSidebarSaveSpinner() {
+        let spinner = document.getElementById('dr-sidebar-save-spinner');
+        if (spinner) return spinner;
+
+        if (!document.getElementById('dr-sidebar-save-spinner-style')) {
+            const style = document.createElement('style');
+            style.id = 'dr-sidebar-save-spinner-style';
+            style.textContent = '@keyframes drspin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(style);
+        }
+
+        spinner = document.createElement('div');
+        spinner.id = 'dr-sidebar-save-spinner';
+        spinner.style.cssText = `
+            position: fixed;
+            top: 16px;
+            right: 18px;
+            z-index: 100010;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.92);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+            pointer-events: none;
+        `;
+        spinner.innerHTML = '<span style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:drspin 0.8s linear infinite;display:inline-block;"></span><span>Đang lưu</span>';
+                    // Keep the spinner as the only save feedback; no inline toast.
+        return spinner;
+    }
+
+    function setSidebarSaveSpinner(visible, label = 'Đang lưu') {
+        const spinner = ensureSidebarSaveSpinner();
+        const text = spinner.querySelector('span:last-child');
+        if (text) text.textContent = label;
+        spinner.style.display = visible ? 'inline-flex' : 'none';
+    }
+
+    window.__drSetSidebarSaveSpinner = setSidebarSaveSpinner;
+    window.__drEnsureSidebarSaveSpinner = ensureSidebarSaveSpinner;
 
     function softUpdate(key, value) {
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), [key]: value };
         patient.checklistState = { ...(patient.checklistState || {}), [key]: value };
         syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
     }
 
     async function persistIfDirty() {
@@ -4283,41 +4348,41 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
         // Persist once
         if (window.checklistObj) {
-            const res = await ChecklistService.updateChecklistState(window.checklistObj, nextState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
-            if (!res || (!res.ok && !res.queued)) {
-                console.warn('Lưu checklist thất bại');
-            } else {
-                // If this sidebar is no longer active, do not apply visual updates
-                if (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id !== ctxId) return;
-                // Update global state snapshot and lastSaved
-                window.checklistState = nextState;
-                if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
-                if (changedKeys.includes('cdkt')) lastSaved.cdkt = draft.cdkt;
-                dirty = { hxt: false, cdkt: false };
+            try {
+                const res = await ChecklistService.updateChecklistState(window.checklistObj, nextState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                if (!res || (!res.ok && !res.queued)) {
+                    console.warn('Lưu checklist thất bại');
+                } else {
+                    // If this sidebar is no longer active, do not apply visual updates
+                    if (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id !== ctxId) return;
+                    // Update global state snapshot and lastSaved
+                    window.checklistState = nextState;
+                    if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
+                    if (changedKeys.includes('cdkt')) lastSaved.cdkt = draft.cdkt;
+                    dirty = { hxt: false, cdkt: false };
 
-                // Subtle flash effect on saved fields
-                try {
-                    const flash = (el) => {
-                        if (!el) return;
-                        const prev = el.style.boxShadow;
-                        el.style.boxShadow = '0 0 0 2px rgba(76,175,80,0.6)';
-                        setTimeout(() => { el.style.boxShadow = prev || ''; }, 400);
-                    };
-                    if (changedKeys.includes('hxt')) {
-                        try { callGlobalFn('updatePatientCardHXT', patient); } catch (_) { }
-                        flash(hxtTextarea);
-                        if (hxtSaved) { hxtSaved.style.display = 'block'; setTimeout(() => hxtSaved.style.display = 'none', 600); }
-                    }
-                    if (changedKeys.includes('cdkt')) {
-                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
-                        flash(cdktTextarea);
-                        if (cdktSaved) { cdktSaved.style.display = 'block'; setTimeout(() => cdktSaved.style.display = 'none', 600); }
-                        // Update card diagnosis after saving CDKT to keep cards in sync
-                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
-                    }
-                } catch (_) { }
-                if (res && res.queued) {
-                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch (_) { }
+                    // Subtle flash effect on saved fields
+                    try {
+                        const flash = (el) => {
+                            if (!el) return;
+                            const prev = el.style.boxShadow;
+                            el.style.boxShadow = '0 0 0 2px rgba(76,175,80,0.6)';
+                            setTimeout(() => { el.style.boxShadow = prev || ''; }, 400);
+                        };
+                        if (changedKeys.includes('hxt')) {
+                            try { callGlobalFn('updatePatientCardHXT', patient); } catch (_) { }
+                            flash(hxtTextarea);
+                        }
+                        if (changedKeys.includes('cdkt')) {
+                            try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
+                            flash(cdktTextarea);
+                            try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
+                        }
+                    } catch (_) { }
+                }
+            } finally {
+                if (typeof window.__drSetSidebarSaveSpinner === 'function') {
+                    window.__drSetSidebarSaveSpinner(false);
                 }
             }
         }
@@ -4338,6 +4403,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         dirty.hxt = (val !== lastSaved.hxt);
         softUpdate('huongXuTri', val);
         callGlobalFn('updatePatientCardHXT', patient);
+        if (typeof window.__drSetSidebarSaveSpinner === 'function') window.__drSetSidebarSaveSpinner(true, 'Đang lưu HXT');
         scheduleSave();
     });
     hxtTextarea.addEventListener('blur', () => {
@@ -4354,6 +4420,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         draft.cdkt = val;
         dirty.cdkt = (val !== lastSaved.cdkt);
         softUpdate('chanDoanKemTheo', val);
+        if (typeof window.__drSetSidebarSaveSpinner === 'function') window.__drSetSidebarSaveSpinner(true, 'Đang lưu bệnh đi kèm');
         scheduleSave();
     });
     cdktTextarea.addEventListener('blur', () => {
@@ -4388,7 +4455,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
 module.exports = { createPatientInfoSection };
 
-},{"../services/checklistService":38,"../services/reportService":41,"../utils":47,"../utils/globalFnUtils":52,"../utils/stateSync":57,"../utils/uiUtils":61,"./displaySettings":13,"./phauThuatHandlers":20,"./yLenhHandlers":26}],20:[function(require,module,exports){
+},{"../services/checklistService":38,"../services/reportService":41,"../utils":47,"../utils/globalFnUtils":53,"../utils/stateSync":58,"../utils/uiUtils":62,"./displaySettings":13,"./phauThuatHandlers":20,"./yLenhHandlers":26}],20:[function(require,module,exports){
 // phauThuatHandlers.js
 const ChecklistService = require('../services/checklistService');
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
@@ -4575,6 +4642,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
         // leaves any of the key fields (date, hour, minute, method).
         // Only runs in EDIT mode (editIndex !== null) when there is already a record.
         function tryAutoSave() {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const date = dateInput.value.trim();
             const hour = hourInput.value.trim();
             const minute = minuteInput.value.trim();
@@ -4712,6 +4782,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
         }
 
         function savePhauThuat() {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const date = dateInput.value.trim();
             const hour = hourInput.value.trim();
             const minute = minuteInput.value.trim();
@@ -4873,6 +4946,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
     }
 
     function removePhauThuat(index) {
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
         if (window.checklistState.phauThuatLog && Array.isArray(window.checklistState.phauThuatLog)) {
             window.checklistState.phauThuatLog.splice(index, 1);
             syncPatientStateToGlobal(patient.mabn, window.checklistState);
@@ -4884,6 +4960,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     async function savePhauThuatLog() {
         if (window.checklistObj) {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
             if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log phẫu thuật thất bại!');
@@ -4935,7 +5014,7 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
 module.exports = { setupPhauThuatHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"../utils/globalFnUtils":52,"../utils/stateSync":57,"../utils/surgeryUtils":58}],21:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"../utils/globalFnUtils":53,"../utils/stateSync":58,"../utils/surgeryUtils":59}],21:[function(require,module,exports){
 // responsiveDropdown.js - Shared dropdown controller for top bar menus
 
 function clamp(value, min, max) {
@@ -5810,7 +5889,7 @@ async function showSettingsDialog(initialTab = 'display') {
 
 module.exports = { showSettingsDialog };
 
-},{"../services/settingsService":43,"../utils/uiUtils":61,"./autoLoginToggle":7,"./cardTooltip":8,"./dialogManager":12,"./displaySettings":13,"./userInfoSettingsTab":25}],23:[function(require,module,exports){
+},{"../services/settingsService":43,"../utils/uiUtils":62,"./autoLoginToggle":7,"./cardTooltip":8,"./dialogManager":12,"./displaySettings":13,"./userInfoSettingsTab":25}],23:[function(require,module,exports){
 // sidebarSession.js - Manage per-sidebar session context and AbortController
 
 let _current = {
@@ -6487,7 +6566,7 @@ function setupTrackingUI(topBar, mainContainer, createPatientCard, onRender) {
 
 module.exports = { setupTrackingUI };
 
-},{"../pages/page.dashboard.support":31,"../services/apiService":36,"../services/patientService":40,"../services/reportService":41,"../services/trackedPatientService":45,"../utils":47,"../utils/khoaUtils":55,"./cardTooltip":8,"./dialogManager":12}],25:[function(require,module,exports){
+},{"../pages/page.dashboard.support":31,"../services/apiService":36,"../services/patientService":40,"../services/reportService":41,"../services/trackedPatientService":45,"../utils":47,"../utils/khoaUtils":56,"./cardTooltip":8,"./dialogManager":12}],25:[function(require,module,exports){
 const ApiService = require('../services/apiService');
 
 function ensureMarkup(container) {
@@ -6812,6 +6891,7 @@ const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
 const { callGlobalFn } = require('../utils/globalFnUtils');
 const { syncPatientStateToGlobal } = require('../utils/stateSync');
 const DateUtils = require('../utils/dateUtils');
+const { getTodayISODate, formatDisplayDate, getDischargeDisplayText, isDischargeEntryOnDate } = require('../utils/dischargeUtils');
 
 function setupYLenhHandlers(infoElement, patient) {
     const ctxId = (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id) || `${patient.mabn}:${Date.now()}`;
@@ -6821,6 +6901,13 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Use configured quick y lệnh actions
     const quickYLenhActions = BS_CAI_DAT.quickYLenhActions;
+    const quickYLenhActionMap = new Map(quickYLenhActions.map(action => [action.label, action]));
+
+    function getQuickActionStatusCount(actionText) {
+        const config = quickYLenhActionMap.get(actionText);
+        const statusCount = Number(config && config.status);
+        return statusCount === 2 ? 2 : 3;
+    }
 
     // Load existing y lệnh when checklist is loaded
     // Priority: patient.checklistState (always populated from card open) > window.checklistState
@@ -6832,6 +6919,7 @@ function setupYLenhHandlers(infoElement, patient) {
                 : null;
         if (log) {
             renderYLenhLog(log);
+            renderDischargeLog();
         }
     }
 
@@ -6878,8 +6966,286 @@ function setupYLenhHandlers(infoElement, patient) {
         }, 10);
     }
 
+    function getHxtTextarea() {
+        return infoElement.querySelector('#dr-hxt-textarea');
+    }
+
+    function getHxtDateLineMatch(line) {
+        const trimmed = String(line || '').trim();
+        const match = trimmed.match(/^(\d{2}\/\d{2}\/\d{4})\s*[:\-]\s*(.+)$/);
+        if (!match) return null;
+        return { dateKey: match[1], body: match[2].trim() };
+    }
+
+    function splitHxtLabels(body) {
+        return String(body || '')
+            .replace(/[.]+$/g, '')
+            .split(/\s*,\s*/)
+            .map(part => part.trim())
+            .filter(Boolean);
+    }
+
+    function shouldSkipHxtLabel(label) {
+        const normalized = String(label || '').trim().replace(/[.]+$/g, '').toLowerCase();
+        return !normalized || normalized === 'đã đánh thuốc';
+    }
+
+    function buildHxtDailySummaryMap(yLenhArray) {
+        const grouped = new Map();
+        if (!Array.isArray(yLenhArray) || yLenhArray.length === 0) return grouped;
+
+        yLenhArray.forEach((entry) => {
+            if (!entry || !entry.timestamp) return;
+            const dateKey = String(entry.timestamp).split(' ')[0];
+            if (!dateKey) return;
+
+            const label = String(entry.content || entry.action || '').trim();
+            if (!label || label.toLowerCase() === 'xuất viện' || shouldSkipHxtLabel(label)) return;
+            if (entry.noAddToHxt || entry['no-add-to-hxt'] || entry.no_add_to_hxt) return;
+
+            if (!grouped.has(dateKey)) grouped.set(dateKey, []);
+            const bucket = grouped.get(dateKey);
+            if (!bucket.includes(label)) bucket.push(label);
+        });
+
+        return grouped;
+    }
+
+    function mergeHxtWithYLenh(existingText, yLenhArray) {
+        const grouped = buildHxtDailySummaryMap(yLenhArray);
+        if (grouped.size === 0) return String(existingText || '');
+
+        const lines = String(existingText || '').split(/\r?\n/);
+        const nextLines = [];
+        lines.forEach((line) => {
+            const matched = getHxtDateLineMatch(line);
+            if (!matched) {
+                nextLines.push(line);
+                return;
+            }
+
+            const labels = splitHxtLabels(matched.body);
+            const autoLabels = grouped.get(matched.dateKey) || [];
+            const mergedLabels = [];
+
+            labels.concat(autoLabels).forEach((label) => {
+                const cleaned = String(label || '').trim().replace(/[.]+$/g, '');
+                if (!shouldSkipHxtLabel(cleaned) && !mergedLabels.includes(cleaned)) mergedLabels.push(cleaned);
+            });
+
+            grouped.delete(matched.dateKey);
+            if (mergedLabels.length > 0) {
+                nextLines.push(`${matched.dateKey}: ${mergedLabels.join(', ')}.`);
+            }
+        });
+
+        const missingLines = Array.from(grouped.entries()).map(([dateKey, labels]) => `${dateKey}: ${labels.join(', ')}.`);
+        if (missingLines.length > 0) {
+            while (nextLines.length > 0 && String(nextLines[nextLines.length - 1] || '').trim() === '') {
+                nextLines.pop();
+            }
+            if (nextLines.length > 0) nextLines.push('');
+            nextLines.push(...missingLines);
+        }
+
+        while (nextLines.length > 0 && String(nextLines[0] || '').trim() === '') {
+            nextLines.shift();
+        }
+
+        const compactedLines = [];
+        nextLines.forEach((line) => {
+            const text = String(line || '');
+            if (text.trim() === '' && compactedLines.length > 0 && compactedLines[compactedLines.length - 1].trim() === '') {
+                return;
+            }
+            compactedLines.push(text);
+        });
+
+        return compactedLines.join('\n').trimEnd();
+    }
+
+    function syncHxtFromYLenhLog() {
+        const hxtTextarea = getHxtTextarea();
+        if (!hxtTextarea) return;
+
+        const yLenhArray = (patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog))
+            ? patient.checklistState.yLenhLog
+            : (window.checklistState && Array.isArray(window.checklistState.yLenhLog))
+                ? window.checklistState.yLenhLog
+                : [];
+
+        const nextValue = mergeHxtWithYLenh(hxtTextarea.value, yLenhArray);
+
+        if (nextValue !== hxtTextarea.value) {
+            hxtTextarea.value = nextValue;
+            hxtTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+
+    function getDischargeLogContainer() {
+        return infoElement.querySelector('#dr-xv-log');
+    }
+
+    function getCurrentDischargeEntry() {
+        return findTodayQuickEntryByAction('Xuất viện');
+    }
+
+    function ensureCurrentDischargeDefaults(entry) {
+        if (!entry) return;
+        if (!entry.expectedDischargeDate) entry.expectedDischargeDate = getTodayISODate();
+        if (!entry.dischargeTime) entry.dischargeTime = '12:00';
+    }
+
+    function persistDischargeSchedule() {
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
+        saveYLenhLog();
+        syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        callGlobalFn('updatePatientCardTags', patient.mabn);
+        renderDischargeLog();
+    }
+
+    function applyDischargePreset(presetDate, presetTime) {
+        const { entry } = getCurrentDischargeEntry();
+        if (!entry) return;
+
+        ensureCurrentDischargeDefaults(entry);
+        if (presetDate) entry.expectedDischargeDate = presetDate;
+        if (presetTime) entry.dischargeTime = presetTime;
+        persistDischargeSchedule();
+    }
+
+    function openDischargeCustomDialog() {
+        const { entry } = getCurrentDischargeEntry();
+        if (!entry) return;
+
+        ensureCurrentDischargeDefaults(entry);
+        const overlay = document.createElement('div');
+        overlay.className = 'dr-xv-custom-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.38);z-index:100005;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+        const panel = document.createElement('div');
+        panel.style.cssText = 'width:min(420px,100%);background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,0.25);padding:18px;';
+        panel.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;">
+                <div>
+                    <div style="font-size:18px;font-weight:700;color:#0f172a;">Tùy chỉnh ra viện</div>
+                    <div style="font-size:12px;color:#64748b;">Chọn ngày và giờ ra viện cụ thể</div>
+                </div>
+                <button type="button" class="dr-xv-close" style="border:none;background:#f1f5f9;color:#334155;border-radius:999px;width:32px;height:32px;cursor:pointer;">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#334155;">
+                    <span>Ngày dự kiến</span>
+                    <input class="dr-xv-custom-date" type="date" style="padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;" />
+                </label>
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:13px;color:#334155;">
+                    <span>Giờ ra viện</span>
+                    <input class="dr-xv-custom-time" type="time" step="60" style="padding:10px 12px;border:1px solid #cbd5e1;border-radius:10px;" />
+                </label>
+            </div>
+            <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+                <button type="button" class="dr-xv-cancel" style="padding:10px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:10px;cursor:pointer;">Hủy</button>
+                <button type="button" class="dr-xv-save" style="padding:10px 14px;border:none;background:#16a34a;color:#fff;border-radius:10px;cursor:pointer;font-weight:700;">Lưu</button>
+            </div>
+        `;
+
+        const dateInput = panel.querySelector('.dr-xv-custom-date');
+        const timeInput = panel.querySelector('.dr-xv-custom-time');
+        const closeDialog = () => overlay.remove();
+        dateInput.value = entry.expectedDischargeDate || getTodayISODate();
+        timeInput.value = entry.dischargeTime || '12:00';
+
+        panel.querySelector('.dr-xv-close').addEventListener('click', closeDialog);
+        panel.querySelector('.dr-xv-cancel').addEventListener('click', closeDialog);
+        panel.querySelector('.dr-xv-save').addEventListener('click', () => {
+            entry.expectedDischargeDate = dateInput.value || getTodayISODate();
+            entry.dischargeTime = timeInput.value || '12:00';
+            closeDialog();
+            persistDischargeSchedule();
+        });
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) closeDialog();
+        });
+
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+    }
+
+    function renderDischargeLog() {
+        const dischargeContainer = getDischargeLogContainer();
+        if (!dischargeContainer) return;
+
+        const { entry } = getCurrentDischargeEntry();
+        if (!entry) {
+            dischargeContainer.innerHTML = '<div style="color:#888;font-style:italic;">Bấm <b>Xuất viện</b> để thiết lập ngày/giờ ra viện.</div>';
+            return;
+        }
+        ensureCurrentDischargeDefaults(entry);
+
+        const todayDate = getTodayISODate();
+        const selectedDate = entry.expectedDischargeDate || todayDate;
+        const selectedTime = entry.dischargeTime || '12:00';
+        const quickDates = [
+            { key: 'today', label: 'Hôm nay', value: todayDate },
+            { key: 'tomorrow', label: 'Ngày mai', value: (() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            })() }
+        ];
+        const quickTimes = ['10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
+
+        dischargeContainer.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                        <div style="font-size:12px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;">Ngày dự kiến</div>
+                        <div style="font-size:18px;font-weight:800;color:#0f172a;">${formatDisplayDate(selectedDate)}</div>
+                    </div>
+                    <div style="font-size:14px;color:${entry.status === 'done' ? '#166534' : '#92400e'};font-weight:700;align-self:center;">
+                        ${entry.status === 'done' ? 'Đã ra viện' : 'Đang chờ'}
+                    </div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    ${quickDates.map(btn => `
+                        <button type="button" class="dr-xv-date-chip ${selectedDate === btn.value ? 'is-active' : ''}" data-xv-date="${btn.value}" style="padding:8px 12px;border-radius:999px;border:1px solid ${selectedDate === btn.value ? '#16a34a' : '#cbd5e1'};background:${selectedDate === btn.value ? '#dcfce7' : '#fff'};color:${selectedDate === btn.value ? '#166534' : '#334155'};cursor:pointer;font-weight:${selectedDate === btn.value ? '700' : '600'};">${btn.label}</button>
+                    `).join('')}
+                    <button type="button" class="dr-xv-custom-btn" style="padding:8px 12px;border-radius:999px;border:1px solid #60a5fa;background:#eff6ff;color:#1d4ed8;cursor:pointer;font-weight:700;">Tùy chỉnh</button>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                    <span style="font-size:13px;color:#334155;font-weight:700;">Giờ ra viện</span>
+                    ${quickTimes.map(time => {
+                        const isActive = selectedTime === time;
+                        return `<button type="button" class="dr-xv-time-chip ${isActive ? 'is-active' : ''}" data-xv-time="${time}" style="padding:8px 12px;border-radius:999px;border:1px solid ${isActive ? '#16a34a' : '#cbd5e1'};background:${isActive ? '#dcfce7' : '#fff'};color:${isActive ? '#166534' : '#334155'};cursor:pointer;font-weight:${isActive ? '700' : '600'};">${time}</button>`;
+                    }).join('')}
+                </div>
+                <div style="padding:10px 12px;border:1px solid #dbeafe;border-radius:12px;background:#f8fbff;color:#0f172a;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between;">
+                    <div><strong>${entry.content}</strong></div>
+                    <div style="color:#166534;font-weight:700;">Dự kiến ${formatDisplayDate(selectedDate)} ${selectedTime}</div>
+                </div>
+            </div>
+        `;
+
+        dischargeContainer.querySelectorAll('.dr-xv-date-chip').forEach(btn => {
+            btn.addEventListener('click', () => applyDischargePreset(btn.getAttribute('data-xv-date')));
+        });
+        dischargeContainer.querySelectorAll('.dr-xv-time-chip').forEach(btn => {
+            btn.addEventListener('click', () => applyDischargePreset(null, btn.getAttribute('data-xv-time')));
+        });
+        const customBtn = dischargeContainer.querySelector('.dr-xv-custom-btn');
+        if (customBtn && !customBtn._bound) {
+            customBtn.addEventListener('click', openDischargeCustomDialog);
+            customBtn._bound = true;
+        }
+    }
+
     // Add y lệnh (enhanced với support cho quick actions)
     function addYLenh(content = null) {
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
         const inputContent = content || input.value.trim();
         if (!inputContent) return;
 
@@ -6910,6 +7276,7 @@ function setupYLenhHandlers(infoElement, patient) {
         renderYLenhLog(window.checklistState.yLenhLog);
         syncPatientStateToGlobal(patient.mabn, window.checklistState);
         callGlobalFn('updatePatientCardTags', patient.mabn);
+        syncHxtFromYLenhLog();
 
         // Also check celebration animation specifically after adding tag
         setTimeout(() => {
@@ -6922,12 +7289,16 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Remove y lệnh
     function removeYLenh(index) {
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
         if (window.checklistState.yLenhLog && Array.isArray(window.checklistState.yLenhLog)) {
             window.checklistState.yLenhLog.splice(index, 1);
             saveYLenhLog();
             renderYLenhLog(window.checklistState.yLenhLog);
             syncPatientStateToGlobal(patient.mabn, window.checklistState);
             callGlobalFn('updatePatientCardTags', patient.mabn);
+            syncHxtFromYLenhLog();
 
             // Also check celebration animation specifically after removing tag
             setTimeout(() => {
@@ -6942,12 +7313,12 @@ function setupYLenhHandlers(infoElement, patient) {
     // Save y lệnh log to server
     async function saveYLenhLog() {
         if (window.checklistObj) {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
             if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log y lệnh thất bại!');
-            }
-            if (res && res.queued) {
-                try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch (_) { }
             }
         }
     }
@@ -6974,129 +7345,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // UI: Discharge time editor (appears when 'Xuất viện' quick action is present today)
     function ensureDischargeTimeEditor() {
-        const hostAfter = infoElement.querySelector('.quick-ylenh-actions');
-        if (!hostAfter) return;
-        const { entry } = findTodayQuickEntryByAction('Xuất viện');
-        let editor = infoElement.querySelector('.xv-time-editor');
-        if (!entry) {
-            if (editor) editor.remove();
-            return;
-        }
-        // ensure editor exists
-        if (!editor) {
-            editor = document.createElement('div');
-            editor.className = 'xv-time-editor';
-            editor.innerHTML = `
-              <label class="xv-label">Xuất viện lúc:</label>
-              <input class="xv-time xv-hour" type="number" min="0" max="23" placeholder="HH" style="width:56px;text-align:center;" />
-              <span>:</span>
-              <input class="xv-time xv-min" type="number" min="0" max="59" placeholder="mm" style="width:56px;text-align:center;" />
-                            <div class="xv-presets" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
-                                <button type="button" class="xv-chip" data-time="11:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">11:00</button>
-                                <button type="button" class="xv-chip" data-time="12:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">12:00</button>
-                                <button type="button" class="xv-chip" data-time="13:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">13:00</button>
-                                <button type="button" class="xv-chip" data-time="14:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">14:00</button>
-                                <button type="button" class="xv-chip" data-time="15:00" style="padding:2px 8px;border:1px solid #ccc;border-radius:12px;background:#f7f7f7;cursor:pointer;">15:00</button>
-                            </div>
-              <span class="xv-saved" style="display:none;">Đã lưu</span>
-            `;
-            hostAfter.insertAdjacentElement('afterend', editor);
-        }
-        const hourInput = editor.querySelector('.xv-hour');
-        const minInput = editor.querySelector('.xv-min');
-        const presets = editor.querySelector('.xv-presets');
-        const saved = editor.querySelector('.xv-saved');
-        // default to 12:00 if missing
-        if (!entry.dischargeTime) entry.dischargeTime = '12:00';
-        const [hh = '12', mm = '00'] = (entry.dischargeTime || '12:00').split(':');
-        if (hourInput.value !== hh) hourInput.value = hh;
-        if (minInput.value !== mm) minInput.value = mm;
-        // Bind change handlers once
-        const commit = async () => {
-            const { entry: current, index } = findTodayQuickEntryByAction('Xuất viện');
-            if (current && index >= 0) {
-                let h = parseInt(hourInput.value, 10);
-                let m = parseInt(minInput.value, 10);
-                if (isNaN(h)) h = 12; if (isNaN(m)) m = 0;
-                h = Math.max(0, Math.min(23, h));
-                m = Math.max(0, Math.min(59, m));
-                const hh2 = String(h).padStart(2, '0');
-                const mm2 = String(m).padStart(2, '0');
-                current.dischargeTime = `${hh2}:${mm2}`;
-                // Update dr_data patient state for tag refresh
-                if (window.dr_data && patient.mabn) {
-                    const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
-                    if (patientInData) patientInData.checklistState = { ...window.checklistState };
-                }
-                await saveYLenhLog();
-                if (typeof window.updatePatientCardTags === 'function') {
-                    window.updatePatientCardTags(patient.mabn);
-                }
-                if (saved) {
-                    saved.style.display = 'inline';
-                    setTimeout(() => { saved.style.display = 'none'; }, 1000);
-                }
-            }
-        };
-        if (!hourInput._bound) {
-            hourInput.addEventListener('change', commit);
-            hourInput.addEventListener('blur', commit);
-            hourInput._bound = true;
-        }
-        // UX: select all text in hour field when user clicks/focuses it
-        if (!hourInput._selectAllBound) {
-            const selectAll = (e) => {
-                try {
-                    // Attempt twice to handle timing quirks
-                    e.target.select && e.target.select();
-                    setTimeout(() => {
-                        try { e.target.select && e.target.select(); } catch (_) { }
-                    }, 0);
-                } catch (_) { /* noop */ }
-            };
-            hourInput.addEventListener('focus', selectAll);
-            hourInput.addEventListener('click', selectAll);
-            // Prevent mouseup from clearing the selection in some browsers
-            hourInput.addEventListener('mouseup', (ev) => ev.preventDefault());
-            hourInput._selectAllBound = true;
-        }
-        if (!minInput._bound) {
-            minInput.addEventListener('change', commit);
-            minInput.addEventListener('blur', commit);
-            minInput._bound = true;
-        }
-        // UX: select all text in minute field when user clicks/focuses it
-        if (!minInput._selectAllBound) {
-            const selectAllMin = (e) => {
-                try {
-                    e.target.select && e.target.select();
-                    setTimeout(() => {
-                        try { e.target.select && e.target.select(); } catch (_) { }
-                    }, 0);
-                } catch (_) { /* noop */ }
-            };
-            minInput.addEventListener('focus', selectAllMin);
-            minInput.addEventListener('click', selectAllMin);
-            minInput.addEventListener('mouseup', (ev) => ev.preventDefault());
-            minInput._selectAllBound = true;
-        }
-
-        // Preset chips: quick one-tap set and save
-        if (presets && !presets._bound) {
-            presets.querySelectorAll('.xv-chip').forEach(chip => {
-                chip.addEventListener('click', async () => {
-                    const tm = chip.getAttribute('data-time') || '12:00';
-                    const [hh3, mm3] = tm.split(':');
-                    hourInput.value = hh3.padStart(2, '0');
-                    minInput.value = mm3.padStart(2, '0');
-                    await commit();
-                    // brief visual press feedback
-                    chip.style.transform = 'scale(0.98)';
-                    setTimeout(() => { chip.style.transform = ''; }, 120);
-                });
-            });
-            presets._bound = true;
-        }
+        renderDischargeLog();
     }
 
     // Quick action buttons event listeners - Toggle logic (3-state: off -> active -> done -> off)
@@ -7109,7 +7358,11 @@ function setupYLenhHandlers(infoElement, patient) {
 
     // Function to toggle quick y lệnh (three states)
     function toggleQuickYLenh(actionText, buttonElement) {
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
         const todayStr = DateUtils.getTodayStr();
+        const statusCount = getQuickActionStatusCount(actionText);
 
         if (!window.checklistState.yLenhLog) {
             window.checklistState.yLenhLog = [];
@@ -7124,8 +7377,38 @@ function setupYLenhHandlers(infoElement, patient) {
             return isToday && isQuick && sameAction;
         });
 
-        // Cycle states
-        if (existingIndex === -1) {
+        // Cycle states based on configured mode
+        if (statusCount === 2) {
+            if (existingIndex === -1) {
+                const now = new Date();
+                const timestamp = `${todayStr} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+                const doctorName = 'BS';
+                const newEntry = {
+                    timestamp: `${timestamp} - ${doctorName}`,
+                    content: actionText,
+                    id: Date.now(),
+                    q: true,
+                    action: actionText,
+                    status: 'done'
+                };
+                if (buttonElement && buttonElement.dataset && buttonElement.dataset.noAddToHxt === '1') {
+                    newEntry.noAddToHxt = true;
+                }
+                if (actionText === 'Xuất viện') {
+                    newEntry.dischargeTime = '12:00';
+                    newEntry.expectedDischargeDate = getTodayISODate();
+                }
+                window.checklistState.yLenhLog.unshift(newEntry);
+                buttonElement.classList.remove('active');
+                buttonElement.classList.add('done');
+                console.log('Quick action set to DONE:', actionText);
+            } else {
+                window.checklistState.yLenhLog.splice(existingIndex, 1);
+                buttonElement.classList.remove('active');
+                buttonElement.classList.remove('done');
+                console.log('Quick action reset to OFF:', actionText);
+            }
+        } else if (existingIndex === -1) {
             // OFF -> ACTIVE (create entry)
             const now = new Date();
             const timestamp = `${todayStr} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -7138,9 +7421,13 @@ function setupYLenhHandlers(infoElement, patient) {
                 action: actionText,
                 status: 'active'
             };
+            if (buttonElement && buttonElement.dataset && buttonElement.dataset.noAddToHxt === '1') {
+                newEntry.noAddToHxt = true;
+            }
             // If this is 'Xuất viện', set default discharge time
             if (actionText === 'Xuất viện') {
                 newEntry.dischargeTime = '12:00';
+                newEntry.expectedDischargeDate = getTodayISODate();
             }
             window.checklistState.yLenhLog.unshift(newEntry);
             buttonElement.classList.add('active');
@@ -7171,6 +7458,8 @@ function setupYLenhHandlers(infoElement, patient) {
         // Save changes
         saveYLenhLog();
         renderYLenhLog(window.checklistState.yLenhLog);
+        renderDischargeLog();
+        syncHxtFromYLenhLog();
 
         // Update card tags
         syncPatientStateToGlobal(patient.mabn, window.checklistState);
@@ -7180,6 +7469,7 @@ function setupYLenhHandlers(infoElement, patient) {
         if (actionText === 'Xuất viện') {
             // ensure time editor is visible/hidden appropriately
             ensureDischargeTimeEditor();
+            renderDischargeLog();
             setTimeout(() => {
                 if (typeof window.checkAllCelebrationAnimations === 'function') {
                     const patientInData = window.dr_data.find(p => p.mabn === patient.mabn);
@@ -7211,6 +7501,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
         infoElement.querySelectorAll('.quick-ylenh-btn').forEach(btn => {
             const actionText = btn.getAttribute('data-action');
+            const statusCount = getQuickActionStatusCount(actionText);
 
             // Check if this action exists today
             let state = 'off';
@@ -7221,7 +7512,9 @@ function setupYLenhHandlers(infoElement, patient) {
                     const sameAction = entry.action ? entry.action === actionText : entry.content === actionText;
                     return isToday && sameAction && (entry.q === true || entry.content === actionText);
                 });
-                if (found) state = found.status || 'active';
+                if (found) {
+                    state = statusCount === 2 ? 'done' : (found.status || 'active');
+                }
             }
             btn.classList.toggle('active', state === 'active');
             btn.classList.toggle('done', state === 'done');
@@ -7233,6 +7526,8 @@ function setupYLenhHandlers(infoElement, patient) {
     loadYLenhLog();
     updateQuickActionButtonStates();
     ensureDischargeTimeEditor();
+    renderDischargeLog();
+    syncHxtFromYLenhLog();
 
     // Secondary poll: if patient.checklistState was empty but window.checklistState
     // arrives later (async API), refresh displays once
@@ -7249,6 +7544,7 @@ function setupYLenhHandlers(infoElement, patient) {
             loadYLenhLog();
             updateQuickActionButtonStates();
             ensureDischargeTimeEditor();
+            syncHxtFromYLenhLog();
             clearInterval(_syncPoll);
         }
         if (_syncPollCount >= 20) clearInterval(_syncPoll); // stop after ~2s
@@ -7259,6 +7555,7 @@ function setupYLenhHandlers(infoElement, patient) {
     window.currentRenderYLenh = renderYLenhLog;
     window.currentUpdateQuickYLenhStates = updateQuickActionButtonStates;
     window.currentEnsureDischargeTimeEditor = ensureDischargeTimeEditor;
+    window.currentSyncHxtFromYLenhLog = syncHxtFromYLenhLog;
 
     // Return functions that might be needed externally
     return {
@@ -7272,7 +7569,7 @@ function setupYLenhHandlers(infoElement, patient) {
 
 module.exports = { setupYLenhHandlers };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"../utils/dateUtils":50,"../utils/globalFnUtils":52,"../utils/stateSync":57}],27:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../services/checklistService":38,"../utils/dateUtils":50,"../utils/dischargeUtils":51,"../utils/globalFnUtils":53,"../utils/stateSync":58}],27:[function(require,module,exports){
 // googleAppsScript.js
 
 function GoogleAppsScriptUploader(googleAppsScriptUrl) {
@@ -8507,6 +8804,8 @@ const { escapeHtml } = require('../utils/htmlUtils');
 const DomUpdaters = require('../utils/domUpdaters');
 const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('../utils/checklistUtils');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
+const DateUtils = require('../utils/dateUtils');
+const { getTodayISODate, isDischargeEntryOnDate } = require('../utils/dischargeUtils');
 
 // Global variable for OTM tabs
 if (typeof window !== 'undefined') {
@@ -9166,15 +9465,11 @@ function showDashboardBenhNhanIfNeeded() {
             li.style = 'margin-bottom:8px;';
 
             if (typeof item === 'string') {
-                // Simple checklist item
                 const id = 'dr-checklist-xv-' + idx;
                 const isChecked = window.checklistState && window.checklistState[`xuatvien_${item}`] || false;
-
                 li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
             } else if (item.children) {
-                // Parent item with children - Special handling for "Tờ điều trị"
                 if (item.label === 'Tờ điều trị') {
-                    // Render as header without checkbox
                     li.innerHTML = `
                         <div style="margin-bottom:12px;">
                             <h4 style="margin:0 0 8px 0;color:#1976d2;font-weight:bold;border-bottom:2px solid #e3f2fd;padding-bottom:4px;">📋 ${item.label}</h4>
@@ -9188,10 +9483,8 @@ function showDashboardBenhNhanIfNeeded() {
                         </div>
                     `;
                 } else {
-                    // Normal parent item with checkbox
                     const parentId = 'dr-checklist-xv-parent-' + idx;
                     const isParentChecked = window.checklistState && window.checklistState[`xuatvien_${item.label}`] || false;
-
                     li.innerHTML = `
                         <div style="margin-bottom:8px;">
                             <label style="display:flex;align-items:center;gap:8px;font-weight:bold;">
@@ -9212,10 +9505,12 @@ function showDashboardBenhNhanIfNeeded() {
             checklistUl.appendChild(li);
         });
 
-        // Setup checkbox change handlers for xuất viện
         setTimeout(() => {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
+                    if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                        window.__drSidebarResetAutoSyncTimer();
+                    }
                     const item = BS_CAI_DAT.checklistXuatVien[idx];
                     let label = '';
                     if (typeof item === 'string') {
@@ -9223,13 +9518,8 @@ function showDashboardBenhNhanIfNeeded() {
                     } else if (item.label) {
                         label = item.label;
                     } else {
-                        // Fallback for child items - extract from data attribute or parent text
                         const dataLabel = this.getAttribute('data-original-label');
-                        if (dataLabel) {
-                            label = dataLabel;
-                        } else {
-                            label = this.parentNode.textContent.trim();
-                        }
+                        label = dataLabel || this.parentNode.textContent.trim();
                     }
                     const key = `xuatvien_${label}`;
 
@@ -9247,7 +9537,6 @@ function showDashboardBenhNhanIfNeeded() {
             });
         }, 10);
 
-        // Make function available for reuse
         window.renderChecklistXuatVien = renderChecklistXuatVien;
     }
 
@@ -9389,6 +9678,8 @@ function showDashboardBenhNhanIfNeeded() {
         checklistUl.innerHTML = '';
         const hsbaSynced = (window.checklistState && window.checklistState.hsbaSynced) || {};
         const lastSyncAt = hsbaSynced.__lastSyncAt || null;
+        const existingNote = checklistUl.parentElement && checklistUl.parentElement.querySelector('.dr-hsba-sync-note');
+        if (existingNote) existingNote.remove();
         checklistItems.forEach((item, idx) => {
             const li = document.createElement('li');
             // No margin/padding; keep optional background and radius only
@@ -9428,6 +9719,9 @@ function showDashboardBenhNhanIfNeeded() {
         setTimeout(() => {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
+                    if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                        window.__drSidebarResetAutoSyncTimer();
+                    }
                     const itemText = checklistItems[idx]; // Use original item text, not display text
                     window.checklistState[itemText] = this.checked;
                     const res = await persistCurrentChecklistState();
@@ -9668,9 +9962,50 @@ function showDashboardBenhNhanIfNeeded() {
             window.addEventListener('online', toggleOffline, { once: true });
         } catch (_) { }
 
-        // ─── Auto-sync checklist data every 1100ms ───
-        // This ensures sidebar data stays in sync if other users are updating the same patient.
-        let autoSyncInterval = null;
+        // ─── Auto-sync checklist data every 4321ms ───
+        // Resetting the timer on local edits avoids stale refreshes overwriting fresh sidebar state.
+        let autoSyncTimeout = null;
+        let autoSyncToken = 0;
+        const scheduleSidebarAutoSync = (delay = 4321) => {
+            autoSyncToken += 1;
+            const token = autoSyncToken;
+
+            if (autoSyncTimeout) {
+                clearTimeout(autoSyncTimeout);
+            }
+
+            autoSyncTimeout = setTimeout(async () => {
+                autoSyncTimeout = null;
+                if (token !== autoSyncToken) return;
+                if (!SidebarSession.isActive(sessionId)) return;
+
+                try {
+                    const freshData = await ChecklistService.loadChecklistBundle(patient, { forceRefresh: true });
+                    if (token !== autoSyncToken) return;
+                    if (!freshData || !freshData.state) return;
+
+                    const oldStateStr = JSON.stringify(window.checklistState || {});
+                    const newStateStr = JSON.stringify(freshData.state);
+
+                    if (oldStateStr !== newStateStr) {
+                        console.log('Sidebar auto-sync: detected state change for patient', patient.mabn);
+                        window.checklistObj = freshData.checklistObj;
+                        window.checklistState = { ...freshData.state };
+                        syncPatientCardFromChecklistState(window.checklistState);
+                        refreshSidebarFromChecklistState();
+                    }
+                } catch (e) {
+                    console.warn('Sidebar auto-sync error:', e);
+                } finally {
+                    if (token === autoSyncToken) {
+                        scheduleSidebarAutoSync(4321);
+                    }
+                }
+            }, delay);
+        };
+        window.__drSidebarResetAutoSyncTimer = () => {
+            scheduleSidebarAutoSync(4321);
+        };
         const refreshSidebarFromChecklistState = () => {
             try {
                 if (typeof window.dr_refreshChecklistBadges === 'function') {
@@ -9759,37 +10094,8 @@ function showDashboardBenhNhanIfNeeded() {
                 console.warn('Sidebar auto-sync: failed to sync dashboard card', e);
             }
         };
-        const startAutoSync = () => {
-            autoSyncInterval = setInterval(async () => {
-                // Check if sidebar session is still active
-                if (!SidebarSession.isActive(sessionId)) {
-                    clearInterval(autoSyncInterval);
-                    return;
-                }
-
-                try {
-                    const freshData = await ChecklistService.loadChecklistBundle(patient, { forceRefresh: true });
-                    if (!freshData || !freshData.state) return;
-
-                    // Compare and update if state changed
-                    const oldStateStr = JSON.stringify(window.checklistState || {});
-                    const newStateStr = JSON.stringify(freshData.state);
-                    
-                    if (oldStateStr !== newStateStr) {
-                        console.log('Sidebar auto-sync: detected state change for patient', patient.mabn);
-                        window.checklistObj = freshData.checklistObj;
-                        window.checklistState = { ...freshData.state };
-                        syncPatientCardFromChecklistState(window.checklistState);
-                        refreshSidebarFromChecklistState();
-                    }
-                } catch (e) {
-                    console.warn('Sidebar auto-sync error:', e);
-                }
-            }, 4321);
-        };
-
         // Start auto-sync when sidebar is fully rendered and visible
-        startAutoSync();
+        scheduleSidebarAutoSync(4321);
 
         // One-time initial sync now that helper functions are defined
         try { if (typeof syncPatientCardFromChecklistState === 'function') syncPatientCardFromChecklistState(window.checklistState); } catch (_) {}
@@ -9798,13 +10104,14 @@ function showDashboardBenhNhanIfNeeded() {
         // Clean up auto-sync when sidebar closes
         const originalEndSession = SidebarSession.endSession;
         window.__drSidebarAutoSyncCleanup = () => {
-            if (autoSyncInterval) {
-                clearInterval(autoSyncInterval);
-                autoSyncInterval = null;
+            if (autoSyncTimeout) {
+                clearTimeout(autoSyncTimeout);
+                autoSyncTimeout = null;
             }
             if (window.__drSyncActiveSidebarState) {
                 window.__drSyncActiveSidebarState = null;
             }
+            window.__drSidebarResetAutoSyncTimer = null;
         };
         // Hook into modal close to stop auto-sync
         const origHideModal = ModalManager.hideModal;
@@ -9900,25 +10207,19 @@ function showDashboardBenhNhanIfNeeded() {
         else delete element.dataset.stayDays;
 
         try {
-            const today = new Date();
-            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const todayStr = DateUtils.getTodayStr();
+            const todayIso = getTodayISODate();
             const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
             let hasXV = false;
             let hasCLS = false;
 
             for (const entry of log) {
                 if (!entry.timestamp || !entry.content) continue;
-                if (!entry.timestamp.startsWith(todayStr)) continue;
-
                 const content = entry.content.toLowerCase();
-                if (content.includes('xuất viện')) {
-                    if (entry.q === true && entry.action === 'Xuất viện') {
-                        if (entry.status === 'active' || entry.status === 'done') hasXV = true;
-                    } else {
-                        hasXV = true;
-                    }
+                if (isDischargeEntryOnDate(entry, todayIso)) {
+                    hasXV = true;
                 }
-                if (content.includes('cận lâm sàng')) hasCLS = true;
+                if (entry.timestamp.startsWith(todayStr) && content.includes('cận lâm sàng')) hasCLS = true;
             }
 
             element.dataset.hasxv = hasXV ? '1' : '0';
@@ -11497,7 +11798,7 @@ module.exports = {
 };
 
 }).call(this)}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":5,"../components/advancedFilter":6,"../components/cardTooltip":8,"../components/contextMenu":9,"../components/copyDienTienAI":10,"../components/copyMenu":11,"../components/dialogManager":12,"../components/displaySettings":13,"../components/hsbaDataFetcher":14,"../components/listView":16,"../components/loginHandler":17,"../components/modalManager":18,"../components/patientInfoSection":19,"../components/phauThuatHandlers":20,"../components/responsiveDropdown":21,"../components/sidebarSession":23,"../components/trackingUI":24,"../services/apiService":36,"../services/checklistService":38,"../services/patientService":40,"../services/settingsService":43,"../utils":47,"../utils/checklistUtils":48,"../utils/domUpdaters":51,"../utils/htmlUtils":54,"../utils/khoaUtils":55,"../utils/patientDataMapper":56,"../utils/stateSync":57,"../utils/surgeryUtils":58,"../utils/tagUtils":59,"../utils/textUtils":60,"../utils/uiUtils":61,"./page.dashboard.support":31}],31:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"../components/actionButtons":5,"../components/advancedFilter":6,"../components/cardTooltip":8,"../components/contextMenu":9,"../components/copyDienTienAI":10,"../components/copyMenu":11,"../components/dialogManager":12,"../components/displaySettings":13,"../components/hsbaDataFetcher":14,"../components/listView":16,"../components/loginHandler":17,"../components/modalManager":18,"../components/patientInfoSection":19,"../components/phauThuatHandlers":20,"../components/responsiveDropdown":21,"../components/sidebarSession":23,"../components/trackingUI":24,"../services/apiService":36,"../services/checklistService":38,"../services/patientService":40,"../services/settingsService":43,"../utils":47,"../utils/checklistUtils":48,"../utils/dateUtils":50,"../utils/dischargeUtils":51,"../utils/domUpdaters":52,"../utils/htmlUtils":55,"../utils/khoaUtils":56,"../utils/patientDataMapper":57,"../utils/stateSync":58,"../utils/surgeryUtils":59,"../utils/tagUtils":60,"../utils/textUtils":61,"../utils/uiUtils":62,"./page.dashboard.support":31}],31:[function(require,module,exports){
 // dashboard.support.js - Refactored with modular architecture
 
 const ReportService = require('../services/reportService');
@@ -13811,7 +14112,7 @@ module.exports = {
   showLichMoHomNayIfNeeded
 };
 
-},{"../components/khoaSelect":15,"../services/otm.token":39,"../services/surgeonSettingsService":44,"../utils/khoaUtils":55,"../utils/uiUtils":61}],33:[function(require,module,exports){
+},{"../components/khoaSelect":15,"../services/otm.token":39,"../services/surgeonSettingsService":44,"../utils/khoaUtils":56,"../utils/uiUtils":62}],33:[function(require,module,exports){
 // settings-open-world.js - Open World settings (Thông tin khoa/phòng)
 
 const SettingsService = require('../services/settingsService');
@@ -14561,7 +14862,7 @@ async function showSettingsIfNeeded() {
 
 module.exports = { showSettingsIfNeeded };
 
-},{"../components/autoLoginToggle":7,"../components/userInfoSettingsTab":25,"../pages/page.settings.otm.quanlyphauthuat":35,"../services/settingsService":43,"../settings-open-world":46,"../utils/uiUtils":61,"./page.settings-open-world":33}],35:[function(require,module,exports){
+},{"../components/autoLoginToggle":7,"../components/userInfoSettingsTab":25,"../pages/page.settings.otm.quanlyphauthuat":35,"../services/settingsService":43,"../settings-open-world":46,"../utils/uiUtils":62,"./page.settings-open-world":33}],35:[function(require,module,exports){
 // page.settings.otm.quanlyphauthuat.refactored.js - Refactored OTM surgeon management using OTMTokenService
 
 const SurgeonSettingsService = require('../services/surgeonSettingsService');
@@ -14952,7 +15253,7 @@ module.exports = {
     ensureOTMUsers
 };
 
-},{"../services/otm.token":39,"../services/surgeonSettingsService":44,"../utils/khoaUtils":55}],36:[function(require,module,exports){
+},{"../services/otm.token":39,"../services/surgeonSettingsService":44,"../utils/khoaUtils":56}],36:[function(require,module,exports){
 // apiService.js - Centralized API service
 const { getSelectedKhoa } = require('../utils/khoaUtils');
 
@@ -15268,7 +15569,7 @@ const ApiService = {
 
 module.exports = ApiService;
 
-},{"../utils/khoaUtils":55}],37:[function(require,module,exports){
+},{"../utils/khoaUtils":56}],37:[function(require,module,exports){
 // checklistAPIModule.js - Unified, centralized checklist data API
 // Single source of truth for all checklist operations (fetch, save, create)
 // Handles consistent mabn normalization and error recovery
@@ -15763,7 +16064,7 @@ const ChecklistService = {
 
 module.exports = ChecklistService;
 
-},{"../utils/stateSync":57,"./checklistAPIModule":37,"./saveQueue":42}],39:[function(require,module,exports){
+},{"../utils/stateSync":58,"./checklistAPIModule":37,"./saveQueue":42}],39:[function(require,module,exports){
 // otm.token.js - OTM Token management service
 // This service manages OTM authentication tokens and direct API access
 
@@ -16495,7 +16796,7 @@ const PatientService = {
 
 module.exports = PatientService;
 
-},{"../components/loginHandler":17,"../pages/page.dashboard.support":31,"../utils/khoaUtils":55,"../utils/patientDataMapper":56,"../utils/stateSync":57,"./checklistAPIModule":37,"./checklistService":38}],41:[function(require,module,exports){
+},{"../components/loginHandler":17,"../pages/page.dashboard.support":31,"../utils/khoaUtils":56,"../utils/patientDataMapper":57,"../utils/stateSync":58,"./checklistAPIModule":37,"./checklistService":38}],41:[function(require,module,exports){
 // reportService.js - Service for generating reports
 
 const DateUtils = require('../utils/dateUtils');
@@ -16779,7 +17080,7 @@ const ReportService = {
 
 module.exports = ReportService;
 
-},{"../utils/dateUtils":50,"../utils/htmlUtils":54,"../utils/patientDataMapper":56,"../utils/surgeryUtils":58,"./checklistService":38}],42:[function(require,module,exports){
+},{"../utils/dateUtils":50,"../utils/htmlUtils":55,"../utils/patientDataMapper":57,"../utils/surgeryUtils":59,"./checklistService":38}],42:[function(require,module,exports){
 // saveQueue.js - Offline queue for checklist saves
 
 const QUEUE_KEY = 'dr_save_queue_v1';
@@ -17201,7 +17502,7 @@ const SettingsService = {
 
 module.exports = SettingsService;
 
-},{"../utils/khoaUtils":55,"./apiService":36}],44:[function(require,module,exports){
+},{"../utils/khoaUtils":56,"./apiService":36}],44:[function(require,module,exports){
 // surgeonSettingsService.js - Store selected surgeons per khoa using checklist-like records
 
 const ApiService = require('./apiService');
@@ -17399,7 +17700,7 @@ const TrackedPatientService = {
 
 module.exports = TrackedPatientService;
 
-},{"../utils/khoaUtils":55,"./apiService":36}],46:[function(require,module,exports){
+},{"../utils/khoaUtils":56,"./apiService":36}],46:[function(require,module,exports){
 // Top-level compatibility shim for legacy imports
 module.exports = require('./pages/page.settings-open-world');
 // Top-level compatibility shim for legacy imports
@@ -17506,6 +17807,7 @@ module.exports = Utils;
 
 const { showToast, copyToClipboard } = require('./uiUtils');
 const ChecklistService = require('../services/checklistService');
+const { getTodayISODate, isDischargeEntryOnDate } = require('./dischargeUtils');
 
 /**
  * Create checklist item HTML with special actions
@@ -17616,10 +17918,8 @@ function checkCelebrationForCard(card, patient) {
         return;
     }
 
-    // Check if any entries contain "xuất viện"
-    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
-        return entry.content && entry.content.toLowerCase().includes('xuất viện');
-    });
+    const todayIso = getTodayISODate();
+    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => isDischargeEntryOnDate(entry, todayIso));
 
     if (dischargeEntries.length > 0) {
         card.classList.add('xuatvienanimation');
@@ -17661,7 +17961,7 @@ module.exports = {
     checkAllCelebrationAnimations
 };
 
-},{"../services/checklistService":38,"./uiUtils":61}],49:[function(require,module,exports){
+},{"../services/checklistService":38,"./dischargeUtils":51,"./uiUtils":62}],49:[function(require,module,exports){
 // contextMenuCopyBuilders.js - Builders for specialized context-menu copy variants
 
 const ChecklistService = require('../services/checklistService');
@@ -17908,7 +18208,7 @@ module.exports = {
     extractLateralityPhrase
 };
 
-},{"../BS_CAI_DAT_GPB_CAT_LANH":2,"../services/checklistService":38,"../services/reportService":41,"./htmlUtils":54,"./patientDataMapper":56}],50:[function(require,module,exports){
+},{"../BS_CAI_DAT_GPB_CAT_LANH":2,"../services/checklistService":38,"../services/reportService":41,"./htmlUtils":55,"./patientDataMapper":57}],50:[function(require,module,exports){
 // dateUtils.js - Centralized date handling utilities
 
 const DateUtils = {
@@ -17997,6 +18297,113 @@ const DateUtils = {
 module.exports = DateUtils;
 
 },{}],51:[function(require,module,exports){
+function pad2(value) {
+    return String(value).padStart(2, '0');
+}
+
+function normalizeToDate(value) {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+        const copy = new Date(value.getTime());
+        if (isNaN(copy.getTime())) return null;
+        copy.setHours(0, 0, 0, 0);
+        return copy;
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    let normalized = raw;
+
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(raw)) {
+        normalized = raw.replace(' ', 'T');
+    } else if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(raw)) {
+        const [part1, part2, part3] = raw.split('/');
+        const [year, time = '00:00'] = part3.split(' ');
+        const num1 = parseInt(part1, 10);
+        const num2 = parseInt(part2, 10);
+
+        let day = part1;
+        let month = part2;
+        if (num1 <= 12 && num2 > 12) {
+            month = part1;
+            day = part2;
+        }
+
+        normalized = `${year}-${pad2(month)}-${pad2(day)}T${time || '00:00'}`;
+    }
+
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+}
+
+function toISODate(value) {
+    const date = normalizeToDate(value);
+    if (!date) return '';
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function formatDisplayDate(value) {
+    const date = normalizeToDate(value);
+    if (!date) return '';
+    return `${pad2(date.getDate())}/${pad2(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function getTodayISODate() {
+    return toISODate(new Date());
+}
+
+function getEntryDischargeDate(entry) {
+    if (!entry || typeof entry !== 'object') return '';
+
+    const explicit = entry.expectedDischargeDate || entry.dischargeDate || entry.dischargeDateExpected;
+    if (explicit) return toISODate(explicit);
+
+    if (entry.timestamp) {
+        const timestampDate = String(entry.timestamp).split(' ')[0];
+        return toISODate(timestampDate);
+    }
+
+    return '';
+}
+
+function isDischargeEntry(entry) {
+    if (!entry || typeof entry !== 'object') return false;
+    const content = String(entry.content || entry.action || '').toLowerCase();
+    return content.includes('xuất viện') || (entry.q === true && entry.action === 'Xuất viện');
+}
+
+function isDischargeEntryOnDate(entry, targetDate) {
+    if (!isDischargeEntry(entry)) return false;
+    const entryDate = getEntryDischargeDate(entry);
+    const effectiveTarget = toISODate(targetDate || new Date()) || getTodayISODate();
+    return !!entryDate && entryDate === effectiveTarget;
+}
+
+function getDischargeDisplayText(entry) {
+    if (!entry || !isDischargeEntry(entry)) return '';
+    const plannedDate = entry.expectedDischargeDate ? formatDisplayDate(entry.expectedDischargeDate) : '';
+    const timeText = entry.dischargeTime ? ` ${entry.dischargeTime}` : '';
+    if (plannedDate && timeText) return `dự kiến ${plannedDate}${timeText}`;
+    if (plannedDate) return `dự kiến ${plannedDate}`;
+    if (timeText) return `lúc${timeText}`;
+    return '';
+}
+
+module.exports = {
+    formatDisplayDate,
+    getDischargeDisplayText,
+    getEntryDischargeDate,
+    getTodayISODate,
+    isDischargeEntry,
+    isDischargeEntryOnDate,
+    normalizeToDate,
+    toISODate
+};
+},{}],52:[function(require,module,exports){
 // domUpdaters.js - shared UI update helpers for both card and list rows
 
 const { createYLenhTags, updateMedsDoneBadge } = require('./tagUtils');
@@ -18140,7 +18547,7 @@ module.exports = {
     composeDiagnosis,
 };
 
-},{"./htmlUtils":54,"./surgeryUtils":58,"./tagUtils":59}],52:[function(require,module,exports){
+},{"./htmlUtils":55,"./surgeryUtils":59,"./tagUtils":60}],53:[function(require,module,exports){
 // globalFnUtils.js - Helper to call functions that may live on multiple global scopes
 // (unsafeWindow, globalThis, window) without repeating the boilerplate everywhere.
 
@@ -18172,7 +18579,7 @@ function callGlobalFn(fnName, ...args) {
 
 module.exports = { callGlobalFn };
 
-},{}],53:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 function TaiToanBoTaiLieuHSBAV2() {
     if (window.location.hostname !== 'hsba.tahospital.vn') return;
 
@@ -18416,7 +18823,7 @@ function triggerDownloadIfDataExists() {
         alert('Dữ liệu chưa sẵn sàng. Vui lòng tải lại trang hoặc chờ dữ liệu tải.');
     }
 }
-},{}],54:[function(require,module,exports){
+},{}],55:[function(require,module,exports){
 // htmlUtils.js - HTML/text helpers
 
 function escapeHtml(str) {
@@ -18431,7 +18838,7 @@ function escapeHtml(str) {
 
 module.exports = { escapeHtml };
 
-},{}],55:[function(require,module,exports){
+},{}],56:[function(require,module,exports){
 // khoaUtils.js - central helpers for selected khoa id
 
 function getSelectedKhoa(defaultValue = '551') {
@@ -18447,7 +18854,7 @@ module.exports = {
     getSelectedKhoa
 };
 
-},{}],56:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 // patientDataMapper.js - Centralized patient data mapping
 
 const PatientDataMapper = {
@@ -18702,7 +19109,7 @@ const PatientDataMapper = {
 
 module.exports = PatientDataMapper;
 
-},{}],57:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 // stateSync.js - Helpers to keep in-memory state in sync across window.dr_data and window.checklistState
 
 /**
@@ -18763,7 +19170,7 @@ function syncPatientStateToGlobal(mabn, newState) {
 
 module.exports = { syncPatientStateToGlobal };
 
-},{}],58:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 // surgeryUtils.js - Surgery-related utility functions
 
 /**
@@ -19035,9 +19442,11 @@ module.exports = {
     updatePatientCardPhauThuat
 };
 
-},{}],59:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
+const DateUtils = require('./dateUtils');
+const { getTodayISODate, isDischargeEntryOnDate, getDischargeDisplayText, isDischargeEntry } = require('./dischargeUtils');
 
 // Helper function to create y lệnh tags
 function createYLenhTags(patient) {
@@ -19045,12 +19454,14 @@ function createYLenhTags(patient) {
         return '';
     }
 
-    // Filter for today's entries (INCLUDE all entries for dashboard cards)
-    const today = new Date();
-    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+    // Filter for today's effective discharge entries + today's non-discharge entries
+    const todayStr = DateUtils.getTodayStr();
+    const todayIso = getTodayISODate();
 
     const todayEntries = patient.checklistState.yLenhLog.filter(entry => {
-        return entry.timestamp && entry.timestamp.startsWith(todayStr);
+        if (!entry || !entry.timestamp) return false;
+        if (isDischargeEntry(entry)) return isDischargeEntryOnDate(entry, todayIso);
+        return entry.timestamp.startsWith(todayStr);
     });
     // Exclude 'Đã đánh thuốc' from tags (both quick and manual entries)
     const filteredEntries = todayEntries.filter(entry => {
@@ -19070,10 +19481,12 @@ function createYLenhTags(patient) {
         let color = '#4caf50'; // default green
         const content = (entry.content || '').toLowerCase();
         let isDischarge = false;
+        let dischargeMeta = '';
 
-        if (content.includes('xuất viện')) {
+        if (isDischargeEntry(entry)) {
             color = '#4caf50';
             isDischarge = true;
+            dischargeMeta = getDischargeDisplayText(entry);
         }
         else if (content.includes('rút odl')) color = '#ff9800';
         else if (content.includes('sonde')) color = '#9c27b0';
@@ -19090,8 +19503,7 @@ function createYLenhTags(patient) {
 
         const dischargeClass = isDischarge ? ' discharge' : '';
         const classes = `ylenh-tag${dischargeClass}${stateClass}`;
-        // Append discharge time if available and is Xuất viện
-        const timeText = (isDischarge && entry.dischargeTime) ? ` (${entry.dischargeTime})` : '';
+        const timeText = isDischarge && dischargeMeta ? ` (${dischargeMeta})` : '';
 
         return `<span class="${classes}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
             <span class="icon">${stateIcon}</span>
@@ -19256,20 +19668,17 @@ function updatePatientCardTags(patientMabn) {
         }
         // Update dataset flags for filters (today only)
         try {
-            const today = new Date();
-            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const todayStr = DateUtils.getTodayStr();
+            const todayIso = getTodayISODate();
             const log = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog) ? patient.checklistState.yLenhLog : [];
             let hasXV = false, hasCLS = false;
             for (const e of log) {
                 if (!e.timestamp || !e.content) continue;
-                if (!e.timestamp.startsWith(todayStr)) continue;
                 const c = e.content.toLowerCase();
-                if (c.includes('xuất viện')) {
-                    if (e.q === true && e.action === 'Xuất viện') {
-                        if (e.status === 'active' || e.status === 'done') hasXV = true;
-                    } else { hasXV = true; }
+                if (isDischargeEntry(e) && isDischargeEntryOnDate(e, todayIso)) {
+                    hasXV = true;
                 }
-                if (c.includes('cận lâm sàng')) hasCLS = true;
+                if (e.timestamp.startsWith(todayStr) && c.includes('cận lâm sàng')) hasCLS = true;
             }
             targetCard.dataset.hasxv = hasXV ? '1' : '0';
             targetCard.dataset.hascls = hasCLS ? '1' : '0';
@@ -19292,9 +19701,8 @@ function hasDischargeTag(patient) {
         return false;
     }
 
-    return patient.checklistState.yLenhLog.some(entry => {
-        return entry.content && entry.content.toLowerCase().includes('xuất viện');
-    });
+    const todayIso = getTodayISODate();
+    return patient.checklistState.yLenhLog.some(entry => isDischargeEntryOnDate(entry, todayIso));
 }
 
 module.exports = {
@@ -19306,7 +19714,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1}],60:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"./dateUtils":50,"./dischargeUtils":51}],61:[function(require,module,exports){
 /**
  * Normalizes Vietnamese text by removing diacritics/accents
  * @param {string} str - The string to normalize
@@ -19340,7 +19748,7 @@ module.exports = {
     hasAccents
 };
 
-},{}],61:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 // uiUtils.js - UI utility functions
 
 /**

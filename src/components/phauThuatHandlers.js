@@ -184,6 +184,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
         // leaves any of the key fields (date, hour, minute, method).
         // Only runs in EDIT mode (editIndex !== null) when there is already a record.
         function tryAutoSave() {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const date = dateInput.value.trim();
             const hour = hourInput.value.trim();
             const minute = minuteInput.value.trim();
@@ -321,6 +324,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
         }
 
         function savePhauThuat() {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const date = dateInput.value.trim();
             const hour = hourInput.value.trim();
             const minute = minuteInput.value.trim();
@@ -482,6 +488,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
     }
 
     function removePhauThuat(index) {
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
         if (window.checklistState.phauThuatLog && Array.isArray(window.checklistState.phauThuatLog)) {
             window.checklistState.phauThuatLog.splice(index, 1);
             syncPatientStateToGlobal(patient.mabn, window.checklistState);
@@ -493,6 +502,9 @@ function setupPhauThuatHandlers(infoElement, patient) {
 
     async function savePhauThuatLog() {
         if (window.checklistObj) {
+            if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                window.__drSidebarResetAutoSyncTimer();
+            }
             const res = await ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
             if (!res || (!res.ok && !res.queued)) {
                 console.error('Lưu log phẫu thuật thất bại!');

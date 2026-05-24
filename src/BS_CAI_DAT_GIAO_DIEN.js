@@ -73,16 +73,16 @@ const BS_CAI_DAT = {
 
     // ================== CÀI ĐẶT Y LỆNH QUICK ACTIONS ==================
     quickYLenhActions: [
-        { label: 'Xuất viện', icon: '🏠', color: '#4caf50' },
-        { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4' },
-        { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a' },
-        { label: 'Thay băng', icon: '👗', color: '#310994ff' },
-        { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800' },
-        { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3' },
-        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0' },
-        { label: 'Xquang', icon: '🩺', color: '#2196f3' },
-        { label: 'Đi mổ', icon: '🩹', color: '#ff9800' },
-        { label: 'VLTL', icon: '🩺', color: '#2196f3' }
+        { label: 'Xuất viện', icon: '🏠', color: '#4caf50', status: 3 },
+        { label: 'Cận lâm sàng', icon: '🧪', color: '#06b6d4', status: 3 },
+        { label: 'Đã đánh thuốc', icon: '💊', color: '#16a34a', status: 2 },
+        { label: 'Thay băng', icon: '👗', color: '#310994ff', status: 3 },
+        { label: 'Rút ODL vết mổ', icon: '🩹', color: '#ff9800', status: 3 },
+        { label: 'Rút ODL phổi', icon: '🫁', color: '#2196f3', status: 3 },
+        { label: 'Rút sonde tiểu', icon: '🔗', color: '#9c27b0', status: 3 },
+        { label: 'Xquang', icon: '🩺', color: '#2196f3', status: 3 },
+        { label: 'Đi mổ', icon: '🩹', color: '#ff9800', status: 3 },
+        { label: 'VLTL', icon: '🩺', color: '#2196f3', status: 3 }
     ],
 
     // ================== CÀI ĐẶT BÁC SĨ ==================

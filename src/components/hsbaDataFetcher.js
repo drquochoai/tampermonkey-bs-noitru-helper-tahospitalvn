@@ -223,19 +223,30 @@ function renderResult(container, result, ctx = {}) {
 				};
 			}
 			if (Object.keys(hsbaSynced).length) {
-				// Merge into window.checklistState and persist
+				// Merge into window.checklistState only when the effective mapping changed.
 				if (!window.checklistState) window.checklistState = {};
 				const prev = window.checklistState.hsbaSynced || {};
-				window.checklistState.hsbaSynced = { ...prev, ...hsbaSynced, __lastSyncAt: nowIso };
-				if (window.checklistObj && ChecklistService && typeof ChecklistService.updateChecklistState === 'function') {
-					ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) })
-						.then(() => {
-							// Ask dashboard to refresh checklist badges if function exists
-							try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
-						})
-						.catch(() => {});
-				} else {
-					try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+				const stripMeta = (obj) => {
+					const result = {};
+					Object.keys(obj || {}).forEach((key) => {
+						if (key === '__lastSyncAt') return;
+						result[key] = obj[key];
+					});
+					return result;
+				};
+				const prevComparable = JSON.stringify(stripMeta(prev));
+				const nextComparable = JSON.stringify(stripMeta({ ...prev, ...hsbaSynced }));
+				if (prevComparable !== nextComparable) {
+					window.checklistState.hsbaSynced = { ...prev, ...hsbaSynced, __lastSyncAt: nowIso };
+					if (window.checklistObj && ChecklistService && typeof ChecklistService.updateChecklistState === 'function') {
+						ChecklistService.updateChecklistState(window.checklistObj, window.checklistState, { enqueueOnOffline: true, ctxId: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id), signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) })
+							.then(() => {
+								try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+							})
+							.catch(() => {});
+					} else {
+						try { if (typeof window.dr_refreshChecklistBadges === 'function') window.dr_refreshChecklistBadges(); } catch(_) {}
+					}
 				}
 			}
 		}

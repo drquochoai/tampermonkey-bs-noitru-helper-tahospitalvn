@@ -2,6 +2,7 @@
 
 const { showToast, copyToClipboard } = require('./uiUtils');
 const ChecklistService = require('../services/checklistService');
+const { getTodayISODate, isDischargeEntryOnDate } = require('./dischargeUtils');
 
 /**
  * Create checklist item HTML with special actions
@@ -112,10 +113,8 @@ function checkCelebrationForCard(card, patient) {
         return;
     }
 
-    // Check if any entries contain "xuất viện"
-    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
-        return entry.content && entry.content.toLowerCase().includes('xuất viện');
-    });
+    const todayIso = getTodayISODate();
+    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => isDischargeEntryOnDate(entry, todayIso));
 
     if (dischargeEntries.length > 0) {
         card.classList.add('xuatvienanimation');

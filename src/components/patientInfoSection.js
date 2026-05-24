@@ -23,7 +23,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
             <label for="dr-chandoan-kemtheo" style="margin:0;font-weight:600;line-height:1.4;font-size:12px;color:#555;">Bệnh đi kèm</label>
             <div style="display:flex;flex-direction:column;gap:4px;">
                 <textarea id="dr-chandoan-kemtheo" rows="2" placeholder="VD: THA, ĐTĐ type 2..." style="width:100%;padding:6px 8px;border:1px solid #90caf9;border-radius:4px;resize:vertical;font-size:12px;line-height:1.3;min-height:44px;box-shadow:0 0 0 2px rgba(25,118,210,0.12);outline:none;"></textarea>
-                <div id="dr-chandoan-kemtheo-saved" style="display:none;color:#2e7d32;font-weight:600;">Đã lưu</div>
             </div>
         </div>
         
@@ -40,7 +39,6 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         <div style="margin-top:20px;">
             <h3 style="margin-bottom:10px;">Kế hoạch điều trị / Hướng xử trí</h3>
             <textarea id="dr-hxt-textarea" rows="3" placeholder="VD: Kháng sinh 7 ngày, dự kiến xuất viện 22/08, tái khám sau 1 tuần..." style="width:100%;padding:10px;border:1px solid #eee;border-radius:6px;resize:vertical;"></textarea>
-            <div id="dr-hxt-saved" style="display:none;color:#2e7d32;font-weight:600;margin-top:4px;">Đã lưu</div>
         </div>
         
         <div style="margin-top:20px;">
@@ -49,7 +47,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
             <!-- Quick Action Buttons -->
             <div class="quick-ylenh-actions">
                 ${quickYLenhActions.map(action => `
-                    <button class="quick-ylenh-btn" data-action="${action.label}" style="color: ${action.color}; border-color: ${action.color};">
+                    <button class="quick-ylenh-btn" data-action="${action.label}" ${action.label === 'Đã đánh thuốc' ? 'data-no-add-to-hxt="1"' : ''} style="color: ${action.color}; border-color: ${action.color};">
                         <span class="icon">${action.icon}</span>
                         <span class="text">${action.label}</span>
                     </button>
@@ -64,6 +62,13 @@ function createPatientInfoSection(patient, quickYLenhActions) {
                 <div style="color:#888;font-style:italic;">Chưa có y lệnh nào...</div>
             </div>
         </div>
+
+        <div style="margin-top:20px;">
+            <h3 style="margin-bottom:10px;">Xuất viện</h3>
+            <div id="dr-xv-log" style="max-height:180px;overflow-y:auto;border:1px solid #e8f5e9;padding:10px;border-radius:4px;background:#f8fff9;word-break: break-word; overflow-wrap: anywhere;">
+                <div style="color:#888;font-style:italic;">Chưa có xuất viện nào...</div>
+            </div>
+        </div>
     `;
 
     // Setup y lệnh functionality
@@ -74,10 +79,8 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
     // Setup HXT (kế hoạch điều trị) auto-save and live update
     const hxtTextarea = info.querySelector('#dr-hxt-textarea');
-    const hxtSaved = info.querySelector('#dr-hxt-saved');
     // Setup Chẩn đoán kèm theo auto-save
     const cdktTextarea = info.querySelector('#dr-chandoan-kemtheo');
-    const cdktSaved = info.querySelector('#dr-chandoan-kemtheo-saved');
     // Shared debounced save state
     let pendingSaveTimer = null;
     const SAVE_DEBOUNCE_MS = 700;
@@ -101,13 +104,64 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         if (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string') {
             cdktTextarea.value = patient.checklistState.chanDoanKemTheo;
         }
+        if (typeof window.currentSyncHxtFromYLenhLog === 'function') {
+            window.currentSyncHxtFromYLenhLog();
+        }
     }, 50);
+
+    function ensureSidebarSaveSpinner() {
+        let spinner = document.getElementById('dr-sidebar-save-spinner');
+        if (spinner) return spinner;
+
+        if (!document.getElementById('dr-sidebar-save-spinner-style')) {
+            const style = document.createElement('style');
+            style.id = 'dr-sidebar-save-spinner-style';
+            style.textContent = '@keyframes drspin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(style);
+        }
+
+        spinner = document.createElement('div');
+        spinner.id = 'dr-sidebar-save-spinner';
+        spinner.style.cssText = `
+            position: fixed;
+            top: 16px;
+            right: 18px;
+            z-index: 100010;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(15, 23, 42, 0.92);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+            pointer-events: none;
+        `;
+        spinner.innerHTML = '<span style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.35);border-top-color:#fff;border-radius:50%;animation:drspin 0.8s linear infinite;display:inline-block;"></span><span>Đang lưu</span>';
+                    // Keep the spinner as the only save feedback; no inline toast.
+        return spinner;
+    }
+
+    function setSidebarSaveSpinner(visible, label = 'Đang lưu') {
+        const spinner = ensureSidebarSaveSpinner();
+        const text = spinner.querySelector('span:last-child');
+        if (text) text.textContent = label;
+        spinner.style.display = visible ? 'inline-flex' : 'none';
+    }
+
+    window.__drSetSidebarSaveSpinner = setSidebarSaveSpinner;
+    window.__drEnsureSidebarSaveSpinner = ensureSidebarSaveSpinner;
 
     function softUpdate(key, value) {
         if (!window.checklistState) window.checklistState = {};
         window.checklistState = { ...(window.checklistState || {}), [key]: value };
         patient.checklistState = { ...(patient.checklistState || {}), [key]: value };
         syncPatientStateToGlobal(patient.mabn, window.checklistState);
+        if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+            window.__drSidebarResetAutoSyncTimer();
+        }
     }
 
     async function persistIfDirty() {
@@ -124,41 +178,41 @@ function createPatientInfoSection(patient, quickYLenhActions) {
 
         // Persist once
         if (window.checklistObj) {
-            const res = await ChecklistService.updateChecklistState(window.checklistObj, nextState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
-            if (!res || (!res.ok && !res.queued)) {
-                console.warn('Lưu checklist thất bại');
-            } else {
-                // If this sidebar is no longer active, do not apply visual updates
-                if (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id !== ctxId) return;
-                // Update global state snapshot and lastSaved
-                window.checklistState = nextState;
-                if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
-                if (changedKeys.includes('cdkt')) lastSaved.cdkt = draft.cdkt;
-                dirty = { hxt: false, cdkt: false };
+            try {
+                const res = await ChecklistService.updateChecklistState(window.checklistObj, nextState, { ctxId, enqueueOnOffline: true, signal: (window.dr_sidebar_ctx && window.dr_sidebar_ctx.signal) });
+                if (!res || (!res.ok && !res.queued)) {
+                    console.warn('Lưu checklist thất bại');
+                } else {
+                    // If this sidebar is no longer active, do not apply visual updates
+                    if (window.dr_sidebar_ctx && window.dr_sidebar_ctx.id !== ctxId) return;
+                    // Update global state snapshot and lastSaved
+                    window.checklistState = nextState;
+                    if (changedKeys.includes('hxt')) lastSaved.hxt = draft.hxt;
+                    if (changedKeys.includes('cdkt')) lastSaved.cdkt = draft.cdkt;
+                    dirty = { hxt: false, cdkt: false };
 
-                // Subtle flash effect on saved fields
-                try {
-                    const flash = (el) => {
-                        if (!el) return;
-                        const prev = el.style.boxShadow;
-                        el.style.boxShadow = '0 0 0 2px rgba(76,175,80,0.6)';
-                        setTimeout(() => { el.style.boxShadow = prev || ''; }, 400);
-                    };
-                    if (changedKeys.includes('hxt')) {
-                        try { callGlobalFn('updatePatientCardHXT', patient); } catch (_) { }
-                        flash(hxtTextarea);
-                        if (hxtSaved) { hxtSaved.style.display = 'block'; setTimeout(() => hxtSaved.style.display = 'none', 600); }
-                    }
-                    if (changedKeys.includes('cdkt')) {
-                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
-                        flash(cdktTextarea);
-                        if (cdktSaved) { cdktSaved.style.display = 'block'; setTimeout(() => cdktSaved.style.display = 'none', 600); }
-                        // Update card diagnosis after saving CDKT to keep cards in sync
-                        try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
-                    }
-                } catch (_) { }
-                if (res && res.queued) {
-                    try { (window.showToast || console.log)("Đã lưu tạm—sẽ đồng bộ khi có mạng."); } catch (_) { }
+                    // Subtle flash effect on saved fields
+                    try {
+                        const flash = (el) => {
+                            if (!el) return;
+                            const prev = el.style.boxShadow;
+                            el.style.boxShadow = '0 0 0 2px rgba(76,175,80,0.6)';
+                            setTimeout(() => { el.style.boxShadow = prev || ''; }, 400);
+                        };
+                        if (changedKeys.includes('hxt')) {
+                            try { callGlobalFn('updatePatientCardHXT', patient); } catch (_) { }
+                            flash(hxtTextarea);
+                        }
+                        if (changedKeys.includes('cdkt')) {
+                            try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
+                            flash(cdktTextarea);
+                            try { callGlobalFn('updatePatientCardCDKT', patient); } catch (_) { }
+                        }
+                    } catch (_) { }
+                }
+            } finally {
+                if (typeof window.__drSetSidebarSaveSpinner === 'function') {
+                    window.__drSetSidebarSaveSpinner(false);
                 }
             }
         }
@@ -179,6 +233,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         dirty.hxt = (val !== lastSaved.hxt);
         softUpdate('huongXuTri', val);
         callGlobalFn('updatePatientCardHXT', patient);
+        if (typeof window.__drSetSidebarSaveSpinner === 'function') window.__drSetSidebarSaveSpinner(true, 'Đang lưu HXT');
         scheduleSave();
     });
     hxtTextarea.addEventListener('blur', () => {
@@ -195,6 +250,7 @@ function createPatientInfoSection(patient, quickYLenhActions) {
         draft.cdkt = val;
         dirty.cdkt = (val !== lastSaved.cdkt);
         softUpdate('chanDoanKemTheo', val);
+        if (typeof window.__drSetSidebarSaveSpinner === 'function') window.__drSetSidebarSaveSpinner(true, 'Đang lưu bệnh đi kèm');
         scheduleSave();
     });
     cdktTextarea.addEventListener('blur', () => {

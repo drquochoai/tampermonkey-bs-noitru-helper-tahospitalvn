@@ -1,5 +1,7 @@
 // tagUtils.js
 const BS_CAI_DAT = require('../BS_CAI_DAT_GIAO_DIEN');
+const DateUtils = require('./dateUtils');
+const { getTodayISODate, isDischargeEntryOnDate, getDischargeDisplayText, isDischargeEntry } = require('./dischargeUtils');
 
 // Helper function to create y lệnh tags
 function createYLenhTags(patient) {
@@ -7,12 +9,14 @@ function createYLenhTags(patient) {
         return '';
     }
 
-    // Filter for today's entries (INCLUDE all entries for dashboard cards)
-    const today = new Date();
-    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+    // Filter for today's effective discharge entries + today's non-discharge entries
+    const todayStr = DateUtils.getTodayStr();
+    const todayIso = getTodayISODate();
 
     const todayEntries = patient.checklistState.yLenhLog.filter(entry => {
-        return entry.timestamp && entry.timestamp.startsWith(todayStr);
+        if (!entry || !entry.timestamp) return false;
+        if (isDischargeEntry(entry)) return isDischargeEntryOnDate(entry, todayIso);
+        return entry.timestamp.startsWith(todayStr);
     });
     // Exclude 'Đã đánh thuốc' from tags (both quick and manual entries)
     const filteredEntries = todayEntries.filter(entry => {
@@ -32,10 +36,12 @@ function createYLenhTags(patient) {
         let color = '#4caf50'; // default green
         const content = (entry.content || '').toLowerCase();
         let isDischarge = false;
+        let dischargeMeta = '';
 
-        if (content.includes('xuất viện')) {
+        if (isDischargeEntry(entry)) {
             color = '#4caf50';
             isDischarge = true;
+            dischargeMeta = getDischargeDisplayText(entry);
         }
         else if (content.includes('rút odl')) color = '#ff9800';
         else if (content.includes('sonde')) color = '#9c27b0';
@@ -52,8 +58,7 @@ function createYLenhTags(patient) {
 
         const dischargeClass = isDischarge ? ' discharge' : '';
         const classes = `ylenh-tag${dischargeClass}${stateClass}`;
-        // Append discharge time if available and is Xuất viện
-        const timeText = (isDischarge && entry.dischargeTime) ? ` (${entry.dischargeTime})` : '';
+        const timeText = isDischarge && dischargeMeta ? ` (${dischargeMeta})` : '';
 
         return `<span class="${classes}" style="background-color: rgba(${hexToRgb(color)}, 0.1); color: ${color}; border-color: rgba(${hexToRgb(color)}, 0.3);">
             <span class="icon">${stateIcon}</span>
@@ -218,20 +223,17 @@ function updatePatientCardTags(patientMabn) {
         }
         // Update dataset flags for filters (today only)
         try {
-            const today = new Date();
-            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const todayStr = DateUtils.getTodayStr();
+            const todayIso = getTodayISODate();
             const log = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog) ? patient.checklistState.yLenhLog : [];
             let hasXV = false, hasCLS = false;
             for (const e of log) {
                 if (!e.timestamp || !e.content) continue;
-                if (!e.timestamp.startsWith(todayStr)) continue;
                 const c = e.content.toLowerCase();
-                if (c.includes('xuất viện')) {
-                    if (e.q === true && e.action === 'Xuất viện') {
-                        if (e.status === 'active' || e.status === 'done') hasXV = true;
-                    } else { hasXV = true; }
+                if (isDischargeEntry(e) && isDischargeEntryOnDate(e, todayIso)) {
+                    hasXV = true;
                 }
-                if (c.includes('cận lâm sàng')) hasCLS = true;
+                if (e.timestamp.startsWith(todayStr) && c.includes('cận lâm sàng')) hasCLS = true;
             }
             targetCard.dataset.hasxv = hasXV ? '1' : '0';
             targetCard.dataset.hascls = hasCLS ? '1' : '0';
@@ -254,9 +256,8 @@ function hasDischargeTag(patient) {
         return false;
     }
 
-    return patient.checklistState.yLenhLog.some(entry => {
-        return entry.content && entry.content.toLowerCase().includes('xuất viện');
-    });
+    const todayIso = getTodayISODate();
+    return patient.checklistState.yLenhLog.some(entry => isDischargeEntryOnDate(entry, todayIso));
 }
 
 module.exports = {

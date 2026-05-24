@@ -35,6 +35,8 @@ const { escapeHtml } = require('../utils/htmlUtils');
 const DomUpdaters = require('../utils/domUpdaters');
 const { createChecklistItemHTML, copyYLenhText, checkCelebrationForCard, checkAllCelebrationAnimations } = require('../utils/checklistUtils');
 const { getSelectedKhoa } = require('../utils/khoaUtils');
+const DateUtils = require('../utils/dateUtils');
+const { getTodayISODate, isDischargeEntryOnDate } = require('../utils/dischargeUtils');
 
 // Global variable for OTM tabs
 if (typeof window !== 'undefined') {
@@ -694,15 +696,11 @@ function showDashboardBenhNhanIfNeeded() {
             li.style = 'margin-bottom:8px;';
 
             if (typeof item === 'string') {
-                // Simple checklist item
                 const id = 'dr-checklist-xv-' + idx;
                 const isChecked = window.checklistState && window.checklistState[`xuatvien_${item}`] || false;
-
                 li.innerHTML = createChecklistItemHTML(item, id, isChecked, patient);
             } else if (item.children) {
-                // Parent item with children - Special handling for "Tờ điều trị"
                 if (item.label === 'Tờ điều trị') {
-                    // Render as header without checkbox
                     li.innerHTML = `
                         <div style="margin-bottom:12px;">
                             <h4 style="margin:0 0 8px 0;color:#1976d2;font-weight:bold;border-bottom:2px solid #e3f2fd;padding-bottom:4px;">📋 ${item.label}</h4>
@@ -716,10 +714,8 @@ function showDashboardBenhNhanIfNeeded() {
                         </div>
                     `;
                 } else {
-                    // Normal parent item with checkbox
                     const parentId = 'dr-checklist-xv-parent-' + idx;
                     const isParentChecked = window.checklistState && window.checklistState[`xuatvien_${item.label}`] || false;
-
                     li.innerHTML = `
                         <div style="margin-bottom:8px;">
                             <label style="display:flex;align-items:center;gap:8px;font-weight:bold;">
@@ -740,10 +736,12 @@ function showDashboardBenhNhanIfNeeded() {
             checklistUl.appendChild(li);
         });
 
-        // Setup checkbox change handlers for xuất viện
         setTimeout(() => {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
+                    if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                        window.__drSidebarResetAutoSyncTimer();
+                    }
                     const item = BS_CAI_DAT.checklistXuatVien[idx];
                     let label = '';
                     if (typeof item === 'string') {
@@ -751,13 +749,8 @@ function showDashboardBenhNhanIfNeeded() {
                     } else if (item.label) {
                         label = item.label;
                     } else {
-                        // Fallback for child items - extract from data attribute or parent text
                         const dataLabel = this.getAttribute('data-original-label');
-                        if (dataLabel) {
-                            label = dataLabel;
-                        } else {
-                            label = this.parentNode.textContent.trim();
-                        }
+                        label = dataLabel || this.parentNode.textContent.trim();
                     }
                     const key = `xuatvien_${label}`;
 
@@ -775,7 +768,6 @@ function showDashboardBenhNhanIfNeeded() {
             });
         }, 10);
 
-        // Make function available for reuse
         window.renderChecklistXuatVien = renderChecklistXuatVien;
     }
 
@@ -917,6 +909,8 @@ function showDashboardBenhNhanIfNeeded() {
         checklistUl.innerHTML = '';
         const hsbaSynced = (window.checklistState && window.checklistState.hsbaSynced) || {};
         const lastSyncAt = hsbaSynced.__lastSyncAt || null;
+        const existingNote = checklistUl.parentElement && checklistUl.parentElement.querySelector('.dr-hsba-sync-note');
+        if (existingNote) existingNote.remove();
         checklistItems.forEach((item, idx) => {
             const li = document.createElement('li');
             // No margin/padding; keep optional background and radius only
@@ -956,6 +950,9 @@ function showDashboardBenhNhanIfNeeded() {
         setTimeout(() => {
             checklistUl.querySelectorAll('input[type=checkbox]').forEach((cb, idx) => {
                 cb.addEventListener('change', async function () {
+                    if (typeof window.__drSidebarResetAutoSyncTimer === 'function') {
+                        window.__drSidebarResetAutoSyncTimer();
+                    }
                     const itemText = checklistItems[idx]; // Use original item text, not display text
                     window.checklistState[itemText] = this.checked;
                     const res = await persistCurrentChecklistState();
@@ -1196,9 +1193,50 @@ function showDashboardBenhNhanIfNeeded() {
             window.addEventListener('online', toggleOffline, { once: true });
         } catch (_) { }
 
-        // ─── Auto-sync checklist data every 1100ms ───
-        // This ensures sidebar data stays in sync if other users are updating the same patient.
-        let autoSyncInterval = null;
+        // ─── Auto-sync checklist data every 4321ms ───
+        // Resetting the timer on local edits avoids stale refreshes overwriting fresh sidebar state.
+        let autoSyncTimeout = null;
+        let autoSyncToken = 0;
+        const scheduleSidebarAutoSync = (delay = 4321) => {
+            autoSyncToken += 1;
+            const token = autoSyncToken;
+
+            if (autoSyncTimeout) {
+                clearTimeout(autoSyncTimeout);
+            }
+
+            autoSyncTimeout = setTimeout(async () => {
+                autoSyncTimeout = null;
+                if (token !== autoSyncToken) return;
+                if (!SidebarSession.isActive(sessionId)) return;
+
+                try {
+                    const freshData = await ChecklistService.loadChecklistBundle(patient, { forceRefresh: true });
+                    if (token !== autoSyncToken) return;
+                    if (!freshData || !freshData.state) return;
+
+                    const oldStateStr = JSON.stringify(window.checklistState || {});
+                    const newStateStr = JSON.stringify(freshData.state);
+
+                    if (oldStateStr !== newStateStr) {
+                        console.log('Sidebar auto-sync: detected state change for patient', patient.mabn);
+                        window.checklistObj = freshData.checklistObj;
+                        window.checklistState = { ...freshData.state };
+                        syncPatientCardFromChecklistState(window.checklistState);
+                        refreshSidebarFromChecklistState();
+                    }
+                } catch (e) {
+                    console.warn('Sidebar auto-sync error:', e);
+                } finally {
+                    if (token === autoSyncToken) {
+                        scheduleSidebarAutoSync(4321);
+                    }
+                }
+            }, delay);
+        };
+        window.__drSidebarResetAutoSyncTimer = () => {
+            scheduleSidebarAutoSync(4321);
+        };
         const refreshSidebarFromChecklistState = () => {
             try {
                 if (typeof window.dr_refreshChecklistBadges === 'function') {
@@ -1287,37 +1325,8 @@ function showDashboardBenhNhanIfNeeded() {
                 console.warn('Sidebar auto-sync: failed to sync dashboard card', e);
             }
         };
-        const startAutoSync = () => {
-            autoSyncInterval = setInterval(async () => {
-                // Check if sidebar session is still active
-                if (!SidebarSession.isActive(sessionId)) {
-                    clearInterval(autoSyncInterval);
-                    return;
-                }
-
-                try {
-                    const freshData = await ChecklistService.loadChecklistBundle(patient, { forceRefresh: true });
-                    if (!freshData || !freshData.state) return;
-
-                    // Compare and update if state changed
-                    const oldStateStr = JSON.stringify(window.checklistState || {});
-                    const newStateStr = JSON.stringify(freshData.state);
-                    
-                    if (oldStateStr !== newStateStr) {
-                        console.log('Sidebar auto-sync: detected state change for patient', patient.mabn);
-                        window.checklistObj = freshData.checklistObj;
-                        window.checklistState = { ...freshData.state };
-                        syncPatientCardFromChecklistState(window.checklistState);
-                        refreshSidebarFromChecklistState();
-                    }
-                } catch (e) {
-                    console.warn('Sidebar auto-sync error:', e);
-                }
-            }, 4321);
-        };
-
         // Start auto-sync when sidebar is fully rendered and visible
-        startAutoSync();
+        scheduleSidebarAutoSync(4321);
 
         // One-time initial sync now that helper functions are defined
         try { if (typeof syncPatientCardFromChecklistState === 'function') syncPatientCardFromChecklistState(window.checklistState); } catch (_) {}
@@ -1326,13 +1335,14 @@ function showDashboardBenhNhanIfNeeded() {
         // Clean up auto-sync when sidebar closes
         const originalEndSession = SidebarSession.endSession;
         window.__drSidebarAutoSyncCleanup = () => {
-            if (autoSyncInterval) {
-                clearInterval(autoSyncInterval);
-                autoSyncInterval = null;
+            if (autoSyncTimeout) {
+                clearTimeout(autoSyncTimeout);
+                autoSyncTimeout = null;
             }
             if (window.__drSyncActiveSidebarState) {
                 window.__drSyncActiveSidebarState = null;
             }
+            window.__drSidebarResetAutoSyncTimer = null;
         };
         // Hook into modal close to stop auto-sync
         const origHideModal = ModalManager.hideModal;
@@ -1428,25 +1438,19 @@ function showDashboardBenhNhanIfNeeded() {
         else delete element.dataset.stayDays;
 
         try {
-            const today = new Date();
-            const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
+            const todayStr = DateUtils.getTodayStr();
+            const todayIso = getTodayISODate();
             const log = item && item.checklistState && Array.isArray(item.checklistState.yLenhLog) ? item.checklistState.yLenhLog : [];
             let hasXV = false;
             let hasCLS = false;
 
             for (const entry of log) {
                 if (!entry.timestamp || !entry.content) continue;
-                if (!entry.timestamp.startsWith(todayStr)) continue;
-
                 const content = entry.content.toLowerCase();
-                if (content.includes('xuất viện')) {
-                    if (entry.q === true && entry.action === 'Xuất viện') {
-                        if (entry.status === 'active' || entry.status === 'done') hasXV = true;
-                    } else {
-                        hasXV = true;
-                    }
+                if (isDischargeEntryOnDate(entry, todayIso)) {
+                    hasXV = true;
                 }
-                if (content.includes('cận lâm sàng')) hasCLS = true;
+                if (entry.timestamp.startsWith(todayStr) && content.includes('cận lâm sàng')) hasCLS = true;
             }
 
             element.dataset.hasxv = hasXV ? '1' : '0';

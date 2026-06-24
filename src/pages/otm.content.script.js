@@ -555,10 +555,12 @@
         if (!Array.isArray(records)) return [];
         const result = [];
         for (const r of records) {
+            const customerPid = r?.customer?.pid ?? r?.customer?.code ?? null;
+            const operatingRoom = r?.operating_room ?? r?.room?.name ?? null;
             const item = {
                 customer: {
                     fullname: r?.customer?.fullname ?? null,
-                    pid: r?.customer?.code ?? null,
+                    pid: customerPid,
                     dob: r?.customer?.dob ?? null,
                 },
                 diagnose: r?.diagnose ?? null,
@@ -571,7 +573,7 @@
                 phongDieuTri: r?.phongDieuTri ?? null,
                 giuongDieuTri: r?.giuongDieuTri ?? null,
                 // Operating room name only
-                operating_room: r?.room?.name ?? null,
+                operating_room: operatingRoom,
                 status: r?.status ?? null,
                 // Surgeons
                 userexec: Array.isArray(r?.userexec)

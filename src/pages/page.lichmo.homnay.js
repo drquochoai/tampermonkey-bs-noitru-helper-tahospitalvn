@@ -296,11 +296,13 @@ function filterSurgeryData(records) {
   if (!Array.isArray(records)) return [];
   const result = [];
   for (const r of records) {
+    const customerPid = r?.customer?.pid ?? r?.customer?.code ?? null;
+    const operatingRoom = r?.operating_room ?? r?.room?.name ?? null;
     const item = {
       s: {
         customer: {
           fullname: r?.customer?.fullname ?? null,
-          pid: r?.customer?.code ?? null,
+          pid: customerPid,
           dob: r?.customer?.dob ?? null,
         },
         diagnose: r?.diagnose ?? null,
@@ -311,7 +313,7 @@ function filterSurgeryData(records) {
         khoaDieuTri: r?.khoaDieuTri ?? null,
         phongDieuTri: r?.phongDieuTri ?? null,
         giuongDieuTri: r?.giuongDieuTri ?? null,
-        operating_room: r?.room?.name ?? null,
+        operating_room: operatingRoom,
         status: r?.status ?? null,
         userexec: Array.isArray(r?.userexec)
           ? r.userexec.map(u => ({ fullname: u?.fullname ?? null, taid: u?.taid ?? null }))

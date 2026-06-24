@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.2.4
+// @version      2.2.5
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -8234,10 +8234,12 @@ module.exports = {
         if (!Array.isArray(records)) return [];
         const result = [];
         for (const r of records) {
+            const customerPid = r?.customer?.pid ?? r?.customer?.code ?? null;
+            const operatingRoom = r?.operating_room ?? r?.room?.name ?? null;
             const item = {
                 customer: {
                     fullname: r?.customer?.fullname ?? null,
-                    pid: r?.customer?.code ?? null,
+                    pid: customerPid,
                     dob: r?.customer?.dob ?? null,
                 },
                 diagnose: r?.diagnose ?? null,
@@ -8250,7 +8252,7 @@ module.exports = {
                 phongDieuTri: r?.phongDieuTri ?? null,
                 giuongDieuTri: r?.giuongDieuTri ?? null,
                 // Operating room name only
-                operating_room: r?.room?.name ?? null,
+                operating_room: operatingRoom,
                 status: r?.status ?? null,
                 // Surgeons
                 userexec: Array.isArray(r?.userexec)
@@ -11442,7 +11444,7 @@ function dr_otmToLogEntry(otmItem) {
         const d = new Date(startIso);
         if (isNaN(d.getTime())) return null;
         const { date, time } = dr_formatVNDateTime(d);
-        const method = (otmItem.surgerymethod || '').trim();
+        const method = (otmItem.surgerymethod || otmItem.pppt || '').trim();
         // Collect doctors from userexec (Main surgeons) + userassistant (Assistants)
         // Note: The order in userexec is preserved, ensuring PTV chính is listed first.
         const names = [];
@@ -11471,12 +11473,12 @@ function dr_otmToLogEntry(otmItem) {
 }
 
 function dr_integrateOTMSurgeryData(otmList) {
-    const res = { updatedPatients: 0, addedLogs: 0, updated: [] };
+    const res = { updatedPatients: 0, addedLogs: 0, updated: [], matchedPatients: 0, refreshed: false };
     if (!Array.isArray(otmList) || !Array.isArray(window.dr_data)) return res;
     // Build map pid -> log entries
     const map = new Map();
     for (const it of otmList) {
-        const pid = dr_normalizePid(it && it.customer && it.customer.pid);
+        const pid = dr_normalizePid(it && it.customer && (it.customer.pid ?? it.customer.code));
         if (!pid) continue;
         const entry = dr_otmToLogEntry(it);
         if (!entry) continue;
@@ -11491,6 +11493,8 @@ function dr_integrateOTMSurgeryData(otmList) {
         if (!mabnNorm) continue;
         const entries = map.get(mabnNorm);
         if (!entries || entries.length === 0) continue;
+
+        res.matchedPatients++;
 
         // Keep original for sidebar merge
         p._otmPhauThuatLog = entries.slice();
@@ -11513,26 +11517,42 @@ function dr_integrateOTMSurgeryData(otmList) {
             res.updatedPatients++;
             res.addedLogs += added;
             res.updated.push({ patient: p, added });
-            // Sort newest first
-            const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
-            const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
-            p.checklistState.phauThuatLog.sort((a, b) => toTs(b) - toTs(a));
-            // Also reflect latest to phauThuatInfo for formatSurgeryInfo compatibility
-            const latest = p.checklistState.phauThuatLog[0];
-            if (latest) {
-                p.phauThuatInfo = { date: latest.date, time: latest.time, method: latest.method, doctors: latest.doctors, ngayPhauThuat: latest.date, gioPhauThuat: latest.time, pppt: latest.method };
-            }
-            // Update card/list row if present
-            try {
-                const DomUpdaters = require('../utils/domUpdaters');
-                const el = DomUpdaters.findPatientElement(p.mabn);
-                if (el) {
-                    DomUpdaters.updateSurgeryInfo(el, p);
-                    DomUpdaters.updateSurgeryIcon(el, p);
-                }
-            } catch (_) { }
         }
+
+        // Sort newest first and sync the visible summary even when the log already existed.
+        const parseDDMMYYYY = (s) => { const [d, m, y] = String(s || '').split('/').map(n => parseInt(n, 10)); return new Date(y || 1970, (m || 1) - 1, d || 1); };
+        const toTs = (e) => { const dt = parseDDMMYYYY(e.date); const [hh, mm] = String(e.time || '00:00').split(':').map(n => parseInt(n, 10) || 0); dt.setHours(hh, mm, 0, 0); return dt.getTime(); };
+        p.checklistState.phauThuatLog.sort((a, b) => toTs(b) - toTs(a));
+
+        const latest = p.checklistState.phauThuatLog[0];
+        if (latest) {
+            p.phauThuatInfo = { date: latest.date, time: latest.time, method: latest.method, doctors: latest.doctors, ngayPhauThuat: latest.date, gioPhauThuat: latest.time, pppt: latest.method };
+        }
+
+        // Update card/list row if present.
+        try {
+            const DomUpdaters = require('../utils/domUpdaters');
+            const el = DomUpdaters.findPatientElement(p.mabn);
+            if (el) {
+                DomUpdaters.updateSurgeryInfo(el, p);
+                DomUpdaters.updateSurgeryIcon(el, p);
+            }
+        } catch (_) { }
     }
+
+    try {
+        const refreshFn = (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.refreshPatientCards === 'function')
+            ? unsafeWindow.refreshPatientCards
+            : (typeof globalThis !== 'undefined' && typeof globalThis.refreshPatientCards === 'function')
+                ? globalThis.refreshPatientCards
+                : (typeof window !== 'undefined' && typeof window.refreshPatientCards === 'function')
+                    ? window.refreshPatientCards
+                    : null;
+        if (refreshFn) {
+            refreshFn(window.dr_data);
+            res.refreshed = true;
+        }
+    } catch (_) { }
     return res;
 }
 
@@ -13954,11 +13974,13 @@ function filterSurgeryData(records) {
   if (!Array.isArray(records)) return [];
   const result = [];
   for (const r of records) {
+    const customerPid = r?.customer?.pid ?? r?.customer?.code ?? null;
+    const operatingRoom = r?.operating_room ?? r?.room?.name ?? null;
     const item = {
       s: {
         customer: {
           fullname: r?.customer?.fullname ?? null,
-          pid: r?.customer?.code ?? null,
+          pid: customerPid,
           dob: r?.customer?.dob ?? null,
         },
         diagnose: r?.diagnose ?? null,
@@ -13969,7 +13991,7 @@ function filterSurgeryData(records) {
         khoaDieuTri: r?.khoaDieuTri ?? null,
         phongDieuTri: r?.phongDieuTri ?? null,
         giuongDieuTri: r?.giuongDieuTri ?? null,
-        operating_room: r?.room?.name ?? null,
+        operating_room: operatingRoom,
         status: r?.status ?? null,
         userexec: Array.isArray(r?.userexec)
           ? r.userexec.map(u => ({ fullname: u?.fullname ?? null, taid: u?.taid ?? null }))

@@ -2201,6 +2201,11 @@ function showDashboardBenhNhanIfNeeded() {
                     // Update surgery status icon
                     DomUpdaters.updateSurgeryIcon(card, item);
 
+                    // Update discharge animation
+                    if (typeof checkCelebrationForCard === 'function') {
+                        checkCelebrationForCard(card, item);
+                    }
+
                     try {
                         if (typeof window.__drSyncActiveSidebarState === 'function') {
                             window.__drSyncActiveSidebarState(item && item.mabn, item && item.checklistState);

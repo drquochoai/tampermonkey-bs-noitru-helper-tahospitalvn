@@ -128,18 +128,23 @@ function checkCelebrationForCard(card, patient) {
  * @param {Array} enrichedPatients - Patient data array
  */
 function checkAllCelebrationAnimations(enrichedPatients) {
-    const cards = document.querySelectorAll('.dr-card');
+    const cards = document.querySelectorAll('.dr-card, .dr-list-row');
     
     cards.forEach((card) => {
-        // Get patient MABN from card
-        const cardTitle = card.querySelector('h2');
-        if (!cardTitle) return;
+        // Get patient MABN from card attributes
+        let mabn = card.getAttribute('data-mabn');
         
-        const cardText = cardTitle.textContent;
-        const mabnMatch = cardText.match(/(\d{8,})/); // Find MABN pattern
-        if (!mabnMatch) return;
-        
-        const mabn = mabnMatch[1];
+        if (!mabn) {
+            // Fallback for older DOM structures if data-mabn attribute is not set
+            const cardTitle = card.querySelector('h2');
+            if (!cardTitle) return;
+
+            const cardText = cardTitle.textContent;
+            const mabnMatch = cardText.match(/(\d{8,})/); // Find MABN pattern
+            if (!mabnMatch) return;
+
+            mabn = mabnMatch[1];
+        }
         
         // Find corresponding patient in enriched data
         const patient = enrichedPatients.find(p => p.mabn === mabn);

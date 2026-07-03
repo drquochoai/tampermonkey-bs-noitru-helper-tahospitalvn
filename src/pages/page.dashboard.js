@@ -366,13 +366,15 @@ function showDashboardBenhNhanIfNeeded() {
                 select.appendChild(opt);
             });
 
-            let nextValue = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || getSelectedKhoa('551') || '').trim();
+            let nextValue = String(previousValue || preferredKhoaId || window.dr_data_khoa_id || getSelectedKhoa('551') || '').trim();
             try {
                 const ids = filteredList.map(k => String(k.id));
                 console.debug('[dr] refreshKhoaSelectByAccess candidates', { ids, preferredKhoaId: nextValue, previousValue });
             } catch (_) {}
+
             if (!filteredList.some((k) => String(k.id) === nextValue)) {
-                const fallbackPreferred = String(preferredKhoaId || window.dr_data_khoa_id || previousValue || '').trim();
+                const storedFallback = (function(){ try { return localStorage.getItem('bsnt_khoa_dashboard'); } catch(e){ return ''; } })();
+                const fallbackPreferred = String(preferredKhoaId || window.dr_data_khoa_id || storedFallback || getSelectedKhoa('551') || '').trim();
                 if (filteredList.some((k) => String(k.id) === fallbackPreferred)) {
                     nextValue = fallbackPreferred;
                 } else {

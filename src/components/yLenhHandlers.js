@@ -124,42 +124,89 @@ function setupYLenhHandlers(infoElement, patient) {
         return grouped;
     }
 
+    function parseDateToTimestamp(dateStr) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+            return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`).getTime();
+        }
+        return 0;
+    }
+
     function mergeHxtWithYLenh(existingText, yLenhArray) {
         const grouped = buildHxtDailySummaryMap(yLenhArray);
         if (grouped.size === 0) return String(existingText || '');
 
         const lines = String(existingText || '').split(/\r?\n/);
-        const nextLines = [];
+
+        const structuredItems = [];
+        let currentTextBlock = [];
+
         lines.forEach((line) => {
             const matched = getHxtDateLineMatch(line);
             if (!matched) {
-                nextLines.push(line);
-                return;
-            }
-
-            const labels = splitHxtLabels(matched.body);
-            const autoLabels = grouped.get(matched.dateKey) || [];
-            const mergedLabels = [];
-
-            labels.concat(autoLabels).forEach((label) => {
-                const cleaned = String(label || '').trim().replace(/[.]+$/g, '');
-                if (!shouldSkipHxtLabel(cleaned) && !mergedLabels.includes(cleaned)) mergedLabels.push(cleaned);
-            });
-
-            grouped.delete(matched.dateKey);
-            if (mergedLabels.length > 0) {
-                nextLines.push(`${matched.dateKey}: ${mergedLabels.join(', ')}.`);
+                currentTextBlock.push(line);
+            } else {
+                if (currentTextBlock.length > 0) {
+                    structuredItems.push({ type: 'text', lines: currentTextBlock });
+                    currentTextBlock = [];
+                }
+                const labels = splitHxtLabels(matched.body);
+                structuredItems.push({
+                    type: 'date',
+                    dateStr: matched.dateKey,
+                    timestamp: parseDateToTimestamp(matched.dateKey),
+                    labels: labels
+                });
             }
         });
 
-        const missingLines = Array.from(grouped.entries()).map(([dateKey, labels]) => `${dateKey}: ${labels.join(', ')}.`);
-        if (missingLines.length > 0) {
-            while (nextLines.length > 0 && String(nextLines[nextLines.length - 1] || '').trim() === '') {
-                nextLines.pop();
-            }
-            if (nextLines.length > 0) nextLines.push('');
-            nextLines.push(...missingLines);
+        if (currentTextBlock.length > 0) {
+            structuredItems.push({ type: 'text', lines: currentTextBlock });
         }
+
+        Array.from(grouped.entries()).forEach(([dateKey, newLabels]) => {
+            const existingDateItem = structuredItems.find(item => item.type === 'date' && item.dateStr === dateKey);
+            if (existingDateItem) {
+                newLabels.forEach(label => {
+                    const cleaned = String(label || '').trim().replace(/[.]+$/g, '');
+                    if (!shouldSkipHxtLabel(cleaned) && !existingDateItem.labels.includes(cleaned)) {
+                        existingDateItem.labels.push(cleaned);
+                    }
+                });
+            } else {
+                structuredItems.push({
+                    type: 'date',
+                    dateStr: dateKey,
+                    timestamp: parseDateToTimestamp(dateKey),
+                    labels: newLabels.map(l => String(l || '').trim().replace(/[.]+$/g, '')).filter(l => !shouldSkipHxtLabel(l))
+                });
+            }
+        });
+
+        let leadingText = [];
+        let datesAndRest = structuredItems;
+
+        if (structuredItems.length > 0 && structuredItems[0].type === 'text') {
+            leadingText = structuredItems[0].lines;
+            datesAndRest = structuredItems.slice(1);
+        }
+
+        const onlyDates = datesAndRest.filter(item => item.type === 'date');
+        const otherTexts = datesAndRest.filter(item => item.type === 'text');
+
+        onlyDates.sort((a, b) => a.timestamp - b.timestamp);
+
+        const nextLines = [...leadingText];
+
+        onlyDates.forEach(item => {
+            if (item.labels.length > 0) {
+                nextLines.push(`${item.dateStr}: ${item.labels.join(', ')}.`);
+            }
+        });
+
+        otherTexts.forEach(item => {
+            nextLines.push(...item.lines);
+        });
 
         while (nextLines.length > 0 && String(nextLines[0] || '').trim() === '') {
             nextLines.shift();

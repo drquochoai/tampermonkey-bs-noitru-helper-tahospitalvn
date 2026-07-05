@@ -1299,10 +1299,10 @@ function addGlobalStyles() {
         .dr-filter-submenu-menu::before {
             content: '';
             position: absolute;
-            left: -12px;
+            left: -20px;
             top: 0;
             bottom: 0;
-            width: 12px;
+            width: 25px;
         }
 
         @media (max-width: 1180px) {

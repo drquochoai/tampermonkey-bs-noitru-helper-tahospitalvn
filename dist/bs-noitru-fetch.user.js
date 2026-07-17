@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         BS Nội trú - Helper (TA Hospital) - By drquochoai, BS.CKI Trần Quốc Hoài
 // @namespace    http://tampermonkey.net/
-// @version      2.2.6
+// @version      2.2.7
 // @description  Hỗ trợ dữ liệu bệnh nhân từ bs-noitru.tahospital.vn.
 // @author       BS.CKI Trần Quốc Hoài, tahospital.vn
 // @match        https://bs-noitru.tahospital.vn/*
@@ -8652,9 +8652,9 @@ module.exports = {
                     message: `Đang gọi API cho ngày ${currentDate}...`
                 });
 
-                // Convert local Vietnam midnight (UTC+07:00) to exact Z time for API
-                // e.g., '2025-09-07T00:00:00+07:00' -> '2025-09-06T17:00:00.000Z'
-                const isoDate = new Date(`${currentDate}T00:00:00+07:00`).toISOString();
+                // Use the exact date string with T17 to match other usages in the system (e.g. otm.token.js)
+                // This ensures we request the correct date rather than shifting backwards by one day
+                const isoDate = `${currentDate}T17:00:00.000Z`;
 
                 debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
                 sendMessageToParent('progress', { step: 'api_call', message: `GET /api/booking?date=${isoDate}`, currentDate, isoDate });
@@ -13174,10 +13174,10 @@ function addGlobalStyles() {
         .dr-filter-submenu-menu::before {
             content: '';
             position: absolute;
-            left: -12px;
+            left: -20px;
             top: 0;
             bottom: 0;
-            width: 12px;
+            width: 25px;
         }
 
         @media (max-width: 1180px) {

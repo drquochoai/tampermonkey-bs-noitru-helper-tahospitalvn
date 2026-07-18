@@ -135,30 +135,13 @@ function updateMedsDoneBadge(card, patient) {
 
 // Helper function to check for discharge tags and add xuatvienanimation class
 function checkAndAddCelebrationClass(card, patient) {
-    if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
-        card.classList.remove('xuatvienanimation');
-        return;
-    }
-
-    // Check if today's entries include "Xuất viện" (including quick actions)
-    const today = new Date();
-    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-
-    // Check ALL entries (including quick actions) for "xuất viện"
-    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
-        const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
-        const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
-        // If quick action, count both active and done for celebration
-        if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
-            return entry.status === 'active' || entry.status === 'done';
+    try {
+        const { checkCelebrationForCard } = require('./checklistUtils');
+        if (checkCelebrationForCard) {
+            checkCelebrationForCard(card, patient);
         }
-        return hasDischarge && isToday;
-    });
-
-    if (dischargeEntries.length > 0) {
-        card.classList.add('xuatvienanimation');
-    } else {
-        card.classList.remove('xuatvienanimation');
+    } catch (e) {
+        console.error('Error applying celebration class', e);
     }
 }
 

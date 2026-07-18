@@ -128,7 +128,7 @@ function checkCelebrationForCard(card, patient) {
  * @param {Array} enrichedPatients - Patient data array
  */
 function checkAllCelebrationAnimations(enrichedPatients) {
-    const cards = document.querySelectorAll('.dr-card, .dr-list-row');
+    const cards = document.querySelectorAll('.dr-card, .dr-list-row, .dr-tracking-item');
     
     cards.forEach((card) => {
         // Get patient MABN from card attributes

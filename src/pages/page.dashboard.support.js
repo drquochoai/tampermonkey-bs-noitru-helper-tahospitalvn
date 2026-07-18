@@ -941,7 +941,7 @@ function addGlobalStyles() {
             .dr-sidebar-right { flex: 1 !important; }
         }
         /* Xuất viện animation class - Hiệu ứng ngôi sao */
-        .dr-card.xuatvienanimation {
+        .dr-card.xuatvienanimation, .dr-list-row.xuatvienanimation, .dr-tracking-item.xuatvienanimation {
             position: relative;
             overflow: hidden;
             border: 3px solid #ffd700 !important;
@@ -950,13 +950,13 @@ function addGlobalStyles() {
         }
         
         /* Xuất viện animation cho card blue - border blue glow */
-        .dr-card.xuatvienanimation.dr-blue {
+        .dr-card.xuatvienanimation.dr-blue, .dr-list-row.xuatvienanimation.dr-blue, .dr-tracking-item.xuatvienanimation.dr-blue {
             border: 3px solid #2196f3 !important;
             background: linear-gradient(135deg, #e3f2fd, #ffffff) !important;
             animation: starGlowBlue 3s ease-in-out infinite;
         }
         
-        .dr-card.xuatvienanimation::before {
+        .dr-card.xuatvienanimation::before, .dr-list-row.xuatvienanimation::before, .dr-tracking-item.xuatvienanimation::before {
             content: '⭐';
             position: absolute;
             top: 10px;
@@ -966,7 +966,7 @@ function addGlobalStyles() {
             z-index: 10;
         }
         
-        .dr-card.xuatvienanimation::after {
+        .dr-card.xuatvienanimation::after, .dr-list-row.xuatvienanimation::after, .dr-tracking-item.xuatvienanimation::after {
             content: '✨ 🎉 ✨';
             position: absolute;
             top: -5px;
@@ -1083,14 +1083,14 @@ function addGlobalStyles() {
             }
 
             /* Tắt animation khi in */
-            .dr-card.xuatvienanimation,
-            .dr-card.xuatvienanimation.dr-blue {
+            .dr-card.xuatvienanimation, .dr-list-row.xuatvienanimation, .dr-tracking-item.xuatvienanimation,
+            .dr-card.xuatvienanimation.dr-blue, .dr-list-row.xuatvienanimation.dr-blue, .dr-tracking-item.xuatvienanimation.dr-blue {
                 animation: none !important;
                 border: 2px solid #ccc !important;
                 background: #fff !important;
             }
-            .dr-card.xuatvienanimation::before,
-            .dr-card.xuatvienanimation.dr-blue::before {
+            .dr-card.xuatvienanimation::before, .dr-list-row.xuatvienanimation::before, .dr-tracking-item.xuatvienanimation::before,
+            .dr-card.xuatvienanimation.dr-blue::before, .dr-list-row.xuatvienanimation.dr-blue::before, .dr-tracking-item.xuatvienanimation.dr-blue::before {
                 display: none !important;
             }
 

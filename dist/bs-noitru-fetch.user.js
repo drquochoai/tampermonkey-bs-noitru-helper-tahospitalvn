@@ -1243,6 +1243,7 @@ function setupAdvancedFilter(topBar, onApply) {
     if (submenuTrigger && submenu && submenuMenu) {
         dropdownController.registerSubmenu({
             id: 'dr-filter-surgery-date-submenu',
+            parentId: 'dr-filter-dropdown',
             container: submenu,
             toggle: submenuTrigger,
             trigger: submenuTrigger,
@@ -5091,6 +5092,8 @@ class ResponsiveDropdownController {
 
         if (!entry) return entry;
 
+        entry.parentId = config.parentId;
+
         const openOnHover = () => {
             if (!this.shouldUseCompactMode(entry)) {
                 this.cancelCloseTimer(entry);
@@ -5334,6 +5337,13 @@ class ResponsiveDropdownController {
         if (entry && entry.closeTimer) {
             window.clearTimeout(entry.closeTimer);
             entry.closeTimer = null;
+        }
+        if (entry && entry.parentId) {
+            const parent = this.entriesById.get(entry.parentId);
+            if (parent && parent.closeTimer) {
+                window.clearTimeout(parent.closeTimer);
+                parent.closeTimer = null;
+            }
         }
     }
 
@@ -12816,7 +12826,7 @@ function addGlobalStyles() {
             .dr-sidebar-right { flex: 1 !important; }
         }
         /* Xuất viện animation class - Hiệu ứng ngôi sao */
-        .dr-card.xuatvienanimation {
+        .dr-card.xuatvienanimation, .dr-list-row.xuatvienanimation, .dr-tracking-item.xuatvienanimation {
             position: relative;
             overflow: hidden;
             border: 3px solid #ffd700 !important;
@@ -12825,13 +12835,13 @@ function addGlobalStyles() {
         }
         
         /* Xuất viện animation cho card blue - border blue glow */
-        .dr-card.xuatvienanimation.dr-blue {
+        .dr-card.xuatvienanimation.dr-blue, .dr-list-row.xuatvienanimation.dr-blue, .dr-tracking-item.xuatvienanimation.dr-blue {
             border: 3px solid #2196f3 !important;
             background: linear-gradient(135deg, #e3f2fd, #ffffff) !important;
             animation: starGlowBlue 3s ease-in-out infinite;
         }
         
-        .dr-card.xuatvienanimation::before {
+        .dr-card.xuatvienanimation::before, .dr-list-row.xuatvienanimation::before, .dr-tracking-item.xuatvienanimation::before {
             content: '⭐';
             position: absolute;
             top: 10px;
@@ -12841,7 +12851,7 @@ function addGlobalStyles() {
             z-index: 10;
         }
         
-        .dr-card.xuatvienanimation::after {
+        .dr-card.xuatvienanimation::after, .dr-list-row.xuatvienanimation::after, .dr-tracking-item.xuatvienanimation::after {
             content: '✨ 🎉 ✨';
             position: absolute;
             top: -5px;
@@ -12958,14 +12968,14 @@ function addGlobalStyles() {
             }
 
             /* Tắt animation khi in */
-            .dr-card.xuatvienanimation,
-            .dr-card.xuatvienanimation.dr-blue {
+            .dr-card.xuatvienanimation, .dr-list-row.xuatvienanimation, .dr-tracking-item.xuatvienanimation,
+            .dr-card.xuatvienanimation.dr-blue, .dr-list-row.xuatvienanimation.dr-blue, .dr-tracking-item.xuatvienanimation.dr-blue {
                 animation: none !important;
                 border: 2px solid #ccc !important;
                 background: #fff !important;
             }
-            .dr-card.xuatvienanimation::before,
-            .dr-card.xuatvienanimation.dr-blue::before {
+            .dr-card.xuatvienanimation::before, .dr-list-row.xuatvienanimation::before, .dr-tracking-item.xuatvienanimation::before,
+            .dr-card.xuatvienanimation.dr-blue::before, .dr-list-row.xuatvienanimation.dr-blue::before, .dr-tracking-item.xuatvienanimation.dr-blue::before {
                 display: none !important;
             }
 
@@ -18009,7 +18019,7 @@ function checkCelebrationForCard(card, patient) {
  * @param {Array} enrichedPatients - Patient data array
  */
 function checkAllCelebrationAnimations(enrichedPatients) {
-    const cards = document.querySelectorAll('.dr-card, .dr-list-row');
+    const cards = document.querySelectorAll('.dr-card, .dr-list-row, .dr-tracking-item');
     
     cards.forEach((card) => {
         // Get patient MABN from card attributes
@@ -18559,9 +18569,15 @@ function updateHXT(patient) {
 function composeDiagnosis(patient) {
     const icdSuffix = patient && patient.maicdvk ? ` (${String(patient.maicdvk).trim()})` : '';
     const baseText = `${(patient && patient.chandoanvk) ? patient.chandoanvk : ''}${icdSuffix}`;
-    const cdktText = (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string')
+    let cdktText = (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string')
         ? patient.checklistState.chanDoanKemTheo.trim()
         : '';
+    if (cdktText) {
+        cdktText = cdktText.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .join('; ');
+    }
     const combinedHtml = `${baseText}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
     return { baseText, cdktText, combinedHtml };
 }
@@ -19661,30 +19677,13 @@ function updateMedsDoneBadge(card, patient) {
 
 // Helper function to check for discharge tags and add xuatvienanimation class
 function checkAndAddCelebrationClass(card, patient) {
-    if (!patient || !patient.checklistState || !patient.checklistState.yLenhLog) {
-        card.classList.remove('xuatvienanimation');
-        return;
-    }
-
-    // Check if today's entries include "Xuất viện" (including quick actions)
-    const today = new Date();
-    const todayStr = `${today.getDate().toString().padStart(2, '0')}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getFullYear()}`;
-
-    // Check ALL entries (including quick actions) for "xuất viện"
-    const dischargeEntries = patient.checklistState.yLenhLog.filter(entry => {
-        const hasDischarge = entry.content && entry.content.toLowerCase().includes('xuất viện');
-        const isToday = entry.timestamp && entry.timestamp.startsWith(todayStr);
-        // If quick action, count both active and done for celebration
-        if (entry.q === true && entry.action === 'Xuất viện' && isToday) {
-            return entry.status === 'active' || entry.status === 'done';
+    try {
+        const { checkCelebrationForCard } = require('./checklistUtils');
+        if (checkCelebrationForCard) {
+            checkCelebrationForCard(card, patient);
         }
-        return hasDischarge && isToday;
-    });
-
-    if (dischargeEntries.length > 0) {
-        card.classList.add('xuatvienanimation');
-    } else {
-        card.classList.remove('xuatvienanimation');
+    } catch (e) {
+        console.error('Error applying celebration class', e);
     }
 }
 
@@ -19795,7 +19794,7 @@ module.exports = {
     updateMedsDoneBadge
 };
 
-},{"../BS_CAI_DAT_GIAO_DIEN":1,"./dateUtils":50,"./dischargeUtils":51}],61:[function(require,module,exports){
+},{"../BS_CAI_DAT_GIAO_DIEN":1,"./checklistUtils":48,"./dateUtils":50,"./dischargeUtils":51}],61:[function(require,module,exports){
 /**
  * Normalizes Vietnamese text by removing diacritics/accents
  * @param {string} str - The string to normalize

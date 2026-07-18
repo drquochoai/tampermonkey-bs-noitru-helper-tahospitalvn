@@ -183,6 +183,7 @@ function setupAdvancedFilter(topBar, onApply) {
     if (submenuTrigger && submenu && submenuMenu) {
         dropdownController.registerSubmenu({
             id: 'dr-filter-surgery-date-submenu',
+            parentId: 'dr-filter-dropdown',
             container: submenu,
             toggle: submenuTrigger,
             trigger: submenuTrigger,

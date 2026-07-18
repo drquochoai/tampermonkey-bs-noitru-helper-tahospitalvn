@@ -72,9 +72,15 @@ function updateHXT(patient) {
 function composeDiagnosis(patient) {
     const icdSuffix = patient && patient.maicdvk ? ` (${String(patient.maicdvk).trim()})` : '';
     const baseText = `${(patient && patient.chandoanvk) ? patient.chandoanvk : ''}${icdSuffix}`;
-    const cdktText = (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string')
+    let cdktText = (patient && patient.checklistState && typeof patient.checklistState.chanDoanKemTheo === 'string')
         ? patient.checklistState.chanDoanKemTheo.trim()
         : '';
+    if (cdktText) {
+        cdktText = cdktText.split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .join('; ');
+    }
     const combinedHtml = `${baseText}${cdktText ? '; <span class="dr-cdkt-clamp">' + escapeHtml(cdktText) + '</span>' : ''}`;
     return { baseText, cdktText, combinedHtml };
 }

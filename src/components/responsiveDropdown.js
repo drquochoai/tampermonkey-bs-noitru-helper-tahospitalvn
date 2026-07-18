@@ -74,6 +74,8 @@ class ResponsiveDropdownController {
 
         if (!entry) return entry;
 
+        entry.parentId = config.parentId;
+
         const openOnHover = () => {
             if (!this.shouldUseCompactMode(entry)) {
                 this.cancelCloseTimer(entry);
@@ -317,6 +319,13 @@ class ResponsiveDropdownController {
         if (entry && entry.closeTimer) {
             window.clearTimeout(entry.closeTimer);
             entry.closeTimer = null;
+        }
+        if (entry && entry.parentId) {
+            const parent = this.entriesById.get(entry.parentId);
+            if (parent && parent.closeTimer) {
+                window.clearTimeout(parent.closeTimer);
+                parent.closeTimer = null;
+            }
         }
     }
 

@@ -11001,48 +11001,56 @@ function showDashboardBenhNhanIfNeeded() {
 
         const refreshPatientCards = function (newData) {
             const cardsByPid = new Map();
-            container.querySelectorAll('.dr-card, .dr-list-row').forEach(card => {
+            document.querySelectorAll('.dr-card, .dr-list-row, .dr-tracking-item').forEach(card => {
                 const mabn = card.getAttribute('data-mabn');
-                if (mabn) cardsByPid.set(mabn, card);
+                if (mabn) {
+                    if (!cardsByPid.has(mabn)) {
+                        cardsByPid.set(mabn, [card]);
+                    } else {
+                        cardsByPid.get(mabn).push(card);
+                    }
+                }
             });
 
             // Update existing cards instead of full re-render to avoid interrupting user
             newData.forEach(item => {
-                const card = item && item.mabn ? cardsByPid.get(item.mabn) : null;
-                if (card) {
-                    decoratePatientFilterTarget(card, item, card.dataset.defaultOrder);
-                    // Update merged diagnosis line (Chẩn đoán + CD kèm theo)
-                    try {
-                        const diagnosisEl = card.querySelector('.dr-diagnosis-line');
-                        if (diagnosisEl) {
-                            const { composeDiagnosis } = DomUpdaters;
-                            const { baseText: baseCdNew, cdktText, combinedHtml } = composeDiagnosis(item);
-                            diagnosisEl.dataset.baseCd = baseCdNew;
-                            diagnosisEl.dataset.cdkt = cdktText || '';
-                            diagnosisEl.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combinedHtml}`;
+                const matchedCards = item && item.mabn ? cardsByPid.get(item.mabn) : null;
+                if (matchedCards) {
+                    matchedCards.forEach(card => {
+                        decoratePatientFilterTarget(card, item, card.dataset.defaultOrder);
+                        // Update merged diagnosis line (Chẩn đoán + CD kèm theo)
+                        try {
+                            const diagnosisEl = card.querySelector('.dr-diagnosis-line');
+                            if (diagnosisEl) {
+                                const { composeDiagnosis } = DomUpdaters;
+                                const { baseText: baseCdNew, cdktText, combinedHtml } = composeDiagnosis(item);
+                                diagnosisEl.dataset.baseCd = baseCdNew;
+                                diagnosisEl.dataset.cdkt = cdktText || '';
+                                diagnosisEl.innerHTML = `<span class="dr-label">Chẩn đoán:</span> ${combinedHtml}`;
+                            }
+                            // remove any legacy block if present
+                            const oldCdkt = card.querySelector('.dr-cdkt-block');
+                            if (oldCdkt) oldCdkt.remove();
+                        } catch (_) { }
+                        // Update surgery info with post-op days using shared updater
+                        DomUpdaters.updateSurgeryInfo(card, item);
+
+                        // Update HXT line in the card/list row
+                        DomUpdaters.updateHXT(item);
+
+                        // Update y lệnh tags if checklistState is available
+                        if (item.checklistState) {
+                            DomUpdaters.updateTagsAndMedsBadge(card, item);
                         }
-                        // remove any legacy block if present
-                        const oldCdkt = card.querySelector('.dr-cdkt-block');
-                        if (oldCdkt) oldCdkt.remove();
-                    } catch (_) { }
-                    // Update surgery info with post-op days using shared updater
-                    DomUpdaters.updateSurgeryInfo(card, item);
 
-                    // Update HXT line in the card/list row
-                    DomUpdaters.updateHXT(item);
+                        // Update surgery status icon
+                        DomUpdaters.updateSurgeryIcon(card, item);
 
-                    // Update y lệnh tags if checklistState is available
-                    if (item.checklistState) {
-                        DomUpdaters.updateTagsAndMedsBadge(card, item);
-                    }
-
-                    // Update surgery status icon
-                    DomUpdaters.updateSurgeryIcon(card, item);
-
-                    // Update discharge animation
-                    if (typeof checkCelebrationForCard === 'function') {
-                        checkCelebrationForCard(card, item);
-                    }
+                        // Update discharge animation
+                        if (typeof checkCelebrationForCard === 'function') {
+                            checkCelebrationForCard(card, item);
+                        }
+                    });
 
                     try {
                         if (typeof window.__drSyncActiveSidebarState === 'function') {

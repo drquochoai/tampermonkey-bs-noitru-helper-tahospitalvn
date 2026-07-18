@@ -5218,8 +5218,18 @@ class ResponsiveDropdownController {
     }
 
     closeAll(exceptId = null) {
+        const keepOpenIds = new Set();
+        if (exceptId) {
+            let currentId = exceptId;
+            while (currentId) {
+                keepOpenIds.add(currentId);
+                const currentEntry = this.entriesById.get(currentId);
+                currentId = currentEntry ? currentEntry.parentId : null;
+            }
+        }
+
         Array.from(this.openEntryIds).forEach((openId) => {
-            if (exceptId && openId === exceptId) return;
+            if (keepOpenIds.has(openId)) return;
             this.close(openId);
         });
     }

@@ -11040,16 +11040,16 @@ function showDashboardBenhNhanIfNeeded() {
 
                         // Update surgery status icon
                         DomUpdaters.updateSurgeryIcon(card, item);
-
-                        // Update y lệnh tags, dataset properties and discharge animation
-                        try {
-                            if (typeof window.updatePatientCardTags === 'function') {
-                                window.updatePatientCardTags(item.mabn);
-                            } else if (typeof updatePatientCardTags === 'function') {
-                                updatePatientCardTags(item.mabn);
-                            }
-                        } catch (_) { }
                     });
+
+                    // Update y lệnh tags, dataset properties and discharge animation
+                    try {
+                        if (typeof window.updatePatientCardTags === 'function') {
+                            window.updatePatientCardTags(item.mabn);
+                        } else if (typeof updatePatientCardTags === 'function') {
+                            updatePatientCardTags(item.mabn);
+                        }
+                    } catch (_) { }
 
                     try {
                         if (typeof window.__drSyncActiveSidebarState === 'function') {

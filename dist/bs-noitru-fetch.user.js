@@ -11042,13 +11042,13 @@ function showDashboardBenhNhanIfNeeded() {
                         DomUpdaters.updateSurgeryIcon(card, item);
 
                         // Update y lệnh tags, dataset properties and discharge animation
-                        if (item.checklistState) {
+                        try {
                             if (typeof window.updatePatientCardTags === 'function') {
                                 window.updatePatientCardTags(item.mabn);
                             } else if (typeof updatePatientCardTags === 'function') {
                                 updatePatientCardTags(item.mabn);
                             }
-                        }
+                        } catch (_) { }
                     });
 
                     try {

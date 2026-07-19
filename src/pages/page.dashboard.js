@@ -2200,17 +2200,16 @@ function showDashboardBenhNhanIfNeeded() {
                         // Update HXT line in the card/list row
                         DomUpdaters.updateHXT(item);
 
-                        // Update y lệnh tags if checklistState is available
-                        if (item.checklistState) {
-                            DomUpdaters.updateTagsAndMedsBadge(card, item);
-                        }
-
                         // Update surgery status icon
                         DomUpdaters.updateSurgeryIcon(card, item);
 
-                        // Update discharge animation
-                        if (typeof checkCelebrationForCard === 'function') {
-                            checkCelebrationForCard(card, item);
+                        // Update y lệnh tags, dataset properties and discharge animation
+                        if (item.checklistState) {
+                            if (typeof window.updatePatientCardTags === 'function') {
+                                window.updatePatientCardTags(item.mabn);
+                            } else if (typeof updatePatientCardTags === 'function') {
+                                updatePatientCardTags(item.mabn);
+                            }
                         }
                     });
 

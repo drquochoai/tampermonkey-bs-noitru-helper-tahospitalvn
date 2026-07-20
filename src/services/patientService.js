@@ -97,7 +97,13 @@ const PatientService = {
 
         // Check for celebration animations after enrichment
         setTimeout(() => {
-            if (typeof window.checkAllCelebrationAnimations === 'function') {
+            if (typeof unsafeWindow !== 'undefined' && typeof unsafeWindow.checkAllCelebrationAnimations === 'function') {
+                unsafeWindow.checkAllCelebrationAnimations(enrichedPatients);
+            } else if (typeof this !== 'undefined' && typeof this.checkAllCelebrationAnimations === 'function') {
+                this.checkAllCelebrationAnimations(enrichedPatients);
+            } else if (typeof globalThis.checkAllCelebrationAnimations === 'function') {
+                globalThis.checkAllCelebrationAnimations(enrichedPatients);
+            } else if (typeof window.checkAllCelebrationAnimations === 'function') {
                 window.checkAllCelebrationAnimations(enrichedPatients);
             }
         }, 200);

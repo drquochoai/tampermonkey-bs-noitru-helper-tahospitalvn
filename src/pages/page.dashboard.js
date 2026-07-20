@@ -178,11 +178,17 @@ function showDashboardBenhNhanIfNeeded() {
                 if (refreshFn) {
                     refreshFn(filteredFresh);
                 }
+                if (typeof checkAllCelebrationAnimations === 'function') {
+                    checkAllCelebrationAnimations(filteredFresh);
+                }
                 return;
             }
 
             if (refreshFn) {
                 refreshFn(filteredFresh);
+            }
+            if (typeof checkAllCelebrationAnimations === 'function') {
+                checkAllCelebrationAnimations(filteredFresh);
             }
         } catch (e) {
             console.warn('Dashboard auto refresh failed:', e);

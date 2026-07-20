@@ -2204,12 +2204,13 @@ function showDashboardBenhNhanIfNeeded() {
                         DomUpdaters.updateSurgeryIcon(card, item);
                     });
 
-                    // Update y lệnh tags, dataset properties and discharge animation
                     try {
-                        if (typeof window.updatePatientCardTags === 'function') {
-                            window.updatePatientCardTags(item.mabn);
-                        } else if (typeof updatePatientCardTags === 'function') {
-                            updatePatientCardTags(item.mabn);
+                        if (item && item.mabn) {
+                            if (typeof window.updatePatientCardTags === 'function') {
+                                window.updatePatientCardTags(item.mabn);
+                            } else if (typeof updatePatientCardTags === 'function') {
+                                updatePatientCardTags(item.mabn);
+                            }
                         }
                     } catch (_) { }
 

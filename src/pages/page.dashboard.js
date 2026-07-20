@@ -2202,16 +2202,17 @@ function showDashboardBenhNhanIfNeeded() {
 
                         // Update surgery status icon
                         DomUpdaters.updateSurgeryIcon(card, item);
+                    });
 
-                        // Update y lệnh tags, dataset properties and discharge animation
-                        if (item.checklistState) {
+                    try {
+                        if (item && item.mabn) {
                             if (typeof window.updatePatientCardTags === 'function') {
                                 window.updatePatientCardTags(item.mabn);
                             } else if (typeof updatePatientCardTags === 'function') {
                                 updatePatientCardTags(item.mabn);
                             }
                         }
-                    });
+                    } catch (_) { }
 
                     try {
                         if (typeof window.__drSyncActiveSidebarState === 'function') {

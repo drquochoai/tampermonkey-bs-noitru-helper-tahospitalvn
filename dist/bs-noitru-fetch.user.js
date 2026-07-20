@@ -11040,16 +11040,17 @@ function showDashboardBenhNhanIfNeeded() {
 
                         // Update surgery status icon
                         DomUpdaters.updateSurgeryIcon(card, item);
+                    });
 
-                        // Update y lệnh tags, dataset properties and discharge animation
-                        if (item.checklistState) {
+                    try {
+                        if (item && item.mabn) {
                             if (typeof window.updatePatientCardTags === 'function') {
                                 window.updatePatientCardTags(item.mabn);
                             } else if (typeof updatePatientCardTags === 'function') {
                                 updatePatientCardTags(item.mabn);
                             }
                         }
-                    });
+                    } catch (_) { }
 
                     try {
                         if (typeof window.__drSyncActiveSidebarState === 'function') {
@@ -19719,49 +19720,50 @@ function updatePatientCardTags(patientMabn) {
 
     // Prefer data-mabn matching on both card and list rows
     console.log('Looking for patient element (card or row) with mabn:', patientMabn);
-    const targetCards = Array.from(document.querySelectorAll(`.dr-card[data-mabn="${patientMabn}"], .dr-list-row[data-mabn="${patientMabn}"], .dr-tracking-item[data-mabn="${patientMabn}"]`));
-
-    if (targetCards.length === 0) {
+    let targetCard = document.querySelector(`.dr-card[data-mabn="${patientMabn}"]`) || document.querySelector(`.dr-list-row[data-mabn="${patientMabn}"]`);
+    if (!targetCard) {
         // Fallback: scan text in .dr-card only (legacy)
         const allCards = document.querySelectorAll('.dr-card');
         allCards.forEach((card) => {
             const cardText = card.textContent || card.innerText || '';
-            if (cardText.includes(patientMabn)) targetCards.push(card);
+            if (cardText.includes(patientMabn)) targetCard = card;
         });
     }
 
-    if (targetCards.length === 0) {
+    if (!targetCard) {
         console.log('Patient card not found in DOM for:', patientMabn);
+        console.log('Available card text snippets:');
+        allCards.forEach((card, index) => {
+            const cardText = card.textContent || card.innerText || '';
+            console.log(`  Card ${index}:`, cardText.substring(0, 50));
+        });
         return;
     }
 
-    console.log('Found patient cards for:', patientMabn, targetCards.length);
+    console.log('Found patient card for:', patientMabn);
 
+    // Remove existing tags from anywhere in the element
+    const existingTags = targetCard.querySelector('.ylenh-tags');
+    if (existingTags) {
+        existingTags.remove();
+        console.log('Removed existing tags');
+    }
+
+    // Create new tags
     const tagsHtml = createYLenhTags(patient);
-
-    targetCards.forEach(targetCard => {
-        // Remove existing tags from anywhere in the element
-        const existingTags = targetCard.querySelector('.ylenh-tags');
-        if (existingTags) {
-            existingTags.remove();
+    if (tagsHtml) {
+        // Insert tags appropriately
+        let placed = false;
+        const actionButtons = targetCard.querySelector('.dr-action-buttons');
+        if (actionButtons) {
+            actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
+            placed = true;
         }
-
-        // Create new tags
-        if (tagsHtml) {
-            // Insert tags appropriately
-            let placed = false;
-            const actionButtons = targetCard.querySelector('.dr-action-buttons');
-            if (actionButtons) {
-                actionButtons.insertAdjacentHTML('beforebegin', tagsHtml);
-                placed = true;
-            }
-            if (!placed) {
-                const left = targetCard.querySelector(':scope > div');
-                if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
-                else targetCard.insertAdjacentHTML('beforeend', tagsHtml);
-            }
+        if (!placed) {
+            const left = targetCard.querySelector(':scope > div');
+            if (left) left.insertAdjacentHTML('beforeend', tagsHtml);
+            else targetCard.insertAdjacentHTML('beforeend', tagsHtml);
         }
-
         // Update dataset flags for filters (today only)
         try {
             const todayStr = DateUtils.getTodayStr();
@@ -19769,20 +19771,21 @@ function updatePatientCardTags(patientMabn) {
             const log = patient && patient.checklistState && Array.isArray(patient.checklistState.yLenhLog) ? patient.checklistState.yLenhLog : [];
             let hasXV = false, hasCLS = false;
             for (const e of log) {
-                const c = String(e.content || e.action || '').toLowerCase();
+                if (!e.timestamp || !e.content) continue;
+                const c = e.content.toLowerCase();
                 if (isDischargeEntry(e) && isDischargeEntryOnDate(e, todayIso)) {
                     hasXV = true;
                 }
-                if (e.timestamp && e.timestamp.startsWith(todayStr) && c.includes('cận lâm sàng')) hasCLS = true;
+                if (e.timestamp.startsWith(todayStr) && c.includes('cận lâm sàng')) hasCLS = true;
             }
             targetCard.dataset.hasxv = hasXV ? '1' : '0';
             targetCard.dataset.hascls = hasCLS ? '1' : '0';
         } catch (_) { }
+    }
 
-        // Update discharge celebration class and meds-done badge regardless of tags presence
-        checkAndAddCelebrationClass(targetCard, patient);
-        updateMedsDoneBadge(targetCard, patient);
-    });
+    // Update discharge celebration class and meds-done badge regardless of tags presence
+    checkAndAddCelebrationClass(targetCard, patient);
+    updateMedsDoneBadge(targetCard, patient);
 }
 
 // Make updatePatientCardTags globally available

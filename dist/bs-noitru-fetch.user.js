@@ -7010,11 +7010,25 @@ function setupYLenhHandlers(infoElement, patient) {
         return !normalized || normalized === 'đã đánh thuốc';
     }
 
+    function parseDateTime(ts) {
+        if (!ts) return 0;
+        const match = ts.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+        if (!match) return 0;
+        const [_, d, m, y, h, min] = match;
+        return new Date(`${y}-${m}-${d}T${h}:${min}:00`).getTime();
+    }
+
     function buildHxtDailySummaryMap(yLenhArray) {
         const grouped = new Map();
         if (!Array.isArray(yLenhArray) || yLenhArray.length === 0) return grouped;
 
-        yLenhArray.forEach((entry) => {
+        const sortedArray = [...yLenhArray].sort((a, b) => {
+            const timeA = parseDateTime(a.timestamp);
+            const timeB = parseDateTime(b.timestamp);
+            return timeA - timeB;
+        });
+
+        sortedArray.forEach((entry) => {
             if (!entry || !entry.timestamp) return;
             const dateKey = String(entry.timestamp).split(' ')[0];
             if (!dateKey) return;
@@ -7041,78 +7055,75 @@ function setupYLenhHandlers(infoElement, patient) {
 
     function mergeHxtWithYLenh(existingText, yLenhArray) {
         const grouped = buildHxtDailySummaryMap(yLenhArray);
-        if (grouped.size === 0) return String(existingText || '');
+
+        const yLenhLabelsByDate = new Map();
+        grouped.forEach((labels, date) => yLenhLabelsByDate.set(date, [...labels]));
 
         const lines = String(existingText || '').split(/\r?\n/);
+        const parsedLines = [];
 
-        const structuredItems = [];
-        let currentTextBlock = [];
-
-        lines.forEach((line) => {
+        let i = 0;
+        while (i < lines.length) {
+            let line = lines[i];
             const matched = getHxtDateLineMatch(line);
-            if (!matched) {
-                currentTextBlock.push(line);
-            } else {
-                if (currentTextBlock.length > 0) {
-                    structuredItems.push({ type: 'text', lines: currentTextBlock });
-                    currentTextBlock = [];
-                }
-                const labels = splitHxtLabels(matched.body);
-                structuredItems.push({
-                    type: 'date',
-                    dateStr: matched.dateKey,
-                    timestamp: parseDateToTimestamp(matched.dateKey),
-                    labels: labels
-                });
-            }
-        });
+            if (matched) {
+                let dateStr = matched.dateKey;
+                let labelsForThisDate = splitHxtLabels(matched.body);
 
-        if (currentTextBlock.length > 0) {
-            structuredItems.push({ type: 'text', lines: currentTextBlock });
+                let existingDateItem = parsedLines.find(item => item.type === 'date' && item.dateKey === dateStr);
+                if (existingDateItem) {
+                    labelsForThisDate.forEach(l => {
+                        if (!existingDateItem.labels.includes(l)) existingDateItem.labels.push(l);
+                    });
+                } else {
+                    parsedLines.push({ type: 'date', dateKey: dateStr, labels: Array.from(new Set(labelsForThisDate)) });
+                }
+            } else {
+                parsedLines.push({ type: 'text', text: line });
+            }
+            i++;
         }
 
-        Array.from(grouped.entries()).forEach(([dateKey, newLabels]) => {
-            const existingDateItem = structuredItems.find(item => item.type === 'date' && item.dateStr === dateKey);
+        yLenhLabelsByDate.forEach((yLabels, dateStr) => {
+            let existingDateItem = parsedLines.find(item => item.type === 'date' && item.dateKey === dateStr);
             if (existingDateItem) {
-                newLabels.forEach(label => {
-                    const cleaned = String(label || '').trim().replace(/[.]+$/g, '');
-                    if (!shouldSkipHxtLabel(cleaned) && !existingDateItem.labels.includes(cleaned)) {
-                        existingDateItem.labels.push(cleaned);
-                    }
+                yLabels.forEach(l => {
+                    const cleaned = String(l || '').trim().replace(/[.]+$/g, '');
+                    if (!shouldSkipHxtLabel(cleaned) && !existingDateItem.labels.includes(cleaned)) existingDateItem.labels.push(cleaned);
                 });
             } else {
-                structuredItems.push({
-                    type: 'date',
-                    dateStr: dateKey,
-                    timestamp: parseDateToTimestamp(dateKey),
-                    labels: newLabels.map(l => String(l || '').trim().replace(/[.]+$/g, '')).filter(l => !shouldSkipHxtLabel(l))
-                });
+                const cleanedLabels = yLabels.map(l => String(l || '').trim().replace(/[.]+$/g, '')).filter(l => !shouldSkipHxtLabel(l));
+                parsedLines.push({ type: 'date', dateKey: dateStr, labels: cleanedLabels });
             }
         });
 
         let leadingText = [];
-        let datesAndRest = structuredItems;
+        let datesAndRest = parsedLines;
 
-        if (structuredItems.length > 0 && structuredItems[0].type === 'text') {
-            leadingText = structuredItems[0].lines;
-            datesAndRest = structuredItems.slice(1);
+        if (parsedLines.length > 0 && parsedLines[0].type === 'text') {
+            let j = 0;
+            while (j < parsedLines.length && parsedLines[j].type === 'text') {
+                leadingText.push(parsedLines[j].text);
+                j++;
+            }
+            datesAndRest = parsedLines.slice(j);
         }
 
         const onlyDates = datesAndRest.filter(item => item.type === 'date');
         const otherTexts = datesAndRest.filter(item => item.type === 'text');
 
-        onlyDates.sort((a, b) => a.timestamp - b.timestamp);
+        onlyDates.sort((a, b) => parseDateToTimestamp(a.dateKey) - parseDateToTimestamp(b.dateKey));
 
         const nextLines = [...leadingText];
 
         onlyDates.forEach(item => {
             if (item.labels.length > 0) {
-                nextLines.push(`${item.dateStr}: ${item.labels.join(', ')}.`);
+                nextLines.push(`${item.dateKey}: ${item.labels.join(', ')}.`);
             }
         });
 
         otherTexts.forEach(item => {
-            nextLines.push(...item.lines);
+            nextLines.push(item.text);
         });
 
         while (nextLines.length > 0 && String(nextLines[0] || '').trim() === '') {

@@ -476,8 +476,17 @@ const OTMTokenService = {
      * Convenience method: Fetch surgery data for date range
      */
     async fetchSurgeries(fromDate, toDate) {
-        const fromISO = fromDate ? new Date(fromDate).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
-        const toISO = toDate ? new Date(toDate).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
+        // Helper to format date correctly for OTM API (subtracting 1 day + appending T17)
+        const formatOTMDate = (dateVal) => {
+            if (!dateVal) return null;
+            const dt = new Date(dateVal);
+            if (isNaN(dt.getTime())) return null;
+            // Use UTC dates to correctly calculate without timezone shift bugs
+            return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate() - 1, 17, 0, 0, 0)).toISOString();
+        };
+
+        const fromISO = formatOTMDate(fromDate);
+        const toISO = formatOTMDate(toDate);
         
         if (fromISO && toISO) {
             // Range request
@@ -489,8 +498,11 @@ const OTMTokenService = {
             return await this.makeOTMRequest(url);
         } else {
             // Today
-            const today = new Date().toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
-            const url = `https://otm.tahospital.vn/api/booking?date=${today}&_=${Date.now()}`;
+            const dt = new Date();
+            // Create YYYY-MM-DD from local date safely
+            const todayStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+            const todayISO = formatOTMDate(todayStr);
+            const url = `https://otm.tahospital.vn/api/booking?date=${todayISO}&_=${Date.now()}`;
             return await this.makeOTMRequest(url);
         }
     },

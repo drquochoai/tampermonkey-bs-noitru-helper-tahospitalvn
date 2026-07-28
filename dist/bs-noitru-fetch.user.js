@@ -7965,10 +7965,11 @@ module.exports = {
                     if (pendingFetch) {
                         const parsed = JSON.parse(pendingFetch);
                         if (parsed && parsed.timestamp && (Date.now() - parsed.timestamp < 60000)) {
-                            otmFetchParam = encodeURIComponent(JSON.stringify({
+                            // Reconstruct exactly as JSON string so that JSON.parse(decodeURIComponent(...)) parses correctly
+                            otmFetchParam = JSON.stringify({
                                 fromDate: parsed.fromDate,
                                 toDate: parsed.toDate
-                            }));
+                            });
                             console.log('[OTM Debug] Recovered otm-fetch param from GM storage:', otmFetchParam);
                         }
                         if (typeof GM.deleteValue === 'function') {
@@ -8669,91 +8670,152 @@ module.exports = {
             debugLog('Bearer token available:', bearerToken.substring(0, 20) + '...');
             sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng, đang lấy dữ liệu...' });
 
-            let allSurgeryData = [];
-            let totalSurgeries = 0;
-
-            const fromISO = requestedFrom ? new Date(requestedFrom).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
-            const toISO = requestedTo ? new Date(requestedTo).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
-
-            let apiUrl = '';
-            if (fromISO && toISO && fromISO !== toISO) {
-                apiUrl = `https://otm.tahospital.vn/api/booking?from=${fromISO}&to=${toISO}&_=${Date.now()}`;
-            } else if (fromISO) {
-                apiUrl = `https://otm.tahospital.vn/api/booking?date=${fromISO}&_=${Date.now()}`;
-            } else {
-                const today = new Date().toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
-                apiUrl = `https://otm.tahospital.vn/api/booking?date=${today}&_=${Date.now()}`;
+            // Generate array of dates from requestedFrom to requestedTo (inclusive)
+            function toDateOnly(dateStr) {
+                // Always treat as date-only without timezone shifting
+                const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
+                return new Date(Date.UTC(y, (m - 1), d)); // UTC midnight for stability
+            }
+            const dates = [];
+            const startDate = toDateOnly(requestedFrom);
+            const endDate = toDateOnly(requestedTo);
+            const cur = new Date(startDate.getTime());
+            while (cur.getTime() <= endDate.getTime()) {
+                const y = cur.getUTCFullYear();
+                const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
+                const d = String(cur.getUTCDate()).padStart(2, '0');
+                dates.push(`${y}-${m}-${d}`);
+                cur.setUTCDate(cur.getUTCDate() + 1);
             }
 
-            sendMessageToParent('progress', {
-                step: 'api_call',
-                message: `Đang gọi API cho từ ngày ${requestedFrom} đến ${requestedTo}...`
-            });
+            debugLog('Dates to fetch:', dates);
 
-            debugLog(`Fetching data from API: ${apiUrl}`);
-            sendMessageToParent('progress', { step: 'api_call', message: `GET API...`, url: apiUrl });
+            const allSurgeryData = [];
+            let totalSurgeries = 0;
 
-            let response = await fetch(apiUrl, {
-                headers: {
-                    "accept": "application/json, text/plain, */*",
-                    "accept-language": "en-US,en;q=0.9,vi;q=0.8",
-                    "authorization": `Bearer ${bearerToken}`,
-                    "logintype": "2",
-                    "priority": "u=1, i",
-                    "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
-                    "sec-ch-ua-mobile": "?0",
-                    "sec-ch-ua-platform": "\"Windows\"",
-                    "sec-fetch-dest": "empty",
-                    "sec-fetch-mode": "cors",
-                    "sec-fetch-site": "same-origin",
-                    "siteid": "1"
-                },
-                referrer: "https://otm.tahospital.vn/surgery/booking",
-                body: null,
-                method: "GET",
-                mode: "cors",
-                cache: "no-store",
-                credentials: "include"
-            });
+            const getConcurrencyLimit = () => {
+                const raw = localStorage.getItem('dr_otm_concurrency');
+                const n = parseInt(raw ?? '3', 10);
+                return isNaN(n) ? 3 : Math.min(Math.max(n, 1), 6);
+            };
 
-            if (!response.ok) {
-                debugLog(`HTTP error: ${response.status}`);
-                if (response.status === 401 || response.status === 403) {
+            async function fetchDateData(currentDate) {
+                sendMessageToParent('progress', {
+                    step: 'api_call',
+                    message: `Đang gọi API cho ngày ${currentDate}...`
+                });
+
+                // The OTM API expects Vietnam time represented as UTC.
+                // For a given date, we must subtract 1 day and append T17:00:00.000Z.
+                // Example: to get data for 2026-07-28 (Vietnam), request 2026-07-27T17:00:00.000Z.
+                const dt = new Date(currentDate);
+                // Use UTC components to avoid timezone shift bugs depending on execution environment
+                const isoDate = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate() - 1, 17, 0, 0, 0)).toISOString();
+
+                debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
+                sendMessageToParent('progress', { step: 'api_call', message: `GET /api/booking?date=${isoDate}`, currentDate, isoDate });
+
+                let response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
+                    headers: {
+                        "accept": "application/json, text/plain, */*",
+                        "accept-language": "en-US,en;q=0.9,vi;q=0.8",
+                        "authorization": `Bearer ${bearerToken}`,
+                        "logintype": "2",
+                        "priority": "u=1, i",
+                        "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": "\"Windows\"",
+                        "sec-fetch-dest": "empty",
+                        "sec-fetch-mode": "cors",
+                        "sec-fetch-site": "same-origin",
+                        "siteid": "1"
+                    },
+                    referrer: "https://otm.tahospital.vn/surgery/booking",
+                    body: null,
+                    method: "GET",
+                    mode: "cors",
+                    cache: "no-store",
+                    credentials: "include"
+                });
+                if (response.status === 304) {
+                    debugLog(`Received 304 for ${currentDate}. Retrying with cache-busting...`);
+                    const retryUrl = `https://otm.tahospital.vn/api/booking?date=${isoDate}&_=${Date.now()}`;
+                    response = await fetch(retryUrl, {
+                        headers: {
+                            "accept": "application/json, text/plain, */*",
+                            "authorization": `Bearer ${bearerToken}`,
+                            "logintype": "2",
+                            "siteid": "1"
+                        },
+                        referrer: "https://otm.tahospital.vn/surgery/booking",
+                        body: null,
+                        method: "GET",
+                        mode: "cors",
+                        cache: "no-store",
+                        credentials: "include"
+                    });
+                }
+
+                if (!response.ok) {
+                    debugLog(`HTTP error for ${currentDate}: ${response.status}`);
+                    if (response.status === 401 || response.status === 403) {
+                        const err = new Error('Unauthorized');
+                        err.__unauthorized = true;
+                        throw err;
+                    }
+                    return { surgeriesWithDate: [], count: 0 };
+                }
+                let data;
+                try { data = await response.json(); }
+                catch (parseErr) {
+                    debugLog('Booking JSON parse error:', parseErr);
+                    try { const raw = await response.clone().text(); debugLog('Booking raw (first 300):', (raw||'').slice(0,300)); } catch {}
+                    return { surgeriesWithDate: [], count: 0 };
+                }
+                debugLog(`Surgery data received for ${currentDate}:`, data);
+                if (!Array.isArray(data) || data.length === 0) return { surgeriesWithDate: [], count: 0 };
+
+                const surgeriesWithDate = data.map(surgery => ({ ...surgery, fetchDate: currentDate }));
+                debugLog(`Full surgery data for ${currentDate}:`, data);
+                return { surgeriesWithDate, count: data.length };
+            }
+
+            const concurrency = getConcurrencyLimit();
+            let unauthorizedDetected = false;
+            for (let i = 0; i < dates.length; i += concurrency) {
+                const batch = dates.slice(i, i + concurrency);
+                const results = await Promise.allSettled(batch.map(d => fetchDateData(d)));
+
+                for (const res of results) {
+                    if (res.status === 'rejected') {
+                        if (res.reason && res.reason.__unauthorized) {
+                            unauthorizedDetected = true;
+                            break;
+                        } else {
+                            debugLog('Batch fetch error:', res.reason);
+                        }
+                    } else if (res.value) {
+                        const { surgeriesWithDate, count } = res.value;
+                        if (count > 0) {
+                            totalSurgeries += count;
+                            allSurgeryData.push(...surgeriesWithDate);
+                        }
+                    }
+                }
+
+                if (unauthorizedDetected) {
                     sendMessageToParent('progress', { step: 'token_invalid', message: 'Token hết hạn, chuyển sang tự động hóa để lấy token mới...' });
                     startAutomation();
                     return;
                 }
-                throw new Error(`HTTP error: ${response.status}`);
+
+                // Small delay between batches to avoid rate limiting
+                if (i + concurrency < dates.length) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
             }
 
-            let data;
-            try { data = await response.json(); }
-            catch (parseErr) {
-                debugLog('Booking JSON parse error:', parseErr);
-                data = [];
-            }
-
-            if (Array.isArray(data) && data.length > 0) {
-                allSurgeryData = data.map(surgery => {
-                    // Approximate fetchDate based on surgery start time if available
-                    let fDate = requestedFrom;
-                    if (surgery.start) {
-                        try {
-                            const d = new Date(surgery.start);
-                            if (!isNaN(d.getTime())) {
-                                const y = d.getFullYear();
-                                const m = String(d.getMonth() + 1).padStart(2, '0');
-                                const day = String(d.getDate()).padStart(2, '0');
-                                fDate = `${y}-${m}-${day}`;
-                            }
-                        } catch (e) {}
-                    }
-                    return { ...surgery, fetchDate: fDate };
-                });
-                totalSurgeries = allSurgeryData.length;
-            }
-
-            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API', days: (requestedFrom !== requestedTo ? 2 : 1), totalCandidate: allSurgeryData.length });
+            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API', days: dates.length, totalCandidate: allSurgeryData.length });
 
             // Send success data to parent with all collected data (raw + filtered)
             const filteredSurgeryData = filterSurgeryData(allSurgeryData);
@@ -16631,8 +16693,17 @@ const OTMTokenService = {
      * Convenience method: Fetch surgery data for date range
      */
     async fetchSurgeries(fromDate, toDate) {
-        const fromISO = fromDate ? new Date(fromDate).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
-        const toISO = toDate ? new Date(toDate).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
+        // Helper to format date correctly for OTM API (subtracting 1 day + appending T17)
+        const formatOTMDate = (dateVal) => {
+            if (!dateVal) return null;
+            const dt = new Date(dateVal);
+            if (isNaN(dt.getTime())) return null;
+            // Use UTC dates to correctly calculate without timezone shift bugs
+            return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate() - 1, 17, 0, 0, 0)).toISOString();
+        };
+
+        const fromISO = formatOTMDate(fromDate);
+        const toISO = formatOTMDate(toDate);
         
         if (fromISO && toISO) {
             // Range request
@@ -16644,8 +16715,11 @@ const OTMTokenService = {
             return await this.makeOTMRequest(url);
         } else {
             // Today
-            const today = new Date().toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
-            const url = `https://otm.tahospital.vn/api/booking?date=${today}&_=${Date.now()}`;
+            const dt = new Date();
+            // Create YYYY-MM-DD from local date safely
+            const todayStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+            const todayISO = formatOTMDate(todayStr);
+            const url = `https://otm.tahospital.vn/api/booking?date=${todayISO}&_=${Date.now()}`;
             return await this.makeOTMRequest(url);
         }
     },

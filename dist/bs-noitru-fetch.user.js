@@ -7935,7 +7935,7 @@ module.exports = {
 
     // Check if we should run automation - read from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
-    const otmFetchParam = urlParams.get('otm-fetch');
+    let otmFetchParam = urlParams.get('otm-fetch');
     const otmFetchUsers = urlParams.has('otm-fetch-users') || urlParams.get('otm-fetch-users') === '1' || urlParams.get('otm-fetch') === 'users';
     const otmTokenParam = urlParams.get('otm-token'); // New parameter for token-only extraction
     // Date range for fetching (filled from URL or defaulted later)
@@ -7957,7 +7957,28 @@ module.exports = {
         console.log('[OTM Debug] Will check existing token first');
         debugLog('Checking for existing token...');
         // Schedule immediately (next tick) to start as soon as possible
-        setTimeout(() => {
+        setTimeout(async () => {
+            // Check fallback GM storage if param was lost due to redirect
+            if (!otmFetchParam && typeof GM !== 'undefined' && GM.getValue) {
+                try {
+                    const pendingFetch = await GM.getValue('dr_otm_pending_fetch', null);
+                    if (pendingFetch) {
+                        const parsed = JSON.parse(pendingFetch);
+                        if (parsed && parsed.timestamp && (Date.now() - parsed.timestamp < 60000)) {
+                            otmFetchParam = encodeURIComponent(JSON.stringify({
+                                fromDate: parsed.fromDate,
+                                toDate: parsed.toDate
+                            }));
+                            console.log('[OTM Debug] Recovered otm-fetch param from GM storage:', otmFetchParam);
+                        }
+                        if (typeof GM.deleteValue === 'function') {
+                            GM.deleteValue('dr_otm_pending_fetch');
+                        }
+                    }
+                } catch (e) {
+                    console.error('[OTM Debug] Error reading pending fetch from GM storage:', e);
+                }
+            }
             console.log('[OTM Debug] Calling checkExistingToken ASAP');
             checkExistingToken();
         }, 0);
@@ -8648,149 +8669,91 @@ module.exports = {
             debugLog('Bearer token available:', bearerToken.substring(0, 20) + '...');
             sendMessageToParent('progress', { step: 'token_ready', message: 'Token đã sẵn sàng, đang lấy dữ liệu...' });
 
-            // Generate array of dates from requestedFrom to requestedTo (inclusive)
-            function toDateOnly(dateStr) {
-                // Always treat as date-only without timezone shifting
-                const [y, m, d] = dateStr.split('-').map(n => parseInt(n, 10));
-                return new Date(Date.UTC(y, (m - 1), d)); // UTC midnight for stability
-            }
-            const dates = [];
-            const startDate = toDateOnly(requestedFrom);
-            const endDate = toDateOnly(requestedTo);
-            const cur = new Date(startDate.getTime());
-            while (cur.getTime() <= endDate.getTime()) {
-                const y = cur.getUTCFullYear();
-                const m = String(cur.getUTCMonth() + 1).padStart(2, '0');
-                const d = String(cur.getUTCDate()).padStart(2, '0');
-                dates.push(`${y}-${m}-${d}`);
-                cur.setUTCDate(cur.getUTCDate() + 1);
-            }
-
-            debugLog('Dates to fetch:', dates);
-
-            const allSurgeryData = [];
+            let allSurgeryData = [];
             let totalSurgeries = 0;
 
-            const getConcurrencyLimit = () => {
-                const raw = localStorage.getItem('dr_otm_concurrency');
-                const n = parseInt(raw ?? '3', 10);
-                return isNaN(n) ? 3 : Math.min(Math.max(n, 1), 6);
-            };
+            const fromISO = requestedFrom ? new Date(requestedFrom).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
+            const toISO = requestedTo ? new Date(requestedTo).toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z') : null;
 
-            async function fetchDateData(currentDate) {
-                sendMessageToParent('progress', {
-                    step: 'api_call',
-                    message: `Đang gọi API cho ngày ${currentDate}...`
-                });
-
-                // Use the exact date string with T17 to match other usages in the system (e.g. otm.token.js)
-                // This ensures we request the correct date rather than shifting backwards by one day
-                const isoDate = `${currentDate}T17:00:00.000Z`;
-
-                debugLog(`Fetching data for date: ${currentDate} (ISO: ${isoDate})`);
-                sendMessageToParent('progress', { step: 'api_call', message: `GET /api/booking?date=${isoDate}`, currentDate, isoDate });
-
-                let response = await fetch(`https://otm.tahospital.vn/api/booking?date=${isoDate}`, {
-                    headers: {
-                        "accept": "application/json, text/plain, */*",
-                        "accept-language": "en-US,en;q=0.9,vi;q=0.8",
-                        "authorization": `Bearer ${bearerToken}`,
-                        "logintype": "2",
-                        "priority": "u=1, i",
-                        "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
-                        "sec-ch-ua-mobile": "?0",
-                        "sec-ch-ua-platform": "\"Windows\"",
-                        "sec-fetch-dest": "empty",
-                        "sec-fetch-mode": "cors",
-                        "sec-fetch-site": "same-origin",
-                        "siteid": "1"
-                    },
-                    referrer: "https://otm.tahospital.vn/surgery/booking",
-                    body: null,
-                    method: "GET",
-                    mode: "cors",
-                    cache: "no-store",
-                    credentials: "include"
-                });
-                if (response.status === 304) {
-                    debugLog(`Received 304 for ${currentDate}. Retrying with cache-busting...`);
-                    const retryUrl = `https://otm.tahospital.vn/api/booking?date=${isoDate}&_=${Date.now()}`;
-                    response = await fetch(retryUrl, {
-                        headers: {
-                            "accept": "application/json, text/plain, */*",
-                            "authorization": `Bearer ${bearerToken}`,
-                            "logintype": "2",
-                            "siteid": "1"
-                        },
-                        referrer: "https://otm.tahospital.vn/surgery/booking",
-                        body: null,
-                        method: "GET",
-                        mode: "cors",
-                        cache: "no-store",
-                        credentials: "include"
-                    });
-                }
-
-                if (!response.ok) {
-                    debugLog(`HTTP error for ${currentDate}: ${response.status}`);
-                    if (response.status === 401 || response.status === 403) {
-                        const err = new Error('Unauthorized');
-                        err.__unauthorized = true;
-                        throw err;
-                    }
-                    return { surgeriesWithDate: [], count: 0 };
-                }
-                let data;
-                try { data = await response.json(); }
-                catch (parseErr) {
-                    debugLog('Booking JSON parse error:', parseErr);
-                    try { const raw = await response.clone().text(); debugLog('Booking raw (first 300):', (raw||'').slice(0,300)); } catch {}
-                    return { surgeriesWithDate: [], count: 0 };
-                }
-                debugLog(`Surgery data received for ${currentDate}:`, data);
-                if (!Array.isArray(data) || data.length === 0) return { surgeriesWithDate: [], count: 0 };
-
-                const surgeriesWithDate = data.map(surgery => ({ ...surgery, fetchDate: currentDate }));
-                debugLog(`Full surgery data for ${currentDate}:`, data);
-                return { surgeriesWithDate, count: data.length };
+            let apiUrl = '';
+            if (fromISO && toISO && fromISO !== toISO) {
+                apiUrl = `https://otm.tahospital.vn/api/booking?from=${fromISO}&to=${toISO}&_=${Date.now()}`;
+            } else if (fromISO) {
+                apiUrl = `https://otm.tahospital.vn/api/booking?date=${fromISO}&_=${Date.now()}`;
+            } else {
+                const today = new Date().toISOString().replace('T00:00:00.000Z', 'T17:00:00.000Z');
+                apiUrl = `https://otm.tahospital.vn/api/booking?date=${today}&_=${Date.now()}`;
             }
 
-            const concurrency = getConcurrencyLimit();
-            let unauthorizedDetected = false;
-            for (let i = 0; i < dates.length; i += concurrency) {
-                const batch = dates.slice(i, i + concurrency);
-                const results = await Promise.allSettled(batch.map(d => fetchDateData(d)));
+            sendMessageToParent('progress', {
+                step: 'api_call',
+                message: `Đang gọi API cho từ ngày ${requestedFrom} đến ${requestedTo}...`
+            });
 
-                for (const res of results) {
-                    if (res.status === 'rejected') {
-                        if (res.reason && res.reason.__unauthorized) {
-                            unauthorizedDetected = true;
-                            break;
-                        } else {
-                            debugLog('Batch fetch error:', res.reason);
-                        }
-                    } else if (res.value) {
-                        const { surgeriesWithDate, count } = res.value;
-                        if (count > 0) {
-                            totalSurgeries += count;
-                            allSurgeryData.push(...surgeriesWithDate);
-                        }
-                    }
-                }
+            debugLog(`Fetching data from API: ${apiUrl}`);
+            sendMessageToParent('progress', { step: 'api_call', message: `GET API...`, url: apiUrl });
 
-                if (unauthorizedDetected) {
+            let response = await fetch(apiUrl, {
+                headers: {
+                    "accept": "application/json, text/plain, */*",
+                    "accept-language": "en-US,en;q=0.9,vi;q=0.8",
+                    "authorization": `Bearer ${bearerToken}`,
+                    "logintype": "2",
+                    "priority": "u=1, i",
+                    "sec-ch-ua": "\"Not;A=Brand\";v=\"99\", \"Microsoft Edge\";v=\"139\", \"Chromium\";v=\"139\"",
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": "\"Windows\"",
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "same-origin",
+                    "siteid": "1"
+                },
+                referrer: "https://otm.tahospital.vn/surgery/booking",
+                body: null,
+                method: "GET",
+                mode: "cors",
+                cache: "no-store",
+                credentials: "include"
+            });
+
+            if (!response.ok) {
+                debugLog(`HTTP error: ${response.status}`);
+                if (response.status === 401 || response.status === 403) {
                     sendMessageToParent('progress', { step: 'token_invalid', message: 'Token hết hạn, chuyển sang tự động hóa để lấy token mới...' });
                     startAutomation();
                     return;
                 }
-
-                // Small delay between batches to avoid rate limiting
-                if (i + concurrency < dates.length) {
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                }
+                throw new Error(`HTTP error: ${response.status}`);
             }
 
-            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API', days: dates.length, totalCandidate: allSurgeryData.length });
+            let data;
+            try { data = await response.json(); }
+            catch (parseErr) {
+                debugLog('Booking JSON parse error:', parseErr);
+                data = [];
+            }
+
+            if (Array.isArray(data) && data.length > 0) {
+                allSurgeryData = data.map(surgery => {
+                    // Approximate fetchDate based on surgery start time if available
+                    let fDate = requestedFrom;
+                    if (surgery.start) {
+                        try {
+                            const d = new Date(surgery.start);
+                            if (!isNaN(d.getTime())) {
+                                const y = d.getFullYear();
+                                const m = String(d.getMonth() + 1).padStart(2, '0');
+                                const day = String(d.getDate()).padStart(2, '0');
+                                fDate = `${y}-${m}-${day}`;
+                            }
+                        } catch (e) {}
+                    }
+                    return { ...surgery, fetchDate: fDate };
+                });
+                totalSurgeries = allSurgeryData.length;
+            }
+
+            sendMessageToParent('progress', { step: 'data_received', message: 'Đã nhận dữ liệu từ API', days: (requestedFrom !== requestedTo ? 2 : 1), totalCandidate: allSurgeryData.length });
 
             // Send success data to parent with all collected data (raw + filtered)
             const filteredSurgeryData = filterSurgeryData(allSurgeryData);
@@ -11854,6 +11817,10 @@ function addOTMButtonsToBottomBar(bottomBar) {
     }
 
     function openOTMTab(fromDate, toDate) {
+        // Fallback state in case URL param gets dropped during SPA redirect
+        if (typeof GM !== 'undefined' && GM.setValue) {
+            GM.setValue('dr_otm_pending_fetch', JSON.stringify({ fromDate, toDate, timestamp: Date.now() }));
+        }
         const url = `https://otm.tahospital.vn/?otm-fetch=${encodeURIComponent(JSON.stringify({ fromDate, toDate }))}`;
         console.log('[OTM Open Tab] Opening tab with URL:', url);
         console.log('[OTM Open Tab] Current openTabs before:', window.openTabs);

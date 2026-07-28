@@ -3005,6 +3005,10 @@ function addOTMButtonsToBottomBar(bottomBar) {
     }
 
     function openOTMTab(fromDate, toDate) {
+        // Fallback state in case URL param gets dropped during SPA redirect
+        if (typeof GM !== 'undefined' && GM.setValue) {
+            GM.setValue('dr_otm_pending_fetch', JSON.stringify({ fromDate, toDate, timestamp: Date.now() }));
+        }
         const url = `https://otm.tahospital.vn/?otm-fetch=${encodeURIComponent(JSON.stringify({ fromDate, toDate }))}`;
         console.log('[OTM Open Tab] Opening tab with URL:', url);
         console.log('[OTM Open Tab] Current openTabs before:', window.openTabs);

@@ -19102,7 +19102,10 @@ const PatientDataMapper = {
     formatRoom(roomText) {
         if (!roomText) return '';
         // Remove "Phòng " prefix and keep only the number/text
-        return roomText.replace(/^Phòng\s*/i, '').trim();
+        let text = roomText.replace(/^Phòng\s*/i, '').trim();
+        // Also remove "P" prefix when followed by a number (like "P301" or "P 301")
+        text = text.replace(/^P\s*(?=\d)/i, '').trim();
+        return text;
     },
 
     /**
